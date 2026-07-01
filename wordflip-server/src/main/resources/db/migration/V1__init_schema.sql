@@ -123,7 +123,7 @@ CREATE TABLE user_word_lexicon (
 -- ---------------------------------------------------------------------------
 
 -- 学习分组：auto 增量追加 / custom 手动创建
-CREATE TABLE groups (
+CREATE TABLE `groups` (
     id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '分组主键',
     user_id     BIGINT UNSIGNED NOT NULL COMMENT '所属用户',
     name        VARCHAR(64)     NOT NULL COMMENT '组名（auto：第 N 组；custom 可命名）',
@@ -151,7 +151,7 @@ CREATE TABLE group_words (
     UNIQUE KEY uk_group_words_group_word (group_id, word_key),
     KEY idx_group_words_group_sort (group_id, sort_order),
     CONSTRAINT fk_group_words_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-    CONSTRAINT fk_group_words_group FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE CASCADE
+    CONSTRAINT fk_group_words_group FOREIGN KEY (group_id) REFERENCES `groups` (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='分组单词（一词一组）';
 
@@ -211,7 +211,7 @@ CREATE TABLE quiz_sessions (
     KEY idx_qs_user_started (user_id, started_at DESC),
     KEY idx_qs_user_status (user_id, status),
     CONSTRAINT fk_qs_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-    CONSTRAINT fk_qs_group FOREIGN KEY (group_id) REFERENCES groups (id) ON DELETE SET NULL
+    CONSTRAINT fk_qs_group FOREIGN KEY (group_id) REFERENCES `groups` (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   COMMENT='默写测验会话';
 
