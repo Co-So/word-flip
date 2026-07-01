@@ -1,0 +1,17 @@
+---
+description: 业务代码必须使用简体中文注释（WordFlip）
+alwaysApply: true
+---
+
+# 中文注释（强制）
+
+编写或修改 **wordflip-server**、**wordflip-android**、**wordflip-web**、Flyway SQL 中的业务代码时：
+
+1. **类 / 公开方法**：用中文 JavaDoc（Java）或 KDoc（Kotlin）说明职责；Controller 注明对应 openapi 路径与主要错误码。
+2. **业务逻辑**：Service、ViewModel、状态机、SRS/掌握度/分组增量等分支必须有用中文行注释，并引用 REQ 或 api-modules 术语（未学习/模糊/不认识、wordKey、增量追加）。
+3. **标识符保持英文**（类名、方法名、API 字段）；注释用中文；禁止拼音命名。
+4. **Flyway 脚本**：每张表 `COMMENT='…'`；业务字段 `COMMENT '…'`；模块分区 `--` 中文说明。
+5. **少注释**：getter、纯 DTO 映射、自解释样板不堆砌注释。
+6. 改逻辑必须同步改注释；禁止过时中文注释。
+
+详细示例见 [docs/wordflip/coding-standards.md](../../docs/wordflip/coding-standards.md)。

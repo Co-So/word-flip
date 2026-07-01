@@ -1,0 +1,43 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Java / Spring
+wordflip-server/target/
+wordflip-server/.gradle/
+*.class
+*.jar
+*.war
+*.log
+
+# Android
+wordflip-android/.gradle/
+wordflip-android/**/build/
+wordflip-android/local.properties
+wordflip-android/.cxx/
+wordflip-android/captures/
+*.apk
+*.aab
+
+# Node / Web
+wordflip-web/node_modules/
+wordflip-web/dist/
+wordflip-web/.env
+wordflip-web/.env.local
+
+# Secrets
+.env
+*.pem
+application-local.yml
+application-local.properties
+
+# Docker volumes (if mapped locally)
+docker/data/

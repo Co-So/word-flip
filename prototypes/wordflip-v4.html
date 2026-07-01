@@ -1,0 +1,2858 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>WordFlip</title>
+<style>
+/* === RESET === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif; background: #111; }
+
+/* === PHONE SHELL === */
+#shell {
+  width: 390px; max-width: 390px;
+  height: min(844px, calc(100vh - 40px));
+  margin: 20px auto;
+  background: #F7F6F2;
+  border-radius: 44px;
+  box-shadow: 0 0 0 10px #1a1a1a, 0 30px 80px rgba(0,0,0,0.6);
+  position: relative;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+/* notch */
+#shell::before {
+  content: '';
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 120px; height: 34px;
+  background: #1a1a1a;
+  border-radius: 0 0 20px 20px;
+  z-index: 1000;
+}
+
+@media (max-width: 449px) {
+  html, body { background: #F7F6F2; }
+  #shell {
+    width: 100vw; height: 100vh;
+    margin: 0 auto;
+    border-radius: 0;
+    box-shadow: none;
+    max-width: none;
+  }
+  #shell::before { display: none; }
+  .hdr { padding-top: 8px !important; }
+  .cards-grid { padding: 4px 12px !important; }
+}
+
+/* === TOKENS === */
+:root {
+  --bg: #F7F6F2;
+  --surface: #FFFFFF;
+  --surface2: #EFEDE7;
+  --border: rgba(0,0,0,0.07);
+  --text: #111111;
+  --text2: #666666;
+  --text3: #AAAAAA;
+  --ink: #1A1A2E;
+  --accent: #2D5BE3;
+  --accent2: #6B8FF8;
+  --accent-bg: #EEF1FD;
+  --green: #0B7B5C;
+  --green-bg: #E0F5EE;
+  --amber: #C47D00;
+  --amber-bg: #FEF3DC;
+  --red: #C0392B;
+  --red-bg: #FDECEA;
+  --r: 16px;
+  --rcard: 20px;
+  --sh: 0 2px 10px rgba(0,0,0,0.06);
+  --sh2: 0 6px 24px rgba(0,0,0,0.1);
+}
+
+/* === APP LAYOUT === */
+#app { flex: 1; position: relative; overflow: hidden; }
+.page {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  transition: transform 0.32s cubic-bezier(0.4,0,0.2,1), opacity 0.32s ease;
+  will-change: transform, opacity;
+}
+.page.hidden   { transform: translateX(100%); opacity: 0; pointer-events: none; }
+.page.behind   { transform: translateX(-28%); opacity: 0; pointer-events: none; }
+
+/* === BOTTOM NAV === */
+.bnav {
+  height: 60px; flex-shrink: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center;
+}
+.bn {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; gap: 3px;
+  cursor: pointer; padding: 6px 0;
+  transition: opacity 0.15s;
+}
+.bn:active { opacity: 0.6; }
+.bn-ic { font-size: 22px; line-height: 1; }
+.bn-lb { font-size: 10px; color: var(--text3); font-weight: 500; }
+.bn.on .bn-lb { color: var(--accent); font-weight: 700; }
+.bn.on .bn-ic { filter: none; }
+
+/* === HEADER === */
+.hdr {
+  height: 54px; flex-shrink: 0;
+  display: flex; align-items: center;
+  padding: 0 16px; gap: 10px;
+  background: var(--bg);
+  padding-top: 8px;
+}
+.hdr-title { flex: 1; font-size: 17px; font-weight: 700; text-align: center; letter-spacing: -0.3px; }
+.hbtn {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--surface); border: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; cursor: pointer; box-shadow: var(--sh);
+  transition: transform 0.12s;
+}
+.hbtn:active { transform: scale(0.9); }
+
+/* === SCROLL AREA === */
+.sc { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+.sc::-webkit-scrollbar { display: none; }
+
+/* === COMMON COMPONENTS === */
+.card {
+  background: var(--surface);
+  border-radius: var(--rcard);
+  box-shadow: var(--sh);
+  overflow: hidden;
+}
+.row {
+  display: flex; align-items: center;
+  padding: 14px 16px; gap: 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 0.12s;
+}
+.row:last-child { border-bottom: none; }
+.row:active { background: var(--surface2); }
+.row-ic {
+  width: 38px; height: 38px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 19px; flex-shrink: 0;
+}
+.row-info { flex: 1; }
+.row-label { font-size: 15px; font-weight: 600; }
+.row-sub { font-size: 12px; color: var(--text2); margin-top: 1px; }
+.row-right { font-size: 14px; color: var(--text3); }
+
+.toggle {
+  width: 48px; height: 28px; border-radius: 14px;
+  background: var(--surface2); border: none; cursor: pointer;
+  position: relative; flex-shrink: 0;
+  transition: background 0.22s;
+}
+.toggle::after {
+  content: ''; position: absolute;
+  width: 22px; height: 22px;
+  background: #fff; border-radius: 50%;
+  top: 3px; left: 3px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  transition: transform 0.22s cubic-bezier(0.34,1.4,0.64,1);
+}
+.toggle.on { background: var(--accent); }
+.toggle.on::after { transform: translateX(20px); }
+
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 4px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+}
+.pill.blue { background: var(--accent-bg); color: var(--accent); }
+.pill.green { background: var(--green-bg); color: var(--green); }
+.pill.amber { background: var(--amber-bg); color: var(--amber); }
+.pill.gray  { background: var(--surface2); color: var(--text3); }
+
+.btn-primary {
+  width: 100%; height: 50px; border-radius: 14px;
+  background: var(--accent); color: #fff;
+  border: none; font-size: 16px; font-weight: 700;
+  cursor: pointer; letter-spacing: 0.2px;
+  transition: transform 0.12s, opacity 0.12s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-primary:active { transform: scale(0.97); opacity: 0.9; }
+
+.btn-ghost {
+  width: 100%; height: 46px; border-radius: 14px;
+  background: transparent; color: var(--text2);
+  border: 1.5px solid var(--border);
+  font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: background 0.12s;
+  display: flex; align-items: center; justify-content: center;
+}
+.btn-ghost:active { background: var(--surface2); }
+
+.sec-label {
+  font-size: 11px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 16px 16px 8px;
+}
+
+/* === TOAST === */
+#toast {
+  position: absolute; bottom: 76px; left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: rgba(20,20,20,0.88);
+  color: #fff; padding: 9px 18px;
+  border-radius: 20px; font-size: 13px; font-weight: 500;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.22s, transform 0.22s;
+  white-space: nowrap; z-index: 999; backdrop-filter: blur(8px);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ====================================================
+   PAGE: TODAY
+==================================================== */
+#page-today .sc { padding-top: 6px; }
+
+.today-top {
+  padding: 12px 16px 0;
+  display: flex; justify-content: space-between; align-items: flex-start;
+}
+.today-greeting { font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.5px; }
+.today-date { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.streak-badge {
+  background: #FFF3E0; border-radius: 12px;
+  padding: 6px 10px; text-align: center;
+}
+.streak-num { font-size: 20px; font-weight: 800; color: #E65100; }
+.streak-lbl { font-size: 10px; color: #BF360C; font-weight: 600; }
+
+.today-big-btn {
+  margin: 14px 16px 0;
+  height: 76px; border-radius: 20px;
+  background: var(--accent);
+  border: none; cursor: pointer;
+  display: flex; align-items: center; padding: 0 20px; gap: 14px;
+  box-shadow: 0 6px 20px rgba(45,91,227,0.3);
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.today-big-btn:active { transform: scale(0.98); box-shadow: 0 2px 8px rgba(45,91,227,0.2); }
+.tbtn-icon { font-size: 32px; }
+.tbtn-text { flex: 1; text-align: left; }
+.tbtn-title { font-size: 18px; font-weight: 800; color: #fff; }
+.tbtn-sub { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 1px; }
+.tbtn-arr { font-size: 22px; color: rgba(255,255,255,0.6); }
+
+.today-stats {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px; margin: 12px 16px 0;
+}
+.ts-card {
+  background: var(--surface); border-radius: var(--r);
+  padding: 12px 10px; text-align: center; box-shadow: var(--sh);
+}
+.ts-num { font-size: 22px; font-weight: 800; color: var(--ink); }
+.ts-lbl { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+.today-tasks { margin: 12px 16px 0; display: flex; flex-direction: column; gap: 8px; }
+.task-row {
+  background: var(--surface); border-radius: var(--r);
+  padding: 12px 14px; display: flex; align-items: center; gap: 12px;
+  box-shadow: var(--sh); cursor: pointer; transition: transform 0.12s;
+}
+.task-row:active { transform: scale(0.98); }
+.task-ic { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.task-info { flex: 1; }
+.task-name { font-size: 14px; font-weight: 700; }
+.task-desc { font-size: 11px; color: var(--text2); margin-top: 1px; }
+.task-n { font-size: 20px; font-weight: 800; }
+
+/* ====================================================
+   PAGE: BOOKS (设置风格)
+==================================================== */
+.books-saved-info {
+  margin: 0 16px 4px;
+  background: var(--accent-bg);
+  border-radius: 12px; padding: 10px 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.bsi-text { flex: 1; font-size: 13px; color: var(--accent); font-weight: 600; }
+
+/* ====================================================
+   PAGE: STUDY
+==================================================== */
+.study-bar {
+  padding: 8px 12px; display: flex; gap: 8px;
+}
+.sbtn {
+  flex: 1; height: 36px; border-radius: 10px;
+  background: var(--surface); border: 1.5px solid var(--border);
+  font-size: 13px; font-weight: 700; color: var(--text2);
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
+  transition: all 0.15s;
+}
+.sbtn:active { background: var(--surface2); transform: scale(0.95); }
+.sbtn.accent { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+.cards-grid {
+  display: grid;
+  gap: 10px; padding: 4px 12px 16px;
+  position: relative;
+}
+.cards-grid.cols-1 { grid-template-columns: 1fr; }
+.cards-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.cards-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.cards-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+/* FLIP CARD */
+.fc-wrap {
+  aspect-ratio: 3/4.2;
+  perspective: 900px;
+  cursor: pointer;
+  position: relative;
+}
+.fc-inner {
+  width: 100%; height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.34,1.05,0.64,1);
+  will-change: transform;
+  border-radius: var(--rcard);
+}
+.fc-wrap.flipped .fc-inner { transform: rotateY(180deg); }
+.fc-front, .fc-back {
+  position: absolute; inset: 0;
+  border-radius: var(--rcard);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 10px;
+  box-shadow: var(--sh2);
+}
+.fc-front { background: var(--surface); }
+.fc-back  { background: var(--ink); transform: rotateY(180deg); }
+.fc-hint  { font-size: 10px; color: var(--text3); position: absolute; bottom: 8px; z-index: 2; }
+.fc-back .fc-hint { color: rgba(255,255,255,0.3); }
+.fc-word  { font-size: 19px; font-weight: 800; color: var(--ink); text-align: center; line-height: 1.2; position: relative; z-index: 2; }
+.fc-pos   { font-size: 10px; color: var(--text3); margin-top: 4px; background: var(--surface2); padding: 2px 8px; border-radius: 20px; position: relative; z-index: 2; }
+.fc-cn    { font-size: 15px; font-weight: 700; color: #fff; text-align: center; line-height: 1.4; }
+.fc-ph    { font-size: 10px; color: rgba(255,255,255,0.5); margin-top: 5px; font-family: 'Courier New', monospace; }
+
+/* shuffle animation */
+@keyframes shuffle-out {
+  0%   { transform: translate(0,0) rotate(0deg); opacity:1; }
+  40%  { transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(0.95); opacity:0.8; }
+  100% { transform: translate(var(--tx2), var(--ty2)) rotate(var(--tr2)) scale(0.9); opacity:0; }
+}
+@keyframes shuffle-in {
+  0%   { transform: translate(0,0) rotate(0deg) scale(0.85); opacity:0; }
+  60%  { opacity:1; }
+  100% { transform: translate(0,0) rotate(0deg) scale(1); opacity:1; }
+}
+.fc-wrap.shuffling-out {
+  animation: shuffle-out 0.38s cubic-bezier(0.4,0,1,1) both;
+}
+.fc-wrap.shuffling-in {
+  animation: shuffle-in 0.4s cubic-bezier(0.2,0,0.3,1) both;
+}
+
+/* ====================================================
+   STAINS (Canvas-based realistic stain rendering engine)
+==================================================== */
+.stain-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.92;
+  mix-blend-mode: multiply;
+}
+
+.stain-type-btn {
+  padding: 6px 12px; border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface); font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; color: var(--text2);
+}
+.stain-type-btn:active { transform: scale(0.95); }
+.stain-type-btn.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+/* Stain density / aging controls */
+.stain-control-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 16px; font-size: 13px; color: var(--text2);
+}
+.stain-slider {
+  flex: 1; -webkit-appearance: none; height: 4px;
+  background: var(--surface2); border-radius: 2px; outline: none;
+}
+.stain-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--accent); cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.stain-type-btn {
+  padding: 6px 12px; border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface); font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; color: var(--text2);
+}
+.stain-type-btn:active { transform: scale(0.95); }
+.stain-type-btn.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+/* ====================================================
+   LONG PRESS & BOTTOM SHEET
+==================================================== */
+#sheet-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.35);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s ease;
+  z-index: 900;
+}
+#sheet-overlay.show { opacity: 1; pointer-events: auto; }
+
+#sheet-panel {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  padding: 20px 20px 28px;
+  transform: translateY(100%);
+  transition: transform 0.32s cubic-bezier(0.2,0,0.2,1);
+  z-index: 910;
+  max-height: 70%;
+  display: flex; flex-direction: column;
+}
+#sheet-panel.show { transform: translateY(0); }
+
+.sheet-handle {
+  width: 36px; height: 5px;
+  background: var(--surface2);
+  border-radius: 3px;
+  margin: 0 auto 14px;
+}
+.sheet-word {
+  font-size: 22px; font-weight: 800; color: var(--ink);
+  text-align: center; margin-bottom: 2px;
+}
+.sheet-ph {
+  font-size: 12px; color: var(--text3);
+  text-align: center; font-family: 'Courier New', monospace;
+  margin-bottom: 6px;
+}
+.sheet-cn {
+  font-size: 14px; color: var(--text);
+  text-align: center; margin-bottom: 10px;
+  font-weight: 600;
+}
+.sheet-pos {
+  display: inline-block;
+  font-size: 11px; color: var(--accent);
+  background: var(--accent-bg);
+  padding: 2px 10px; border-radius: 20px;
+  margin: 0 auto 12px;
+  font-weight: 700;
+}
+.syllable-vowel { color: #E85D04; }
+.syllable-dot { color: var(--text3); opacity: 0.5; margin: 0 1px; }
+.syl-letter {
+  display: inline-block;
+  transition: color 0.15s, transform 0.15s, text-shadow 0.15s;
+}
+.syl-letter.flowing {
+  color: var(--accent);
+  transform: translateY(-3px) scale(1.15);
+  text-shadow: 0 0 10px rgba(45, 91, 227, 0.5);
+}
+.syl-dot {
+  color: var(--text3); opacity: 0.5; margin: 0 1px;
+}
+
+/* Speak controls */
+.speak-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.speak-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 8px rgba(45, 91, 227, 0.3);
+}
+.speak-btn:active { transform: scale(0.9); }
+.speak-btn.playing {
+  animation: pulse-ring 1.2s infinite;
+}
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(45, 91, 227, 0.4); }
+  70% { box-shadow: 0 0 0 12px rgba(45, 91, 227, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(45, 91, 227, 0); }
+}
+.speed-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  font-size: 14px; font-weight: 700;
+  color: var(--text2);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.speed-btn:active { transform: scale(0.9); background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
+#speed-display {
+  font-size: 12px; font-weight: 700;
+  color: var(--text2);
+  min-width: 36px; text-align: center;
+}
+.sheet-block {
+  margin-bottom: 14px;
+}
+.sheet-label {
+  font-size: 11px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.sheet-text {
+  font-size: 14px; color: var(--text2); line-height: 1.5;
+}
+.sheet-examples {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sheet-ex {
+  font-size: 13px; color: var(--text);
+  background: var(--bg);
+  padding: 8px 10px; border-radius: 10px;
+  line-height: 1.4;
+}
+.sheet-actions {
+  display: flex; gap: 8px; margin-top: 6px;
+}
+.sheet-btn {
+  flex: 1; height: 44px; border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text2);
+  font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: all 0.12s;
+}
+.sheet-btn:active { background: var(--surface2); transform: scale(0.97); }
+.sheet-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ====================================================
+   STUDY GUIDE OVERLAY
+==================================================== */
+#study-guide {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 920;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+#study-guide.show { opacity: 1; pointer-events: auto; }
+.guide-box {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 28px 24px;
+  width: 280px;
+  text-align: center;
+  box-shadow: var(--sh2);
+  transform: scale(0.92);
+  transition: transform 0.3s cubic-bezier(0.34,1.4,0.64,1);
+}
+#study-guide.show .guide-box { transform: scale(1); }
+.guide-icon { font-size: 42px; margin-bottom: 10px; }
+.guide-text { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 18px; line-height: 1.4; }
+.guide-btn {
+  width: 100%; height: 44px; border-radius: 12px;
+  background: var(--accent); color: #fff;
+  border: none; font-size: 15px; font-weight: 700;
+  cursor: pointer;
+}
+
+/* ====================================================
+   PAGE: GROUPS
+==================================================== */
+.grp-item {
+  background: var(--surface); border-radius: var(--rcard);
+  margin: 0 16px 10px; padding: 14px 16px;
+  box-shadow: var(--sh); cursor: pointer; transition: transform 0.12s;
+}
+.grp-item:active { transform: scale(0.98); }
+.grp-hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.grp-title { font-size: 15px; font-weight: 700; }
+.grp-stats { display: flex; gap: 14px; margin-bottom: 10px; }
+.gs { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.gs-n { font-size: 18px; font-weight: 800; }
+.gs-l { font-size: 10px; color: var(--text3); }
+.grp-bar { height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+.grp-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.6s; }
+
+/* ====================================================
+   PAGE: GROUP DETAIL
+==================================================== */
+.wd-row {
+  background: var(--surface); border-radius: var(--r);
+  margin: 0 16px 8px; padding: 12px 14px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: var(--sh);
+}
+.wd-left { flex: 1; }
+.wd-en { font-size: 15px; font-weight: 700; }
+.wd-cn { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.wd-status { display: flex; gap: 6px; }
+.ws-btn {
+  padding: 5px 10px; border-radius: 8px;
+  border: 1.5px solid var(--border);
+  font-size: 12px; font-weight: 700;
+  background: var(--surface2); color: var(--text2);
+  cursor: pointer; transition: all 0.15s;
+}
+.ws-btn.ok  { background: var(--green-bg);  border-color: var(--green);  color: var(--green); }
+.ws-btn.fuz { background: var(--amber-bg);  border-color: var(--amber);  color: var(--amber); }
+
+/* ====================================================
+   PAGE: QUIZ
+==================================================== */
+#quiz-sc {
+  flex: 1 1 0%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 30px;
+  min-height: 0;
+}
+.quiz-pg { height: 4px; background: var(--surface2); margin: 0 16px; border-radius: 2px; overflow: hidden; }
+.quiz-pg-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.35s; }
+.quiz-meta { display: flex; justify-content: space-between; padding: 6px 16px; font-size: 12px; color: var(--text3); }
+
+.quiz-card {
+  margin: 8px 16px;
+  background: var(--ink); border-radius: var(--rcard);
+  padding: 24px 20px; text-align: center;
+  box-shadow: var(--sh2);
+}
+.qc-lbl { font-size: 11px; color: rgba(255,255,255,0.45); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px; }
+.qc-cn  { font-size: 24px; font-weight: 800; color: #fff; line-height: 1.3; }
+.qc-pos { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+
+.quiz-input-area { margin: 10px 16px 0; }
+.quiz-input {
+  width: 100%; height: 52px; border-radius: 14px;
+  border: 2px solid var(--border);
+  background: var(--surface); font-size: 20px; font-weight: 700;
+  text-align: center; color: var(--ink);
+  outline: none; letter-spacing: 1px;
+  transition: border-color 0.2s;
+}
+.quiz-input:focus { border-color: var(--accent); }
+.quiz-input.correct { border-color: var(--green); background: var(--green-bg); color: var(--green); }
+.quiz-input.wrong   { border-color: var(--red);   background: var(--red-bg);   color: var(--red);   }
+
+.quiz-answer-reveal {
+  text-align: center; padding: 6px 16px 0;
+  font-size: 14px; font-weight: 700;
+  min-height: 24px;
+}
+.quiz-answer-reveal.ok  { color: var(--green); }
+.quiz-answer-reveal.bad { color: var(--red);   }
+
+.quiz-submit {
+  margin: 10px 16px 0;
+}
+.quiz-result {
+  margin: 20px 16px;
+  background: var(--surface); border-radius: var(--rcard);
+  padding: 28px 20px; text-align: center;
+  box-shadow: var(--sh2);
+}
+.qr-emoji { font-size: 52px; margin-bottom: 10px; }
+.qr-title { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+.qr-sub   { font-size: 14px; color: var(--text2); margin-bottom: 20px; }
+.qr-stats { display: flex; justify-content: center; gap: 28px; margin-bottom: 22px; }
+.qrs { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.qrs-n { font-size: 26px; font-weight: 800; }
+.qrs-l { font-size: 11px; color: var(--text3); }
+
+/* ====================================================
+   PAGE: STATS
+==================================================== */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 16px; }
+.sg-card { background: var(--surface); border-radius: var(--r); padding: 14px; box-shadow: var(--sh); }
+.sg-n { font-size: 26px; font-weight: 800; }
+.sg-l { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+.heatmap { background: var(--surface); border-radius: var(--r); margin: 8px 16px 0; padding: 14px; box-shadow: var(--sh); }
+.hm-ttl { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+.hm-grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px; }
+.hm-c { aspect-ratio: 1; border-radius: 3px; background: var(--surface2); }
+.hm-c.l1 { background: #BDD0FC; }
+.hm-c.l2 { background: #7FA3F9; }
+.hm-c.l3 { background: var(--accent); }
+
+.ach-list { display: flex; flex-direction: column; gap: 8px; margin: 0 16px; }
+.ach-row { background: var(--surface); border-radius: var(--r); padding: 12px 14px; display: flex; align-items: center; gap: 12px; box-shadow: var(--sh); }
+.ach-ic { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.ach-info { flex: 1; }
+.ach-name { font-size: 14px; font-weight: 700; }
+.ach-desc { font-size: 11px; color: var(--text2); }
+
+/* custom group page */
+.cg-words { padding: 0 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+.cg-word-chip {
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: 10px; padding: 6px 12px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  box-shadow: var(--sh); transition: all 0.15s;
+}
+.cg-word-chip.selected { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.cg-word-chip .ck { font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="shell">
+
+<!-- ======== TODAY ======== -->
+<div class="page" id="page-today">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">WordFlip</div>
+    <button class="hbtn" onclick="toast('🔔 提醒已开启')">🔔</button>
+  </div>
+  <div class="sc" style="padding-bottom:8px;">
+    <div class="today-top">
+      <div>
+        <div class="today-greeting">早上好 👋</div>
+        <div class="today-date" id="today-date"></div>
+      </div>
+      <div class="streak-badge">
+        <div class="streak-num">🔥7</div>
+        <div class="streak-lbl">连续天</div>
+      </div>
+    </div>
+
+    <div class="today-stats">
+      <div class="ts-card">
+        <div class="ts-num" style="color:var(--accent)">1,140</div>
+        <div class="ts-lbl">已掌握</div>
+      </div>
+      <div class="ts-card">
+        <div class="ts-num" style="color:var(--amber)">12</div>
+        <div class="ts-lbl">待复习</div>
+      </div>
+      <div class="ts-card">
+        <div class="ts-num" style="color:var(--green)">38%</div>
+        <div class="ts-lbl">完成度</div>
+      </div>
+    </div>
+
+    <div class="sec-label">今日任务</div>
+    <div class="today-tasks">
+      <div class="task-row" onclick="pushPage('study');initStudy()">
+        <div class="task-ic" style="background:var(--accent-bg)">📚</div>
+        <div class="task-info">
+          <div class="task-name">新词学习</div>
+          <div class="task-desc">第3组 · 雅思核心词</div>
+        </div>
+        <div class="task-n" style="color:var(--accent)">20</div>
+      </div>
+      <div class="task-row" onclick="pushPage('study');initStudy()">
+        <div class="task-ic" style="background:var(--amber-bg)">🔄</div>
+        <div class="task-info">
+          <div class="task-name">到期复习</div>
+          <div class="task-desc">艾宾浩斯 · 跨2个分组</div>
+        </div>
+        <div class="task-n" style="color:var(--amber)">12</div>
+      </div>
+      <div class="task-row" onclick="pushPage('quiz')">
+        <div class="task-ic" style="background:var(--green-bg)">✏️</div>
+        <div class="task-info">
+          <div class="task-name">默写测验</div>
+          <div class="task-desc">看中文 → 默写英文</div>
+        </div>
+        <div class="task-n" style="color:var(--green)">8</div>
+      </div>
+    </div>
+  </div>
+  <!-- 固定底部：开始学习按钮 -->
+  <div style="padding:10px 16px 6px; background:var(--bg); flex-shrink:0;">
+    <button class="today-big-btn" onclick="pushPage('study');initStudy()" style="margin:0;width:100%;">
+      <div class="tbtn-icon">📖</div>
+      <div class="tbtn-text">
+        <div class="tbtn-title">开始学习</div>
+        <div class="tbtn-sub">第3组 · 20个单词待学习</div>
+      </div>
+      <div class="tbtn-arr">›</div>
+    </button>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn on" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<!-- ======== BOOKS ======== -->
+<div class="page hidden" id="page-books">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">单词书</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div class="sec-label">选择单词书</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row" onclick="toggleBook(1)">
+        <div class="row-ic" style="background:#EEF1FD">📗</div>
+        <div class="row-info">
+          <div class="row-label">雅思核心词汇 3000</div>
+          <div class="row-sub">3000 个词汇</div>
+        </div>
+        <div id="bk1-check" style="font-size:18px">✅</div>
+      </div>
+      <div class="row" onclick="toggleBook(2)">
+        <div class="row-ic" style="background:#E0F5EE">📘</div>
+        <div class="row-info">
+          <div class="row-label">四级高频词汇</div>
+          <div class="row-sub">1500 个词汇</div>
+        </div>
+        <div id="bk2-check" style="font-size:18px">✅</div>
+      </div>
+      <div class="row" onclick="toggleBook(3)">
+        <div class="row-ic" style="background:#FEF3DC">📙</div>
+        <div class="row-info">
+          <div class="row-label">考研英语核心词</div>
+          <div class="row-sub">2500 个词汇</div>
+        </div>
+        <div id="bk3-check" style="font-size:18px">☐</div>
+      </div>
+    </div>
+
+    <div class="sec-label">分组大小</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row" onclick="selectSize(10)">
+        <div class="row-ic" style="background:var(--surface2)">🔟</div>
+        <div class="row-info"><div class="row-label">10 个 / 组</div><div class="row-sub">适合精细复习</div></div>
+        <div id="sz-10">☐</div>
+      </div>
+      <div class="row" onclick="selectSize(20)">
+        <div class="row-ic" style="background:var(--surface2)">2️⃣0️⃣</div>
+        <div class="row-info"><div class="row-label">20 个 / 组</div><div class="row-sub">均衡学习节奏</div></div>
+        <div id="sz-20" style="font-size:18px">✅</div>
+      </div>
+      <div class="row" onclick="selectSize(30)">
+        <div class="row-ic" style="background:var(--surface2)">3️⃣0️⃣</div>
+        <div class="row-info"><div class="row-label">30 个 / 组</div><div class="row-sub">高效集中学习</div></div>
+        <div id="sz-30">☐</div>
+      </div>
+      <div class="row" onclick="selectSize(50)">
+        <div class="row-ic" style="background:var(--surface2)">5️⃣0️⃣</div>
+        <div class="row-info"><div class="row-label">50 个 / 组</div><div class="row-sub">大量记忆训练</div></div>
+        <div id="sz-50">☐</div>
+      </div>
+    </div>
+
+    <div style="padding:4px 16px 0;background:var(--accent-bg);margin:8px 16px;border-radius:12px;padding:10px 14px;">
+      <div style="font-size:13px;color:var(--accent);font-weight:700;" id="books-summary">已选 4500 词（去重后）· 每组 20 词 · 共约 225 组</div>
+    </div>
+
+    <div style="padding:12px 16px 0;">
+      <button class="btn-primary" onclick="saveBooks()">💾 保存设置</button>
+    </div>
+
+    <div class="sec-label">自定义分组</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row" onclick="pushPage('custom-group')">
+        <div class="row-ic" style="background:var(--amber-bg)">✏️</div>
+        <div class="row-info">
+          <div class="row-label">手动添加分组</div>
+          <div class="row-sub">从词书中自选单词组成分组</div>
+        </div>
+        <div class="row-right">›</div>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn on" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<!-- ======== CUSTOM GROUP ======== -->
+<div class="page hidden" id="page-custom-group">
+  <div class="hdr" style="padding-top:42px;">
+    <button class="hbtn" onclick="popPage()">←</button>
+    <div class="hdr-title">手动添加分组</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div style="padding:10px 16px 4px;font-size:13px;color:var(--text2);">
+      点击选择单词，组成你的自定义分组
+    </div>
+    <div style="padding:0 16px 8px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:12px;color:var(--text3);" id="cg-count">已选 0 个</span>
+      <button class="btn-primary" style="width:auto;height:34px;padding:0 16px;font-size:13px;" onclick="saveCG()">保存分组</button>
+    </div>
+    <div class="cg-words" id="cg-words"></div>
+    <div style="height:16px"></div>
+  </div>
+</div>
+
+<!-- ======== STUDY ======== -->
+<div class="page hidden" id="page-study">
+  <div class="hdr" style="padding-top:42px;">
+    <button class="hbtn" onclick="popPage()">←</button>
+    <div class="hdr-title" id="study-title">第3组</div>
+    <button class="hbtn" onclick="pushPage('quiz')">✏️</button>
+  </div>
+  <div class="study-bar">
+    <button class="sbtn" id="shuffle-btn" onclick="shuffleCards()">🔀 打乱</button>
+    <button class="sbtn" onclick="flipAllCards()" id="flip-all-btn">🔄 全翻正面</button>
+  </div>
+  <div class="sc">
+    <div class="cards-grid" id="cards-grid"></div>
+  </div>
+  <!-- 首次引导浮层 -->
+  <div id="study-guide">
+    <div class="guide-box" onclick="dismissGuide()">
+      <div class="guide-icon">👆</div>
+      <div class="guide-text">长按卡片查看详细释义</div>
+      <button class="guide-btn" onclick="dismissGuide()">知道了</button>
+    </div>
+  </div>
+  <!-- 底部抽屉详情 -->
+  <div id="sheet-overlay" onclick="closeSheet()"></div>
+  <div id="sheet-panel">
+    <div class="sheet-handle"></div>
+    <div class="sheet-word" id="sheet-word"></div>
+    <div class="speak-controls">
+      <button class="speed-btn" onclick="changeSpeed(-0.25)">−</button>
+      <span id="speed-display">1.0x</span>
+      <button class="speed-btn" onclick="changeSpeed(0.25)">+</button>
+      <button class="speak-btn" id="speak-btn" onclick="speakCurrentWord()">🔊</button>
+    </div>
+    <div class="sheet-ph" id="sheet-ph"></div>
+    <div class="sheet-cn" id="sheet-cn"></div>
+    <div class="sheet-pos" id="sheet-pos"></div>
+    <div class="sc" style="overflow-y:auto;">
+      <div class="sheet-block">
+        <div class="sheet-label">词义</div>
+        <div class="sheet-text" id="sheet-meaning"></div>
+      </div>
+      <div class="sheet-block">
+        <div class="sheet-label">例句</div>
+        <div class="sheet-examples" id="sheet-examples"></div>
+      </div>
+      <div class="sheet-block">
+        <div class="sheet-label">词根词缀</div>
+        <div class="sheet-text" id="sheet-etymology"></div>
+      </div>
+      <div class="sheet-actions">
+        <button class="sheet-btn" onclick="changeStain()">🔄 换一个污渍</button>
+        <button class="sheet-btn primary" onclick="hideStain()">👁 关闭/隐藏污渍</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== GROUPS ======== -->
+<div class="page hidden" id="page-groups">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">分组管理</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div class="sec-label">雅思核心词汇 3000</div>
+    <div id="group-list"></div>
+    <div style="height:8px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn on" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<!-- ======== GROUP DETAIL ======== -->
+<div class="page hidden" id="page-gdetail">
+  <div class="hdr" style="padding-top:42px;">
+    <button class="hbtn" onclick="popPage()">←</button>
+    <div class="hdr-title" id="gd-title">第2组</div>
+    <div style="display:flex;gap:6px;">
+      <button class="hbtn" id="gd-stain-toggle" onclick="toggleGDetailMode()">🎨</button>
+      <button class="hbtn" onclick="pushPage('study');initStudy()">▶</button>
+    </div>
+  </div>
+  <div class="sc">
+    <div id="gd-list-section">
+      <div class="sec-label">单词掌握情况</div>
+      <div id="gd-list"></div>
+    </div>
+    <div id="gd-stain-section" style="display:none;">
+  <div style="padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;" id="stain-type-btns">
+        <button class="stain-type-btn active" id="btn-stain-random" onclick="clearStainTypes()">🎲 随机</button>
+        <button class="stain-type-btn" data-type="coffee" onclick="toggleStainType('coffee')">☕ 咖啡</button>
+        <button class="stain-type-btn" data-type="ink" onclick="toggleStainType('ink')">🖊 墨水</button>
+        <button class="stain-type-btn" data-type="highlight" onclick="toggleStainType('highlight')">✏ 荧光</button>
+        <button class="stain-type-btn" data-type="random-line" onclick="toggleStainType('random-line')">✏ 随机线条</button>
+        <button class="stain-type-btn" data-type="crayon" onclick="toggleStainType('crayon')">🖍 蜡笔</button>
+      </div>
+      <div style="padding: 10px 16px;">
+        <button class="btn-primary" style="height:44px;" onclick="regenerateAllStains()">🎲 一键生成所有污渍</button>
+      </div>
+      <div class="cards-grid" id="gd-stain-grid"></div>
+    </div>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- ======== QUIZ ======== -->
+<div class="page hidden" id="page-quiz">
+  <div class="hdr" style="padding-top:42px;">
+    <button class="hbtn" onclick="popPage()">←</button>
+    <div class="hdr-title">默写测验</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc" id="quiz-sc"></div>
+</div>
+
+<!-- ======== STATS ======== -->
+<div class="page hidden" id="page-stats">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">统计 & 成就</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div class="sec-label">学习数据</div>
+    <div class="stats-grid">
+      <div class="sg-card"><div class="sg-n" style="color:var(--accent)">1,140</div><div class="sg-l">已掌握单词</div></div>
+      <div class="sg-card"><div class="sg-n" style="color:var(--red)">🔥7</div><div class="sg-l">连续打卡</div></div>
+      <div class="sg-card"><div class="sg-n" style="color:var(--green)">87%</div><div class="sg-l">测验正确率</div></div>
+      <div class="sg-card"><div class="sg-n">42</div><div class="sg-l">累计学习天</div></div>
+    </div>
+
+    <div class="sec-label">学习日历</div>
+    <div class="heatmap">
+      <div class="hm-ttl">近3个月</div>
+      <div class="hm-grid" id="hm-grid"></div>
+      <div style="display:flex;align-items:center;gap:5px;margin-top:8px;font-size:10px;color:var(--text3);">
+        少
+        <div style="width:11px;height:11px;border-radius:2px;background:var(--surface2);"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:#BDD0FC;"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:#7FA3F9;"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:var(--accent);"></div>
+        多
+      </div>
+    </div>
+
+    <div class="sec-label">成就</div>
+    <div class="ach-list">
+      <div class="ach-row">
+        <div class="ach-ic" style="background:#FFF3E0">🔥</div>
+        <div class="ach-info"><div class="ach-name">坚持一周</div><div class="ach-desc">连续学习 7 天</div></div>
+        <div class="pill green">已解锁</div>
+      </div>
+      <div class="ach-row">
+        <div class="ach-ic" style="background:#E8EAF6">💯</div>
+        <div class="ach-info"><div class="ach-name">千词达人</div><div class="ach-desc">掌握 1000 个单词</div></div>
+        <div class="pill green">已解锁</div>
+      </div>
+      <div class="ach-row" style="opacity:0.4">
+        <div class="ach-ic" style="background:var(--surface2)">📖</div>
+        <div class="ach-info"><div class="ach-name">完成第一本词书</div><div class="ach-desc">完整学完任意一本</div></div>
+        <div class="pill gray">未解锁</div>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn on" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<!-- ======== SETTINGS ======== -->
+<div class="page hidden" id="page-settings">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">设置</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div class="sec-label">学习体验</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row">
+        <div class="row-ic" style="background:var(--accent-bg)">🔊</div>
+        <div class="row-info"><div class="row-label">翻转时自动发音</div><div class="row-sub">翻到背面播放单词读音</div></div>
+        <button class="toggle on" id="toggle-speak" onclick="toggleSpeak(this)"></button>
+      </div>
+      <div class="row">
+        <div class="row-ic" style="background:var(--green-bg)">🧠</div>
+        <div class="row-info"><div class="row-label">艾宾浩斯间隔</div><div class="row-sub">标准方案 · 1-2-4-7-15-30天</div></div>
+        <div class="row-right">›</div>
+      </div>
+      <div class="row">
+        <div class="row-ic" style="background:var(--amber-bg)">🔁</div>
+        <div class="row-info"><div class="row-label">默认学习方向</div><div class="row-sub">看英文回忆中文</div></div>
+        <div class="row-right">›</div>
+      </div>
+    </div>
+    <div class="sec-label">提醒</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row">
+        <div class="row-ic" style="background:#FCE8E3">🔔</div>
+        <div class="row-info"><div class="row-label">每日提醒</div><div class="row-sub">21:00</div></div>
+        <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+      </div>
+      <div class="row">
+        <div class="row-ic" style="background:var(--accent-bg)">⚡</div>
+        <div class="row-info"><div class="row-label">复习到期提醒</div><div class="row-sub">有到期单词时额外通知</div></div>
+        <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+      </div>
+    </div>
+    <div class="sec-label">数据</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row" onclick="toast('☁️ 云同步开发中')">
+        <div class="row-ic" style="background:var(--green-bg)">☁️</div>
+        <div class="row-info"><div class="row-label">云端备份</div><div class="row-sub">上次备份：今天 09:32</div></div>
+        <div class="row-right">›</div>
+      </div>
+      <div class="row" onclick="toast('📤 导出为 CSV')">
+        <div class="row-ic" style="background:var(--amber-bg)">📤</div>
+        <div class="row-info"><div class="row-label">导出单词本</div><div class="row-sub">CSV / Anki / Quizlet 格式</div></div>
+        <div class="row-right">›</div>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn on" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+</div><!-- /shell -->
+
+<script>
+// ── DATA ──
+const WORDS = [
+  {en:'abandon',   cn:'放弃；抛弃',       pos:'v.',     ph:'/əˈbændən/',
+    detail: {
+      meaning: 'to leave behind or give up completely; to desert',
+      examples: [
+        'He abandoned his car in the snow during the storm.',
+        'The captain ordered the crew to abandon the sinking ship.',
+        'She abandoned her dreams of becoming a singer after years of failure.'
+      ],
+      etymology: 'a- (to) + bandon (jurisdiction, control) → from Old French "abandoner", meaning to surrender or leave'
+    }
+  },
+  {en:'abstract',  cn:'抽象的；摘要',     pos:'adj./n.',ph:'/ˈæbstrækt/',
+    detail: {
+      meaning: 'existing as an idea rather than a physical thing; a summary of a longer text',
+      examples: [
+        'The painting was completely abstract, with no recognizable objects.',
+        'Please read the abstract before deciding to download the full paper.',
+        'Honesty is an abstract concept that means different things to different people.'
+      ],
+      etymology: 'abs- (away from) + tractus (drawn, pulled) → Latin "abstractus", drawn away from concrete reality'
+    }
+  },
+  {en:'academic',  cn:'学术的；学院的',   pos:'adj.',   ph:'/ˌækəˈdemɪk/',
+    detail: {
+      meaning: 'relating to education and scholarship; of theoretical interest only',
+      examples: [
+        'She had an excellent academic record throughout university.',
+        'The debate was purely academic since no one could change the decision.',
+        'Academic research shows that sleep is crucial for memory consolidation.'
+      ],
+      etymology: 'from Latin "Academia", the name of the garden where Plato taught in Athens, named after the hero Akademos'
+    }
+  },
+  {en:'accelerate',cn:'加速；促进',       pos:'v.',     ph:'/əkˈseləreɪt/',
+    detail: {
+      meaning: 'to increase in speed or rate; to make something happen faster',
+      examples: [
+        'The car accelerated rapidly as it entered the highway.',
+        'New technology continues to accelerate the pace of change.',
+        'The company decided to accelerate its expansion into Asian markets.'
+      ],
+      etymology: 'ad- (to) + celerare (to hasten) from Latin "celer" (swift) → to make faster, speed up'
+    }
+  },
+  {en:'access',    cn:'通道；获取',       pos:'n./v.',  ph:'/ˈækses/',
+    detail: {
+      meaning: 'the means or right to enter or use something; to obtain or retrieve data',
+      examples: [
+        'Wheelchair access to the building is via the side entrance.',
+        'You need a password to access the company database.',
+        'The Internet provides access to a vast amount of information.'
+      ],
+      etymology: 'Latin "accessus", from "accedere" (to approach) → ad- (to) + cedere (to go, yield)'
+    }
+  },
+  {en:'accommodate',cn:'容纳；提供住宿', pos:'v.',     ph:'/əˈkɒmədeɪt/',
+    detail: {
+      meaning: 'to provide lodging or sufficient space for; to adapt to someone\'s needs',
+      examples: [
+        'The hotel can accommodate up to 500 guests at a time.',
+        'Teachers should accommodate students with different learning styles.',
+        'My eyes took a while to accommodate to the dark room.'
+      ],
+      etymology: 'ad- (to) + commodare (to fit, adapt) from Latin "commodus" (convenient, suitable)'
+    }
+  },
+  {en:'accomplish',cn:'完成；实现',       pos:'v.',     ph:'/əˈkʌmplɪʃ/',
+    detail: {
+      meaning: 'to achieve or complete successfully; to fulfill a goal',
+      examples: [
+        'She accomplished her mission of visiting every country in Europe.',
+        'What do you hope to accomplish in your new role?',
+        'The team accomplished the project two weeks ahead of schedule.'
+      ],
+      etymology: 'Old French "accomplir", from Latin "accomplere" (to complete) → ad- (to) + complere (to fill up)'
+    }
+  },
+  {en:'accurate',  cn:'准确的；精确的',   pos:'adj.',   ph:'/ˈækjərət/',
+    detail: {
+      meaning: 'correct in all details; free from errors or mistakes',
+      examples: [
+        'The weather forecast was remarkably accurate for the entire week.',
+        'Make sure all measurements are accurate before cutting the wood.',
+        'He gave an accurate description of the suspect to the police.'
+      ],
+      etymology: 'Latin "accuratus" (done with care), from "accūrāre" (to take care of) → ad- (to) + cūra (care)'
+    }
+  },
+  {en:'acknowledge',cn:'承认；致谢',      pos:'v.',     ph:'/əkˈnɒlɪdʒ/',
+    detail: {
+      meaning: 'to accept or admit the truth of; to express thanks or recognition',
+      examples: [
+        'He refused to acknowledge that he had made a mistake.',
+        'I would like to acknowledge my supervisor for her guidance.',
+        'The system will acknowledge receipt of your email automatically.'
+      ],
+      etymology: 'from Middle English, blend of "know" and "acquaint" with the prefix "ac-" (toward) → to make known, recognize'
+    }
+  },
+  {en:'acquire',   cn:'获得；习得',       pos:'v.',     ph:'/əˈkwaɪər/',
+    detail: {
+      meaning: 'to obtain or gain possession of; to learn or develop a skill',
+      examples: [
+        'The company acquired three smaller firms last year.',
+        'Children acquire language naturally through exposure.',
+        'It takes years of practice to acquire true expertise in this field.'
+      ],
+      etymology: 'Latin "acquirere" (to seek, obtain) → ad- (to) + quaerere (to seek, search for)'
+    }
+  },
+];
+
+const GROUPS_DATA = [
+  {id:1,name:'第1组',total:10,ok:8,fuz:1,status:'done'},
+  {id:2,name:'第2组',total:10,ok:5,fuz:3,status:'learning'},
+  {id:3,name:'第3组',total:10,ok:2,fuz:2,status:'learning'},
+  {id:4,name:'第4组',total:10,ok:0,fuz:0,status:'not-started'},
+  {id:5,name:'第5组',total:10,ok:0,fuz:0,status:'not-started'},
+];
+
+// ── LOCAL STORAGE HELPERS ──
+function getLS(key, fallback) {
+  try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); }
+  catch(e) { return fallback; }
+}
+function setLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {} }
+
+// ── SETTINGS ──
+let autoSpeak = getLS('wordflip_autoSpeak', true);
+let gdetailMode = 'list';
+let currentGDetailGroup = null;
+let selectedStainTypes = [];
+
+function updateSpeakToggle() {
+  const el = document.getElementById('toggle-speak');
+  if (el) el.classList.toggle('on', autoSpeak);
+}
+function toggleSpeak(btn) {
+  autoSpeak = !autoSpeak;
+  btn.classList.toggle('on', autoSpeak);
+  setLS('wordflip_autoSpeak', autoSpeak);
+  toast(autoSpeak ? '🔊 翻转时自动发音已开启' : '🔇 翻转时自动发音已关闭');
+}
+
+// ── GRID COLUMNS ──
+function getGridColumns() {
+  const isMobile = window.innerWidth < 450;
+  const shell = document.getElementById('shell');
+  const containerWidth = isMobile ? window.innerWidth : shell.clientWidth;
+  const availableWidth = containerWidth - 24; // subtract .cards-grid padding
+  if (availableWidth < 340) return 1;
+  if (availableWidth < 510) return 2;
+  if (availableWidth < 680) return 3;
+  return 4;
+}
+function updateGridColumns() {
+  const grid = document.getElementById('cards-grid');
+  if (!grid) return;
+  const cols = getGridColumns();
+  grid.className = 'cards-grid cols-' + cols;
+}
+function updateStainGridColumns() {
+  const grid = document.getElementById('gd-stain-grid');
+  if (!grid) return;
+  const cols = getGridColumns();
+  grid.className = 'cards-grid cols-' + cols;
+}
+window.addEventListener('resize', () => {
+  updateGridColumns();
+  if (currentPage === 'gdetail' && gdetailMode === 'stain') {
+    updateStainGridColumns();
+  }
+});
+
+// ── STAINS (Canvas-based realistic rendering engine) ──
+const STAIN_TYPES = ['coffee','ink','highlight','crayon','random-line'];
+
+// Layer order for rendering (lower = drawn first)
+const STAIN_LAYER_ORDER = { 'random-line': 1, coffee: 2, ink: 3, crayon: 4, highlight: 5 };
+
+function getSyllables(word) {
+  const map = {
+    'abandon':'a·ban·don','abstract':'ab·stract','academic':'ac·a·dem·ic',
+    'accelerate':'ac·cel·er·ate','access':'ac·cess','accommodate':'ac·com·mo·date',
+    'accomplish':'ac·com·plish','accurate':'ac·cu·rate','acknowledge':'ac·knowl·edge',
+    'acquire':'ac·quire'
+  };
+  return map[word.toLowerCase()] || word;
+}
+function renderSyllableWord(word) {
+  const syl = getSyllables(word);
+  let html = '';
+  for (const ch of syl) {
+    if ('aeiouAEIOU'.includes(ch)) {
+      html += '<span class="syl-letter syllable-vowel">' + ch + '</span>';
+    } else if (ch === '·') {
+      html += '<span class="syl-dot">·</span>';
+    } else {
+      html += '<span class="syl-letter">' + ch + '</span>';
+    }
+  }
+  return html;
+}
+
+function wordSeed(word) {
+  let s = 0;
+  for (let i = 0; i < word.length; i++) s += word.charCodeAt(i);
+  return s;
+}
+
+// Deterministic pseudo-random [0,1)
+function seededRandom(seed) {
+  let t = seed += 0x6D2B79F5;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+function randRange(min, max, seed) {
+  return min + seededRandom(seed) * (max - min);
+}
+
+function randInt(min, max, seed) {
+  return Math.floor(randRange(min, max + 1, seed));
+}
+
+// ---- Value Noise (simplified Perlin) ----
+function hash2(x, y, seed) {
+  let h = seed;
+  h = Math.imul(h ^ x, 0x45d9f3b);
+  h = Math.imul(h ^ y, 0x45d9f3b);
+  h = h ^ (h >>> 16);
+  return ((h >>> 0) / 4294967296);
+}
+
+function smoothstep(t) {
+  return t * t * (3 - 2 * t);
+}
+
+function valueNoise(x, y, seed) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const ux = smoothstep(fx), uy = smoothstep(fy);
+  const a = hash2(ix, iy, seed);
+  const b = hash2(ix + 1, iy, seed);
+  const c = hash2(ix, iy + 1, seed);
+  const d = hash2(ix + 1, iy + 1, seed);
+  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+}
+
+function fractalNoise(x, y, seed, octaves = 4) {
+  let val = 0, amp = 1, freq = 1, maxVal = 0;
+  for (let i = 0; i < octaves; i++) {
+    val += valueNoise(x * freq, y * freq, seed + i * 100) * amp;
+    maxVal += amp;
+    amp *= 0.5;
+    freq *= 2;
+  }
+  return val / maxVal;
+}
+
+// ---- Position Generation (weighted zones) ----
+function generateWeightedPosition(seed, cardW, cardH, existing, minDist) {
+  let best = null, bestScore = -1;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const s = seed + attempt * 7919;
+    let x, y, score;
+    // 60% edge, 30% center, 10% near edge
+    const zone = seededRandom(s);
+    if (zone < 0.6) {
+      // Edge zone
+      const edge = randInt(0, 3, s + 1);
+      const margin = 0.05;
+      if (edge === 0) { x = randRange(margin, 0.25, s + 2); y = randRange(margin, 0.3, s + 3); }
+      else if (edge === 1) { x = randRange(0.75, 1 - margin, s + 2); y = randRange(margin, 0.3, s + 3); }
+      else if (edge === 2) { x = randRange(margin, 0.25, s + 2); y = randRange(0.7, 1 - margin, s + 3); }
+      else { x = randRange(0.75, 1 - margin, s + 2); y = randRange(0.7, 1 - margin, s + 3); }
+      score = 0.6;
+    } else if (zone < 0.9) {
+      // Center zone
+      x = randRange(0.25, 0.75, s + 2);
+      y = randRange(0.25, 0.75, s + 3);
+      score = 0.3;
+    } else {
+      // Near edge
+      x = randRange(0.15, 0.85, s + 2);
+      y = randRange(0.15, 0.85, s + 3);
+      score = 0.1;
+    }
+    // Mask core text area (center 40% x 30%)
+    if (x > 0.3 && x < 0.7 && y > 0.35 && y < 0.65) {
+      score *= 0.1;
+    }
+    // Distance check
+    let tooClose = false;
+    for (const ex of existing) {
+      const dx = x - ex.x, dy = y - ex.y;
+      if (dx * dx + dy * dy < minDist * minDist) { tooClose = true; break; }
+    }
+    if (tooClose) continue;
+    if (score > bestScore) { bestScore = score; best = {x, y}; }
+  }
+  return best || {x: randRange(0.1, 0.9, seed), y: randRange(0.1, 0.9, seed + 1)};
+}
+
+// ---- Stain Drawing Functions ----
+
+function drawCoffeeStain(ctx, cx, cy, size, seed, intensity) {
+  const nBlobs = randInt(2, 5, seed);
+  const maxR = size * 0.5;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(randRange(0, Math.PI * 2, seed + 1));
+  // Water halo (outermost)
+  ctx.globalAlpha = 0.12 * intensity;
+  ctx.fillStyle = 'rgba(180, 140, 90, 0.25)';
+  for (let i = 0; i < nBlobs; i++) {
+    const bx = randRange(-maxR * 0.6, maxR * 0.6, seed + i * 10 + 2);
+    const by = randRange(-maxR * 0.6, maxR * 0.6, seed + i * 10 + 3);
+    const br = randRange(maxR * 0.6, maxR * 1.1, seed + i * 10 + 4);
+    ctx.beginPath();
+    for (let a = 0; a < Math.PI * 2; a += 0.15) {
+      const nr = fractalNoise(Math.cos(a) * 3 + i * 5, Math.sin(a) * 3 + i * 5, seed + i * 20, 3);
+      const r = br * (0.85 + nr * 0.3);
+      const px = bx + Math.cos(a) * r;
+      const py = by + Math.sin(a) * r;
+      if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Middle soak layer
+  ctx.globalAlpha = 0.22 * intensity;
+  ctx.fillStyle = 'rgba(140, 95, 50, 0.35)';
+  for (let i = 0; i < nBlobs; i++) {
+    const bx = randRange(-maxR * 0.4, maxR * 0.4, seed + i * 10 + 5);
+    const by = randRange(-maxR * 0.4, maxR * 0.4, seed + i * 10 + 6);
+    const br = randRange(maxR * 0.3, maxR * 0.7, seed + i * 10 + 7);
+    ctx.beginPath();
+    for (let a = 0; a < Math.PI * 2; a += 0.12) {
+      const nr = fractalNoise(Math.cos(a) * 5 + i * 7, Math.sin(a) * 5 + i * 7, seed + i * 30, 3);
+      const r = br * (0.8 + nr * 0.4);
+      const px = bx + Math.cos(a) * r;
+      const py = by + Math.sin(a) * r;
+      if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Core sediment layer
+  ctx.globalAlpha = 0.35 * intensity;
+  ctx.fillStyle = 'rgba(100, 65, 30, 0.45)';
+  for (let i = 0; i < Math.max(1, nBlobs - 1); i++) {
+    const bx = randRange(-maxR * 0.25, maxR * 0.25, seed + i * 10 + 8);
+    const by = randRange(-maxR * 0.25, maxR * 0.25, seed + i * 10 + 9);
+    const br = randRange(maxR * 0.15, maxR * 0.4, seed + i * 10 + 10);
+    ctx.beginPath();
+    for (let a = 0; a < Math.PI * 2; a += 0.1) {
+      const nr = fractalNoise(Math.cos(a) * 8 + i * 10, Math.sin(a) * 8 + i * 10, seed + i * 40, 3);
+      const r = br * (0.75 + nr * 0.5);
+      const px = bx + Math.cos(a) * r;
+      const py = by + Math.sin(a) * r;
+      if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Paper fiber gaps (white spots)
+  ctx.globalAlpha = 0.15;
+  ctx.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 15; i++) {
+    const fx = randRange(-maxR, maxR, seed + i * 3 + 100);
+    const fy = randRange(-maxR, maxR, seed + i * 3 + 101);
+    const fr = randRange(0.5, 3, seed + i * 3 + 102);
+    ctx.beginPath();
+    ctx.arc(fx, fy, fr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawInkStain(ctx, cx, cy, size, seed, intensity) {
+  const maxR = size * 0.5;
+  const subMode = seededRandom(seed) < 0.5 ? 'spot' : 'splash';
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(randRange(0, Math.PI * 2, seed + 1));
+
+  if (subMode === 'spot') {
+    // Central dark spot
+    const colors = [
+      'rgba(15, 20, 30, 0.9)',
+      'rgba(20, 30, 60, 0.85)',
+      'rgba(50, 15, 20, 0.8)'
+    ];
+    const color = colors[randInt(0, colors.length - 1, seed + 2)];
+    ctx.globalAlpha = 0.7 * intensity;
+    ctx.fillStyle = color;
+    // Main blob with feathered edge
+    const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, maxR);
+    grd.addColorStop(0, color);
+    grd.addColorStop(0.4, color.replace(/[\d.]+\)$/, '0.5)'));
+    grd.addColorStop(0.8, color.replace(/[\d.]+\)$/, '0.15)'));
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    for (let a = 0; a < Math.PI * 2; a += 0.1) {
+      const nr = fractalNoise(Math.cos(a) * 6, Math.sin(a) * 6, seed, 3);
+      const r = maxR * (0.6 + nr * 0.4);
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r;
+      if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    // Ink tendrils
+    ctx.globalAlpha = 0.4 * intensity;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < randInt(3, 7, seed + 3); i++) {
+      const angle = randRange(0, Math.PI * 2, seed + i * 10 + 4);
+      const len = randRange(maxR * 0.3, maxR * 0.9, seed + i * 10 + 5);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(angle) * maxR * 0.4, Math.sin(angle) * maxR * 0.4);
+      const cp1x = Math.cos(angle + 0.3) * len * 0.5;
+      const cp1y = Math.sin(angle + 0.3) * len * 0.5;
+      const endx = Math.cos(angle + randRange(-0.4, 0.4, seed + i * 10 + 6)) * len;
+      const endy = Math.sin(angle + randRange(-0.4, 0.4, seed + i * 10 + 6)) * len;
+      ctx.quadraticCurveTo(cp1x, cp1y, endx, endy);
+      ctx.stroke();
+    }
+  } else {
+    // Splash mode: many small ellipses
+    const splashCount = randInt(8, 20, seed + 3);
+    for (let i = 0; i < splashCount; i++) {
+      const dist = randRange(0, maxR, seed + i * 5 + 4);
+      const angle = randRange(0, Math.PI * 2, seed + i * 5 + 5);
+      const sx = Math.cos(angle) * dist;
+      const sy = Math.sin(angle) * dist;
+      const sr = randRange(1, maxR * 0.25 * (1 - dist / maxR * 0.7), seed + i * 5 + 6);
+      const alpha = (0.6 - dist / maxR * 0.5) * intensity;
+      if (alpha <= 0) continue;
+      ctx.globalAlpha = Math.max(0.05, alpha);
+      ctx.fillStyle = 'rgba(20, 30, 50, 0.85)';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, sr, sr * randRange(0.6, 1.4, seed + i * 5 + 7), angle, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Long ink lines
+    ctx.globalAlpha = 0.35 * intensity;
+    ctx.strokeStyle = 'rgba(20, 30, 50, 0.7)';
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < randInt(1, 4, seed + 8); i++) {
+      const angle = randRange(0, Math.PI * 2, seed + i * 20 + 9);
+      const len = randRange(maxR * 0.5, maxR * 1.2, seed + i * 20 + 10);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(angle) * len, Math.sin(angle) * len);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawHighlighter(ctx, cx, cy, size, seed, intensity) {
+  const colors = [
+    'rgba(255, 235, 60, 0.55)',   // yellow
+    'rgba(255, 120, 180, 0.5)',   // pink
+    'rgba(255, 160, 50, 0.5)',    // orange
+    'rgba(100, 220, 120, 0.5)'    // green
+  ];
+  const color = colors[randInt(0, colors.length - 1, seed)];
+  const nLines = randInt(2, 5, seed + 1);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(randRange(-0.3, 0.3, seed + 2));
+  ctx.globalAlpha = 0.45 * intensity;
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (let i = 0; i < nLines; i++) {
+    const yOffset = randRange(-size * 0.25, size * 0.25, seed + i * 10 + 3);
+    const lineLen = randRange(size * 0.4, size * 1.2, seed + i * 10 + 4);
+    const startX = -lineLen / 2;
+    const startY = yOffset;
+    // Bezier curve with slight wiggle
+    const cp1x = startX + lineLen * 0.3;
+    const cp1y = startY + randRange(-size * 0.05, size * 0.05, seed + i * 10 + 5);
+    const cp2x = startX + lineLen * 0.7;
+    const cp2y = startY + randRange(-size * 0.05, size * 0.05, seed + i * 10 + 6);
+    const endX = startX + lineLen;
+    const endY = startY;
+    // Draw with varying thickness
+    const steps = 20;
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps;
+      const t2 = (s + 1) / steps;
+      // Quadratic bezier interpolation
+      const x1 = (1-t)*(1-t)*(1-t)*startX + 3*(1-t)*(1-t)*t*cp1x + 3*(1-t)*t*t*cp2x + t*t*t*endX;
+      const y1 = (1-t)*(1-t)*(1-t)*startY + 3*(1-t)*(1-t)*t*cp1y + 3*(1-t)*t*t*cp2y + t*t*t*endY;
+      const x2 = (1-t2)*(1-t2)*(1-t2)*startX + 3*(1-t2)*(1-t2)*t2*cp1x + 3*(1-t2)*t2*t2*cp2x + t2*t2*t2*endX;
+      const y2 = (1-t2)*(1-t2)*(1-t2)*startY + 3*(1-t2)*(1-t2)*t2*cp1y + 3*(1-t2)*t2*t2*cp2y + t2*t2*t2*endY;
+      // Thickness: middle thick, ends thin + noise variation
+      const thickProfile = Math.sin(t * Math.PI) * (1 + fractalNoise(t * 8, i * 3, seed + i * 50, 2) * 0.4);
+      const width = Math.max(1.5, size * 0.06 * thickProfile);
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      // Random breaks
+      if (seededRandom(seed + i * 50 + Math.floor(t * 100)) < 0.08) {
+        s += 2; // skip a few steps for break
+      }
+    }
+  }
+  // Subtle glow
+  ctx.globalAlpha = 0.08 * intensity;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, size * 0.3, size * 0.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawCrayon(ctx, cx, cy, size, seed, intensity) {
+  const colors = [
+    'rgba(220, 140, 140, 0.45)',
+    'rgba(180, 200, 140, 0.45)',
+    'rgba(140, 180, 220, 0.45)',
+    'rgba(220, 200, 140, 0.45)',
+    'rgba(200, 160, 200, 0.45)'
+  ];
+  const color = colors[randInt(0, colors.length - 1, seed)];
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(randRange(0, Math.PI * 2, seed + 1));
+  ctx.globalAlpha = 0.4 * intensity;
+  // Irregular polygon region
+  const nPoints = randInt(6, 12, seed + 2);
+  const points = [];
+  for (let i = 0; i < nPoints; i++) {
+    const angle = (i / nPoints) * Math.PI * 2;
+    const r = size * 0.4 * (0.6 + fractalNoise(Math.cos(angle) * 3, Math.sin(angle) * 3, seed + i * 10, 3) * 0.8);
+    points.push({x: Math.cos(angle) * r, y: Math.sin(angle) * r});
+  }
+  // Fill base shape
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.closePath();
+  ctx.fill();
+  // Granular noise (dots)
+  ctx.fillStyle = color.replace(/[\d.]+\)$/, '0.6)');
+  for (let i = 0; i < 80; i++) {
+    const px = randRange(-size * 0.4, size * 0.4, seed + i * 3 + 10);
+    const py = randRange(-size * 0.3, size * 0.3, seed + i * 3 + 11);
+    const pr = randRange(0.3, 1.8, seed + i * 3 + 12);
+    ctx.globalAlpha = randRange(0.1, 0.5, seed + i * 3 + 13) * intensity;
+    ctx.beginPath();
+    ctx.arc(px, py, pr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // White gaps (paper showing through)
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.globalAlpha = 0.2;
+  for (let i = 0; i < 20; i++) {
+    const px = randRange(-size * 0.35, size * 0.35, seed + i * 7 + 20);
+    const py = randRange(-size * 0.25, size * 0.25, seed + i * 7 + 21);
+    const pr = randRange(1, 4, seed + i * 7 + 22);
+    ctx.beginPath();
+    ctx.arc(px, py, pr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Crayon scratch marks
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 0.25 * intensity;
+  ctx.strokeStyle = color.replace(/[\d.]+\)$/, '0.7)');
+  ctx.lineWidth = 0.6;
+  for (let i = 0; i < randInt(2, 5, seed + 30); i++) {
+    const angle = randRange(0, Math.PI * 2, seed + i * 15 + 31);
+    const len = randRange(size * 0.2, size * 0.6, seed + i * 15 + 32);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(angle) * len, Math.sin(angle) * len);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  let t = 0;
+  if (lenSq > 0) {
+    t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+  }
+  return Math.sqrt((px - (x1 + t * dx)) * (px - (x1 + t * dx)) + (py - (y1 + t * dy)) * (py - (y1 + t * dy)));
+}
+function lineIntersection(x1, y1, x2, y2, x3, y3, x4, y4) {
+  const dx1 = x2 - x1, dy1 = y2 - y1;
+  const dx2 = x4 - x3, dy2 = y4 - y3;
+  const det = dx1 * dy2 - dx2 * dy1;
+  if (Math.abs(det) < 1e-10) return null;
+  const t = ((x3 - x1) * dy2 - (y3 - y1) * dx2) / det;
+  const u = ((x3 - x1) * dy1 - (y3 - y1) * dx1) / det;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: x1 + t * dx1, y: y1 + t * dy1 };
+}
+
+function drawRandomLine(ctx, cardW, cardH, seed, intensity) {
+  // 1. Random crease lines
+  const nCrease = randInt(2, 6, seed);
+  const creases = [];
+  for (let i = 0; i < nCrease; i++) {
+    const s = seed + i * 100;
+    const startX = randInt(0, cardW, s);
+    const startY = randInt(0, cardH, s + 1);
+    const endX = randInt(0, cardW, s + 2);
+    const endY = randInt(0, cardH, s + 3);
+    creases.push({ startX, startY, endX, endY });
+  }
+  // 2. Per-pixel shading based on distance to nearest crease
+  const imgData = ctx.createImageData(cardW, cardH);
+  for (let y = 0; y < cardH; y++) {
+    for (let x = 0; x < cardW; x++) {
+      let minDist = Infinity;
+      let closestT = 0;
+      for (const c of creases) {
+        const dx = c.endX - c.startX, dy = c.endY - c.startY;
+        const lenSq = dx * dx + dy * dy;
+        let t = 0;
+        if (lenSq > 0) t = Math.max(0, Math.min(1, ((x - c.startX) * dx + (y - c.startY) * dy) / lenSq));
+        const nx = c.startX + t * dx, ny = c.startY + t * dy;
+        const dist = Math.sqrt((x - nx) * (x - nx) + (y - ny) * (y - ny));
+        if (dist < minDist) { minDist = dist; closestT = t; }
+      }
+      const idx = (y * cardW + x) * 4;
+      const wobble = Math.abs(fractalNoise(closestT * 10, 0, seed, 3) - 0.5) * 2;
+      const creaseWidth = 10 + wobble * 8;
+      if (minDist < creaseWidth) {
+        const t = 1 - minDist / creaseWidth;
+        if (minDist < 2) {
+          imgData.data[idx] = 250; imgData.data[idx + 1] = 245; imgData.data[idx + 2] = 235;
+          imgData.data[idx + 3] = Math.floor(130 * t * intensity);
+        } else if (minDist < 5) {
+          imgData.data[idx] = 0; imgData.data[idx + 1] = 0; imgData.data[idx + 2] = 0;
+          imgData.data[idx + 3] = Math.floor(55 * t * intensity);
+        } else {
+          imgData.data[idx] = 255; imgData.data[idx + 1] = 255; imgData.data[idx + 2] = 255;
+          imgData.data[idx + 3] = Math.floor(30 * t * intensity);
+        }
+      } else {
+        const noise = fractalNoise(x * 0.06, y * 0.06, seed, 3);
+        const diff = Math.abs(noise - 0.5);
+        const a = Math.floor(diff * 18 * intensity);
+        const v = noise > 0.5 ? 255 : 0;
+        imgData.data[idx] = v; imgData.data[idx + 1] = v; imgData.data[idx + 2] = v; imgData.data[idx + 3] = a;
+      }
+    }
+  }
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.putImageData(imgData, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  // 3. Enhanced center lines
+  ctx.strokeStyle = `rgba(255, 250, 240, ${0.45 * intensity})`;
+  ctx.lineWidth = 1.0;
+  for (const c of creases) {
+    ctx.beginPath(); ctx.moveTo(c.startX, c.startY); ctx.lineTo(c.endX, c.endY); ctx.stroke();
+  }
+  // 4. Cross intersection highlights
+  for (let i = 0; i < creases.length; i++) {
+    for (let j = i + 1; j < creases.length; j++) {
+      const inter = lineIntersection(
+        creases[i].startX, creases[i].startY, creases[i].endX, creases[i].endY,
+        creases[j].startX, creases[j].startY, creases[j].endX, creases[j].endY
+      );
+      if (inter) {
+        ctx.fillStyle = `rgba(255, 252, 245, ${0.35 * intensity})`;
+        ctx.beginPath(); ctx.arc(inter.x, inter.y, 10, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+}
+// ---- Post-Processing ----
+function postProcessStains(ctx, width, height, aging) {
+  if (aging <= 0) return;
+  const agingFactor = aging / 100;
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3];
+    if (a === 0) continue;
+    // Global wear noise
+    const noise = (Math.random() - 0.5) * 12 * agingFactor;
+    data[i] = Math.min(255, Math.max(0, data[i] + noise));
+    data[i+1] = Math.min(255, Math.max(0, data[i+1] + noise));
+    data[i+2] = Math.min(255, Math.max(0, data[i+2] + noise));
+    // Edge fade
+    const px = (i / 4) % width;
+    const py = Math.floor((i / 4) / width);
+    const edgeDist = Math.min(px, py, width - px, height - py);
+    if (edgeDist < 20) {
+      const fade = edgeDist / 20;
+      data[i + 3] = Math.round(data[i + 3] * (0.7 + fade * 0.3));
+    }
+    // Fading
+    const fadeAmt = 1 - (agingFactor * 0.15);
+    data[i + 3] = Math.round(data[i + 3] * fadeAmt);
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// ---- Stain Data Generation ----
+function generateStainData(word, mode, allowedTypes, density, aging) {
+  if (!mode) mode = 'random';
+  if (!allowedTypes || allowedTypes.length === 0) allowedTypes = STAIN_TYPES;
+  if (!density) density = 50;
+  if (!aging) aging = 20;
+  const baseSeed = Date.now() + wordSeed(word);
+  let enableTypes = [];
+  if (mode === 'single') {
+    enableTypes = [allowedTypes[0]];
+  } else if (mode === 'multi') {
+    enableTypes = [...allowedTypes];
+  } else {
+    const randomCount = randInt(2, 5, baseSeed);
+    const shuffled = [...STAIN_TYPES].sort(() => seededRandom(baseSeed + 1) - 0.5);
+    enableTypes = shuffled.slice(0, randomCount);
+  }
+  const stains = [];
+  const existingPositions = [];
+  const minDist = 0.15; // normalized distance
+  for (const type of enableTypes) {
+    const maxCount = randInt(1, 3, baseSeed + type.length);
+    const stainCount = Math.max(1, Math.round(maxCount * density / 100));
+    for (let i = 0; i < stainCount; i++) {
+      const seed = baseSeed + type.length * 100 + i * 1000;
+      const pos = generateWeightedPosition(seed, 150, 210, existingPositions, minDist);
+      if (!pos) continue;
+      existingPositions.push(pos);
+      const size = randRange(20, 55, seed + 50);
+      const rotation = randRange(0, Math.PI * 2, seed + 51);
+      const intensity = randRange(0.5, 1.0, seed + 52);
+      stains.push({
+        type, x: pos.x, y: pos.y, size, rotation, intensity, seed,
+        layerOrder: STAIN_LAYER_ORDER[type] || 5
+      });
+    }
+  }
+  stains.sort((a, b) => a.layerOrder - b.layerOrder);
+  return { stains, density, aging, mode, seed: baseSeed };
+}
+
+// ---- Canvas Rendering ----
+function renderStainsToCanvas(canvas, stainData) {
+  const width = 150, height = 210;
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, width, height);
+  if (!stainData || !stainData.stains || stainData.stains.length === 0) return;
+  for (const stain of stainData.stains) {
+    const cx = stain.x * width;
+    const cy = stain.y * height;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    switch (stain.type) {
+      case 'coffee': drawCoffeeStain(ctx, cx, cy, stain.size, stain.seed, stain.intensity); break;
+      case 'ink': drawInkStain(ctx, cx, cy, stain.size, stain.seed, stain.intensity); break;
+      case 'highlight': drawHighlighter(ctx, cx, cy, stain.size, stain.seed, stain.intensity); break;
+      case 'crayon': drawCrayon(ctx, cx, cy, stain.size, stain.seed, stain.intensity); break;
+      case 'random-line': drawRandomLine(ctx, width, height, stain.seed, stain.intensity); break;
+    }
+    ctx.restore();
+  }
+  postProcessStains(ctx, width, height, stainData.aging || 0);
+}
+
+// ---- Legacy-compatible API ----
+
+function getStainConfig(word) {
+  const hiddenSet = getLS('wordflip_stainsHidden', {});
+  if (hiddenSet[word]) return null;
+  const customSet = getLS('wordflip_stainsCustom', {});
+  if (customSet[word]) {
+    // Back-compat: if old format {type,pos,rot,scale}, migrate to new format
+    const old = customSet[word];
+    if (old && !old.stains && old.type) {
+      return migrateOldStain(word, old);
+    }
+    // Convert old 'fold' data to 'random-line' in new format
+    if (old.stains) {
+      old.stains.forEach(s => {
+        if (s.type === 'fold') s.type = 'random-line';
+      });
+    }
+    return customSet[word];
+  }
+  // Default generation
+  return generateStainData(word, 'random', STAIN_TYPES, 50, 20);
+}
+
+function migrateOldStain(word, old) {
+  const baseSeed = wordSeed(word) + Date.now();
+  // Convert old position to normalized coordinates
+  let x = 0.5, y = 0.5;
+  if (old.pos.top === '8px') y = 0.15;
+  if (old.pos.bottom === '8px') y = 0.85;
+  if (old.pos.left === '8px') x = 0.15;
+  if (old.pos.right === '8px') x = 0.85;
+  // Map old 'fold' type to new 'random-line'
+  let type = old.type;
+  if (type === 'fold') type = 'random-line';
+  const stains = [{
+    type,
+    x, y,
+    size: 35 * old.scale,
+    rotation: old.rot * Math.PI / 180,
+    intensity: 0.75,
+    seed: baseSeed,
+    layerOrder: STAIN_LAYER_ORDER[type] || 5
+  }];
+  const migrated = { stains, density: 50, aging: 20, mode: 'random', seed: baseSeed };
+  setStainCustom(word, migrated);
+  return migrated;
+}
+
+function generateStainHTML(word) {
+  const cfg = getStainConfig(word);
+  if (!cfg) return '';
+  // Render on a canvas element, then convert to data URL so the
+  // drawing survives being inserted via innerHTML.
+  const canvas = document.createElement('canvas');
+  canvas.className = 'stain-canvas';
+  renderStainsToCanvas(canvas, cfg);
+  const dataUrl = canvas.toDataURL('image/png');
+  return `<img class="stain-canvas" src="${dataUrl}" alt="">`;
+}
+
+function randomStainConfig(word, mode, allowedTypes) {
+  return generateStainData(word, mode, allowedTypes, 50, 20);
+}
+
+function setStainCustom(word, cfg) { const s = getLS('wordflip_stainsCustom', {}); s[word] = cfg; setLS('wordflip_stainsCustom', s); }
+function hideStainFor(word) { const s = getLS('wordflip_stainsHidden', {}); s[word] = true; setLS('wordflip_stainsHidden', s); }
+function showStainFor(word) { const s = getLS('wordflip_stainsHidden', {}); delete s[word]; setLS('wordflip_stainsHidden', s); }
+function isStainHidden(word) { return !!getLS('wordflip_stainsHidden', {})[word]; }
+
+// ── ROUTING ──
+let currentPage = 'today';
+let pageStack   = [];
+
+function navTo(id) {
+  if (id === currentPage) return;
+  const from = document.getElementById('page-' + currentPage);
+  const to   = document.getElementById('page-' + id);
+  from.classList.add('behind');
+  setTimeout(() => from.classList.add('hidden'), 320);
+  to.classList.remove('hidden','behind');
+  currentPage = id;
+  pageStack = [];
+  if (id === 'groups') renderGroups();
+  if (id === 'stats')  renderHeatmap();
+  if (id === 'custom-group') renderCG();
+  if (id === 'settings') updateSpeakToggle();
+}
+
+function pushPage(id) {
+  const from = document.getElementById('page-' + currentPage);
+  const to   = document.getElementById('page-' + id);
+  from.classList.add('behind');
+  to.classList.remove('hidden','behind');
+  pageStack.push(currentPage);
+  currentPage = id;
+  if (id === 'groups') renderGroups();
+  if (id === 'custom-group') renderCG();
+  if (id === 'quiz') {
+    // 等页面滑入动画结束后再初始化，避免动画中途重排导致卡顿
+    setTimeout(() => { initQuiz(); }, 320);
+  }
+  if (id === 'study') {
+    // check first-time guide
+    setTimeout(() => {
+      if (!getLS('studyGuideShown', false)) {
+        showGuide();
+      }
+    }, 400);
+  }
+}
+
+function popPage() {
+  const prev = pageStack.pop() || 'today';
+  const cur  = document.getElementById('page-' + currentPage);
+  const to   = document.getElementById('page-' + prev);
+  cur.classList.add('hidden');
+  to.classList.remove('hidden','behind');
+  currentPage = prev;
+  if (prev === 'settings') updateSpeakToggle();
+}
+
+// ── TOAST ──
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ── BOOKS ──
+const bkChecked = {1:true, 2:true, 3:false};
+let groupSize = 20;
+function toggleBook(id) {
+  bkChecked[id] = !bkChecked[id];
+  document.getElementById('bk'+id+'-check').textContent = bkChecked[id] ? '✅' : '☐';
+  updateBooksSummary();
+}
+function selectSize(n) {
+  [10,20,30,50].forEach(s => {
+    document.getElementById('sz-'+s).textContent = (s===n) ? '✅' : '☐';
+  });
+  groupSize = n;
+  updateBooksSummary();
+}
+function updateBooksSummary() {
+  const total = (bkChecked[1]?3000:0)+(bkChecked[2]?1500:0)+(bkChecked[3]?2500:0);
+  document.getElementById('books-summary').textContent =
+    `已选 ${total} 词（去重后）· 每组 ${groupSize} 词 · 共约 ${Math.ceil(total/groupSize)} 组`;
+}
+function saveBooks() { toast('✅ 设置已保存'); }
+
+// ── CUSTOM GROUP ──
+let cgSelected = new Set();
+function renderCG() {
+  cgSelected.clear();
+  const el = document.getElementById('cg-words');
+  el.innerHTML = '';
+  WORDS.forEach((w,i) => {
+    const chip = document.createElement('div');
+    chip.className = 'cg-word-chip';
+    chip.innerHTML = `<span class="ck">○</span> ${w.en}`;
+    chip.onclick = () => {
+      if (cgSelected.has(i)) { cgSelected.delete(i); chip.classList.remove('selected'); chip.querySelector('.ck').textContent='○'; }
+      else { cgSelected.add(i); chip.classList.add('selected'); chip.querySelector('.ck').textContent='✓'; }
+      document.getElementById('cg-count').textContent = `已选 ${cgSelected.size} 个`;
+    };
+    el.appendChild(chip);
+  });
+}
+function saveCG() {
+  if (cgSelected.size === 0) { toast('请先选择单词'); return; }
+  toast(`✅ 自定义分组已保存，共 ${cgSelected.size} 个单词`);
+  popPage();
+}
+
+// ── STUDY / CARDS ──
+let cardFlipped = {};
+let allShowBack = false;
+let studyWords  = [];
+let currentSheetWord = null;
+let speechRate = 1.0;
+let flowRAF = null;
+
+function initStudy() {
+  cardFlipped  = {};
+  allShowBack  = false;
+  studyWords   = [...WORDS].sort(() => Math.random()-0.5);
+  renderCards();
+  const btn = document.getElementById('flip-all-btn');
+  if (btn) btn.textContent = '🔄 全翻背面';
+}
+
+function renderCards() {
+  const grid = document.getElementById('cards-grid');
+  grid.innerHTML = '';
+  studyWords.forEach((w, i) => {
+    const isFlipped = cardFlipped[i] || false;
+    const wrap = document.createElement('div');
+    wrap.className = 'fc-wrap' + (isFlipped ? ' flipped' : '');
+    wrap.id = 'fc-' + i;
+    const stainHTML = generateStainHTML(w.en);
+    wrap.innerHTML = `
+      <div class="fc-inner">
+        <div class="fc-front">
+          ${stainHTML}
+          <div class="fc-word">${w.en}</div>
+          <div class="fc-pos">${w.pos}</div>
+          <div class="fc-hint">翻转</div>
+        </div>
+        <div class="fc-back">
+          <div class="fc-cn">${w.cn}</div>
+          <div class="fc-ph">${w.ph}</div>
+          <div class="fc-hint">翻转</div>
+        </div>
+      </div>`;
+    // click for flip
+    wrap.addEventListener('click', () => toggleCard(i));
+    // long press for sheet
+    attachLongPress(wrap, w);
+    grid.appendChild(wrap);
+  });
+  updateGridColumns();
+}
+
+function toggleCard(i) {
+  if (isSheetOpen()) return;
+  cardFlipped[i] = !cardFlipped[i];
+  const el = document.getElementById('fc-' + i);
+  el.classList.toggle('flipped', cardFlipped[i]);
+  if (autoSpeak) {
+    const utter = new SpeechSynthesisUtterance(studyWords[i].en);
+    utter.lang = 'en-US';
+    utter.rate = 0.9;
+    speechSynthesis.speak(utter);
+  }
+  toast('🔊 ' + studyWords[i].ph);
+}
+
+function flipAllCards() {
+  allShowBack = !allShowBack;
+  studyWords.forEach((_, i) => { cardFlipped[i] = allShowBack; });
+  document.querySelectorAll('.fc-wrap').forEach((el, i) => el.classList.toggle('flipped', allShowBack));
+  const btn = document.getElementById('flip-all-btn');
+  btn.textContent = allShowBack ? '🔄 全翻正面' : '🔄 全翻背面';
+  toast(allShowBack ? '👁 看中文模式' : '👁 看英文模式');
+}
+
+function shuffleCards() {
+  const grid = document.getElementById('cards-grid');
+  const cards = Array.from(grid.children);
+  const btn = document.getElementById('shuffle-btn');
+  if (btn.disabled || cards.length === 0) return;
+  btn.disabled = true;
+
+  // 1. 记录翻转状态（以单词为 key）
+  const flipMap = {};
+  studyWords.forEach((w, i) => {
+    flipMap[w.en] = cardFlipped[i] || false;
+  });
+
+  // 2. 计算最晚完成的飞出时间，用于兜底
+  const maxOutDelay = (cards.length - 1) * 28;
+  const outDuration = 380; // shuffle-out 动画时长
+  const outTimeout  = maxOutDelay + outDuration + 80;
+
+  // 3. 为每张卡片设置飞出参数并监听 animationend
+  const outPromises = cards.map((c, i) => {
+    return new Promise(resolve => {
+      const tx  = (Math.random() - 0.5) * 180 + 'px';
+      const ty  = (Math.random() - 0.5) * 200 + 'px';
+      const tx2 = (Math.random() - 0.5) * 300 + 'px';
+      const ty2 = (Math.random() - 0.5) * 340 + 'px';
+      const tr  = (Math.random() - 0.5) * 60  + 'deg';
+      const tr2 = (Math.random() - 0.5) * 120 + 'deg';
+      c.style.setProperty('--tx',  tx);
+      c.style.setProperty('--ty',  ty);
+      c.style.setProperty('--tx2', tx2);
+      c.style.setProperty('--ty2', ty2);
+      c.style.setProperty('--tr',  tr);
+      c.style.setProperty('--tr2', tr2);
+      c.style.animationDelay = (i * 28) + 'ms';
+
+      const onEnd = (e) => {
+        if (e.animationName === 'shuffle-out') {
+          c.removeEventListener('animationend', onEnd);
+          resolve();
+        }
+      };
+      c.addEventListener('animationend', onEnd);
+      c.classList.add('shuffling-out');
+
+      // 兜底：如果事件未触发，超时后强制 resolve
+      setTimeout(() => {
+        c.removeEventListener('animationend', onEnd);
+        resolve();
+      }, outTimeout);
+    });
+  });
+
+  // 4. 所有飞出动画完成后：重建 DOM 并飞入
+  Promise.all(outPromises).then(() => {
+    studyWords = [...studyWords].sort(() => Math.random() - 0.5);
+    grid.innerHTML = '';
+
+    const newCards = [];
+    studyWords.forEach((w, i) => {
+      const wasFlipped = allShowBack ? true : (flipMap[w.en] || false);
+      cardFlipped[i] = wasFlipped;
+
+      const wrap = document.createElement('div');
+      wrap.id = 'fc-' + i;
+      wrap.className = 'fc-wrap' + (wasFlipped ? ' flipped' : '');
+      const stainHTML = generateStainHTML(w.en);
+
+      wrap.innerHTML = `
+        <div class="fc-inner">
+          <div class="fc-front">
+            ${stainHTML}
+            <div class="fc-word">${w.en}</div>
+            <div class="fc-pos">${w.pos}</div>
+            <div class="fc-hint">翻转</div>
+          </div>
+          <div class="fc-back">
+            <div class="fc-cn">${w.cn}</div>
+            <div class="fc-ph">${w.ph}</div>
+            <div class="fc-hint">翻转</div>
+          </div>
+        </div>`;
+      wrap.addEventListener('click', () => toggleCard(i));
+      attachLongPress(wrap, w);
+      grid.appendChild(wrap);
+
+      // 先设置初始隐藏状态，确保动画从正确起点开始
+      wrap.style.opacity = '0';
+      wrap.style.transform = 'scale(0.85)';
+      newCards.push(wrap);
+    });
+
+    updateGridColumns();
+
+    // 5. 强制重排后触发动画
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        newCards.forEach((wrap, i) => {
+          wrap.style.animationDelay = (i * 40) + 'ms';
+          wrap.classList.add('shuffling-in');
+        });
+      });
+    });
+
+    // 6. 计算所有飞入动画完成后清理状态
+    const maxInDelay = (newCards.length - 1) * 40;
+    const inDuration = 400; // shuffle-in 动画时长
+    setTimeout(() => {
+      newCards.forEach(wrap => {
+        wrap.style.opacity = '';
+        wrap.style.transform = '';
+        wrap.style.animationDelay = '';
+        wrap.classList.remove('shuffling-in');
+      });
+      btn.disabled = false;
+      toast('🔀 已打乱');
+    }, maxInDelay + inDuration + 80);
+  });
+}
+
+// ── LONG PRESS & SHEET ──
+function attachLongPress(el, word) {
+  let timer = null;
+  let startX = 0, startY = 0;
+  const start = (e) => {
+    const t = e.touches ? e.touches[0] : e;
+    startX = t.clientX; startY = t.clientY;
+    timer = setTimeout(() => {
+      timer = null;
+      openSheet(word);
+    }, 500);
+  };
+  const cancel = (e) => {
+    if (timer) { clearTimeout(timer); timer = null; }
+  };
+  const move = (e) => {
+    if (!timer) return;
+    const t = e.touches ? e.touches[0] : e;
+    if (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) {
+      clearTimeout(timer); timer = null;
+    }
+  };
+  el.addEventListener('mousedown', start);
+  el.addEventListener('touchstart', start, {passive:true});
+  el.addEventListener('mouseup', cancel);
+  el.addEventListener('mouseleave', cancel);
+  el.addEventListener('touchend', cancel);
+  el.addEventListener('touchmove', move, {passive:true});
+}
+
+function isSheetOpen() {
+  return document.getElementById('sheet-panel').classList.contains('show');
+}
+
+function openSheet(word) {
+  currentSheetWord = word;
+  const overlay = document.getElementById('sheet-overlay');
+  const panel = document.getElementById('sheet-panel');
+  document.getElementById('sheet-word').innerHTML = renderSyllableWord(word.en);
+  document.getElementById('sheet-ph').textContent = word.ph;
+  document.getElementById('sheet-cn').textContent = word.cn;
+  document.getElementById('sheet-pos').textContent = word.pos;
+  const d = word.detail || {};
+  document.getElementById('sheet-meaning').textContent = d.meaning || '暂无详细释义';
+  const exEl = document.getElementById('sheet-examples');
+  exEl.innerHTML = '';
+  const exs = d.examples || [];
+  if (exs.length) {
+    exs.forEach(ex => {
+      const div = document.createElement('div');
+      div.className = 'sheet-ex';
+      div.textContent = ex;
+      exEl.appendChild(div);
+    });
+  } else {
+    exEl.innerHTML = '<div class="sheet-ex">暂无例句</div>';
+  }
+  document.getElementById('sheet-etymology').textContent = d.etymology || '暂无词根词缀信息';
+  overlay.classList.add('show');
+  panel.classList.add('show');
+  // prevent body scroll
+  const sc = document.querySelector('#page-study .sc');
+  if (sc) sc.style.overflow = 'hidden';
+}
+
+function closeSheet() {
+  const overlay = document.getElementById('sheet-overlay');
+  const panel = document.getElementById('sheet-panel');
+  overlay.classList.remove('show');
+  panel.classList.remove('show');
+  const sc = document.querySelector('#page-study .sc');
+  if (sc) sc.style.overflow = '';
+  stopFlowAnimation();
+  currentSheetWord = null;
+}
+
+// ── SPEAK & FLOW ANIMATION ──
+function changeSpeed(delta) {
+  speechRate = Math.max(0.5, Math.min(2.0, Math.round((speechRate + delta) * 100) / 100));
+  const display = document.getElementById('speed-display');
+  if (display) display.textContent = speechRate.toFixed(1) + 'x';
+}
+
+function speakCurrentWord() {
+  if (!currentSheetWord) return;
+  const word = currentSheetWord.en;
+  const speakBtn = document.getElementById('speak-btn');
+  // cancel any ongoing speech
+  speechSynthesis.cancel();
+  stopFlowAnimation();
+
+  const utter = new SpeechSynthesisUtterance(word);
+  utter.lang = 'en-US';
+  utter.rate = speechRate;
+  utter.pitch = 1;
+
+  // estimate duration per letter (average English letter ~80ms at 1.0 rate)
+  const estimatedDuration = (word.length * 0.08) / speechRate;
+
+  utter.onstart = () => {
+    if (speakBtn) speakBtn.classList.add('playing');
+    startFlowAnimation(estimatedDuration);
+  };
+  utter.onend = () => {
+    if (speakBtn) speakBtn.classList.remove('playing');
+    stopFlowAnimation();
+  };
+  utter.onerror = () => {
+    if (speakBtn) speakBtn.classList.remove('playing');
+    stopFlowAnimation();
+  };
+
+  speechSynthesis.speak(utter);
+}
+
+function startFlowAnimation(duration) {
+  stopFlowAnimation();
+  const letters = document.querySelectorAll('#sheet-word .syl-letter');
+  if (!letters.length) return;
+  const startTime = performance.now();
+  function tick() {
+    const elapsed = (performance.now() - startTime) / 1000;
+    if (elapsed >= duration) {
+      stopFlowAnimation();
+      return;
+    }
+    const progress = Math.min(elapsed / duration, 1);
+    const currentIdx = Math.min(Math.floor(progress * letters.length), letters.length - 1);
+    letters.forEach((l, i) => {
+      if (i === currentIdx) {
+        l.classList.add('flowing');
+      } else {
+        l.classList.remove('flowing');
+      }
+    });
+    flowRAF = requestAnimationFrame(tick);
+  }
+  flowRAF = requestAnimationFrame(tick);
+}
+
+function stopFlowAnimation() {
+  if (flowRAF) {
+    cancelAnimationFrame(flowRAF);
+    flowRAF = null;
+  }
+  document.querySelectorAll('.syl-letter.flowing').forEach(l => l.classList.remove('flowing'));
+}
+
+function changeStain() {
+  if (!currentSheetWord) return;
+  const cfg = randomStainConfig(currentSheetWord.en);
+  setStainCustom(currentSheetWord.en, cfg);
+  showStainFor(currentSheetWord.en);
+  renderCards();
+  toast('🔄 已更换污渍');
+  closeSheet();
+}
+
+function hideStain() {
+  if (!currentSheetWord) return;
+  hideStainFor(currentSheetWord.en);
+  renderCards();
+  toast('👁 已隐藏污渍');
+  closeSheet();
+}
+
+// ── STUDY GUIDE ──
+function showGuide() {
+  const g = document.getElementById('study-guide');
+  g.classList.add('show');
+}
+function dismissGuide() {
+  const g = document.getElementById('study-guide');
+  g.classList.remove('show');
+  setLS('studyGuideShown', true);
+}
+
+// ── GROUPS ──
+function renderGroups() {
+  const el = document.getElementById('group-list');
+  el.innerHTML = '';
+  GROUPS_DATA.forEach(g => {
+    const pct = Math.round(g.ok / g.total * 100);
+    const statusLabel = {done:'已完成', learning:'学习中', 'not-started':'未开始'}[g.status];
+    const statusColor = {done:'green', learning:'blue', 'not-started':'gray'}[g.status];
+    const div = document.createElement('div');
+    div.className = 'grp-item';
+    div.innerHTML = `
+      <div class="grp-hd">
+        <div class="grp-title">${g.name}</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="pill ${statusColor}">${statusLabel}</div>
+          <button class="hbtn" style="width:28px;height:28px;font-size:13px;" onclick="event.stopPropagation();openStainMode(${g.id})" title="制作污渍">🎨</button>
+        </div>
+      </div>
+      <div class="grp-stats">
+        <div class="gs"><div class="gs-n" style="color:var(--green)">${g.ok}</div><div class="gs-l">已记得</div></div>
+        <div class="gs"><div class="gs-n" style="color:var(--amber)">${g.fuz}</div><div class="gs-l">模糊</div></div>
+        <div class="gs"><div class="gs-n" style="color:var(--text3)">${g.total-g.ok-g.fuz}</div><div class="gs-l">未学</div></div>
+        <div class="gs"><div class="gs-n">${g.total}</div><div class="gs-l">总词</div></div>
+      </div>
+      <div class="grp-bar"><div class="grp-fill" style="width:${pct}%"></div></div>`;
+    div.onclick = () => {
+      gdetailMode = 'list';
+      openGDetail(g);
+    };
+    el.appendChild(div);
+  });
+}
+
+function openGDetail(g) {
+  currentGDetailGroup = g;
+  document.getElementById('gd-title').textContent = g.name;
+  const listSection = document.getElementById('gd-list-section');
+  const stainSection = document.getElementById('gd-stain-section');
+  
+  if (gdetailMode === 'list') {
+    listSection.style.display = '';
+    stainSection.style.display = 'none';
+    renderGDetailList(g);
+  } else {
+    listSection.style.display = 'none';
+    stainSection.style.display = '';
+    renderGDetailStain(g);
+  }
+  
+  if (currentPage !== 'gdetail') {
+    pushPage('gdetail');
+  }
+}
+
+function toggleGDetailMode() {
+  gdetailMode = gdetailMode === 'list' ? 'stain' : 'list';
+  if (currentGDetailGroup) {
+    openGDetail(currentGDetailGroup);
+  }
+}
+
+function openStainMode(gid) {
+  const g = GROUPS_DATA.find(x => x.id === gid);
+  if (!g) return;
+  gdetailMode = 'stain';
+  openGDetail(g);
+}
+
+function renderGDetailList(g) {
+  const el = document.getElementById('gd-list');
+  el.innerHTML = '';
+  const statuses = ['ok','fuz','','ok','fuz','','ok','','',''];
+  WORDS.forEach((w, i) => {
+    const st = statuses[i] || '';
+    const div = document.createElement('div');
+    div.className = 'wd-row';
+    div.innerHTML = `
+      <div class="wd-left">
+        <div class="wd-en">${w.en}</div>
+        <div class="wd-cn">${w.cn} <span style="color:var(--text3);font-size:11px;">${w.pos}</span></div>
+      </div>
+      <div class="wd-status">
+        <button class="ws-btn ${st==='ok'?'ok':''}" onclick="setWS(this,'ok')">记得</button>
+        <button class="ws-btn ${st==='fuz'?'fuz':''}" onclick="setWS(this,'fuz')">模糊</button>
+      </div>`;
+    el.appendChild(div);
+  });
+}
+
+function renderGDetailStain(g) {
+  const grid = document.getElementById('gd-stain-grid');
+  grid.innerHTML = '';
+  WORDS.forEach((w, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'fc-wrap';
+    wrap.style.width = '100%';
+    wrap.style.fontSize = '15px';
+    const stainHTML = generateStainHTML(w.en);
+    wrap.innerHTML = `
+      <div class="fc-inner">
+        <div class="fc-front">
+          ${stainHTML}
+          <div class="fc-word" style="font-size:15px;">${w.en}</div>
+          <div class="fc-pos" style="font-size:9px;">${w.pos}</div>
+          <div class="fc-hint" style="font-size:9px;">翻转</div>
+        </div>
+        <div class="fc-back">
+          <div class="fc-cn" style="font-size:13px;">${w.cn}</div>
+          <div class="fc-ph" style="font-size:9px;">${w.ph}</div>
+          <div class="fc-hint" style="font-size:9px;">翻转</div>
+        </div>
+      </div>`;
+    wrap.addEventListener('click', () => togglePreviewCard(wrap));
+    
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:6px;margin-top:6px;width:100%;';
+    const hidden = isStainHidden(w.en);
+    actions.innerHTML = `
+      <button class="sheet-btn" style="flex:1;height:32px;font-size:12px;white-space:nowrap;" onclick="changeStainFor('${w.en}')">🔄 换一个</button>
+      <button class="sheet-btn primary" style="flex:1;height:32px;font-size:12px;white-space:nowrap;" onclick="toggleStainHidden('${w.en}')">${hidden?'👁 显示':'👁 隐藏'}</button>
+    `;
+    
+    const item = document.createElement('div');
+    item.style.cssText = 'display:flex;flex-direction:column;width:100%;';
+    item.appendChild(wrap);
+    item.appendChild(actions);
+    grid.appendChild(item);
+  });
+  updateStainGridColumns();
+  updateStainTypeButtons();
+}
+
+function setWS(btn, st) {
+  const btns = btn.closest('.wd-status').querySelectorAll('.ws-btn');
+  btns.forEach(b => b.classList.remove('ok','fuz'));
+  if (!btn.classList.contains(st)) {
+    btn.classList.add(st);
+    toast(st==='ok' ? '✅ 已记得' : '〜 模糊，加入复习计划');
+  }
+}
+
+function changeStainFor(word) {
+  let cfg;
+  if (selectedStainTypes.length === 1) {
+    cfg = randomStainConfig(word, 'single', selectedStainTypes);
+  } else if (selectedStainTypes.length > 1) {
+    cfg = randomStainConfig(word, 'multi', selectedStainTypes);
+  } else {
+    cfg = randomStainConfig(word, 'random', STAIN_TYPES);
+  }
+  setStainCustom(word, cfg);
+  showStainFor(word);
+  if (currentGDetailGroup) renderGDetailStain(currentGDetailGroup);
+  if (currentPage === 'study') renderCards();
+  toast('🔄 已更换污渍');
+}
+
+function toggleStainHidden(word) {
+  if (isStainHidden(word)) {
+    showStainFor(word);
+    toast('👁 已显示污渍');
+  } else {
+    hideStainFor(word);
+    toast('👁 已隐藏污渍');
+  }
+  if (currentGDetailGroup) renderGDetailStain(currentGDetailGroup);
+  if (currentPage === 'study') renderCards();
+}
+
+function regenerateAllStains() {
+  if (!currentGDetailGroup) return;
+  WORDS.forEach(w => {
+    let cfg;
+    if (selectedStainTypes.length === 1) {
+      cfg = randomStainConfig(w.en, 'single', selectedStainTypes);
+    } else if (selectedStainTypes.length > 1) {
+      cfg = randomStainConfig(w.en, 'multi', selectedStainTypes);
+    } else {
+      cfg = randomStainConfig(w.en, 'random', STAIN_TYPES);
+    }
+    setStainCustom(w.en, cfg);
+    showStainFor(w.en);
+  });
+  if (currentGDetailGroup) renderGDetailStain(currentGDetailGroup);
+  if (currentPage === 'study') renderCards();
+  toast('🎲 已为所有单词生成新污渍');
+}
+
+function toggleStainType(type) {
+  const idx = selectedStainTypes.indexOf(type);
+  if (idx >= 0) {
+    selectedStainTypes.splice(idx, 1);
+  } else {
+    selectedStainTypes.push(type);
+  }
+  updateStainTypeButtons();
+  if (currentGDetailGroup) {
+    WORDS.forEach(w => {
+      let cfg;
+      if (selectedStainTypes.length === 1) {
+        cfg = randomStainConfig(w.en, 'single', selectedStainTypes);
+      } else if (selectedStainTypes.length > 1) {
+        cfg = randomStainConfig(w.en, 'multi', selectedStainTypes);
+      } else {
+        cfg = randomStainConfig(w.en, 'random', STAIN_TYPES);
+      }
+      setStainCustom(w.en, cfg);
+      showStainFor(w.en);
+    });
+    renderGDetailStain(currentGDetailGroup);
+    if (currentPage === 'study') renderCards();
+  }
+}
+
+function clearStainTypes() {
+  selectedStainTypes = [];
+  updateStainTypeButtons();
+  if (currentGDetailGroup) {
+    WORDS.forEach(w => {
+      const cfg = randomStainConfig(w.en, 'random', STAIN_TYPES);
+      setStainCustom(w.en, cfg);
+      showStainFor(w.en);
+    });
+    renderGDetailStain(currentGDetailGroup);
+    if (currentPage === 'study') renderCards();
+  }
+}
+
+function updateStainTypeButtons() {
+  const randomBtn = document.getElementById('btn-stain-random');
+  if (randomBtn) {
+    randomBtn.classList.toggle('active', selectedStainTypes.length === 0);
+  }
+  const typeBtns = document.querySelectorAll('#stain-type-btns .stain-type-btn[data-type]');
+  typeBtns.forEach(btn => {
+    const type = btn.getAttribute('data-type');
+    btn.classList.toggle('active', selectedStainTypes.includes(type));
+  });
+}
+
+function togglePreviewCard(el) {
+  el.classList.toggle('flipped');
+}
+
+function previewStain(ev, word) {
+  ev.stopPropagation();
+  const wObj = WORDS.find(x => x.en === word);
+  if (!wObj) return;
+  if (isStainHidden(word)) {
+    showStainFor(word);
+    toast('👁 已显示污渍');
+    const btn = ev.currentTarget;
+    btn.textContent = '🎨';
+    btn.title = '点击预览/更换污渍';
+    if (currentPage === 'study') renderCards();
+  } else {
+    openSheet(wObj);
+  }
+}
+
+// ── QUIZ ──
+let quizWords, quizIdx, quizScore, quizMisses;
+
+function initQuiz() {
+  quizWords = [...WORDS].sort(() => Math.random()-0.5).slice(0, 6);
+  quizIdx = 0; quizScore = 0; quizMisses = [];
+  renderQuizQ();
+}
+
+function renderQuizQ() {
+  const sc = document.getElementById('quiz-sc');
+  if (quizIdx >= quizWords.length) { renderQuizResult(sc); return; }
+  const w   = quizWords[quizIdx];
+  const pct = Math.round(quizIdx / quizWords.length * 100);
+  sc.innerHTML = `
+    <div class="quiz-pg"><div class="quiz-pg-fill" style="width:${pct}%"></div></div>
+    <div class="quiz-meta"><span>${quizIdx+1} / ${quizWords.length}</span><span>得分 ${quizScore}</span></div>
+    <div class="quiz-card">
+      <div class="qc-lbl">看中文 · 默写英文单词</div>
+      <div class="qc-cn">${w.cn}</div>
+      <div class="qc-pos">${w.pos} ${w.ph}</div>
+    </div>
+    <div class="quiz-input-area">
+      <input class="quiz-input" id="quiz-inp" placeholder="输入英文单词" autocomplete="off" autocorrect="off" spellcheck="false"
+        onkeydown="if(event.key==='Enter')submitQuiz()">
+    </div>
+    <div class="quiz-answer-reveal" id="quiz-reveal"></div>
+    <div class="quiz-submit" style="padding:10px 16px 0;">
+      <button class="btn-primary" onclick="submitQuiz()">确认</button>
+    </div>`;
+  setTimeout(() => { const inp = document.getElementById('quiz-inp'); if(inp) inp.focus(); }, 400);
+}
+
+function submitQuiz() {
+  const inp = document.getElementById('quiz-inp');
+  const w   = quizWords[quizIdx];
+  if (!inp || inp.disabled) return;
+  const val = inp.value.trim().toLowerCase();
+  const ans = w.en.toLowerCase();
+  const ok  = val === ans;
+  inp.disabled = true;
+  inp.classList.add(ok ? 'correct' : 'wrong');
+  const rev = document.getElementById('quiz-reveal');
+  if (ok) {
+    rev.textContent = '✓ 正确！';
+    rev.className = 'quiz-answer-reveal ok';
+    quizScore++;
+    toast('✅ 已自动标记为「记得」');
+  } else {
+    rev.textContent = `✗ 正确拼写：${w.en}`;
+    rev.className = 'quiz-answer-reveal bad';
+    quizMisses.push(w);
+    toast('〜 已自动标记为「模糊」，加入复习计划');
+  }
+  setTimeout(() => { quizIdx++; renderQuizQ(); }, 1400);
+}
+
+function renderQuizResult(sc) {
+  const pct = Math.round(quizScore / quizWords.length * 100);
+  const emoji = pct >= 80 ? '🎉' : pct >= 50 ? '😊' : '💪';
+  sc.innerHTML = `
+    <div class="quiz-result">
+      <div class="qr-emoji">${emoji}</div>
+      <div class="qr-title">${pct>=80?'太棒了！':pct>=50?'不错！':'继续加油！'}</div>
+      <div class="qr-sub">测验完成 · 错误单词已自动加入艾宾浩斯复习计划</div>
+      <div class="qr-stats">
+        <div class="qrs"><div class="qrs-n" style="color:var(--green)">${quizScore}</div><div class="qrs-l">答对</div></div>
+        <div class="qrs"><div class="qrs-n" style="color:var(--red)">${quizWords.length-quizScore}</div><div class="qrs-l">答错</div></div>
+        <div class="qrs"><div class="qrs-n" style="color:var(--accent)">${pct}%</div><div class="qrs-l">正确率</div></div>
+      </div>
+      <button class="btn-primary" onclick="initQuiz()">再来一次</button>
+      <div style="height:10px"></div>
+      <button class="btn-ghost" onclick="popPage()">返回</button>
+    </div>`;
+}
+
+// ── HEATMAP ──
+function renderHeatmap() {
+  const grid = document.getElementById('hm-grid');
+  if (grid.children.length) return;
+  for (let i = 0; i < 91; i++) {
+    const c = document.createElement('div');
+    const r = Math.random();
+    c.className = 'hm-c' + (r<0.25?'':r<0.5?' l1':r<0.72?' l2':' l3');
+    grid.appendChild(c);
+  }
+}
+
+// ── INIT ──
+document.getElementById('today-date').textContent =
+  new Date().toLocaleDateString('zh-CN', {month:'long', day:'numeric', weekday:'long'});
+initStudy();
+updateSpeakToggle();
+</script>
+</body>
+</html>

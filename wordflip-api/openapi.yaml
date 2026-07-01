@@ -1,0 +1,1596 @@
+openapi: 3.0.3
+info:
+  title: WordFlip API
+  version: 1.0.0
+  description: |
+    WordFlip 单词卡片学习应用 REST API（MVP）。
+
+    **业务文档：** [requirements.md](../docs/wordflip/requirements.md) · [api-modules.md](../docs/wordflip/api-modules.md)
+
+    **核心规则：**
+    - 掌握度三态（unlearned/fuzzy/unknown）**仅**经测验 `POST /quiz/sessions/{id}/answer` 变更
+    - 词书 `PUT /settings` 触发**增量追加分组**，不重建已有分组
+    - 单词唯一键 `wordKey` = `en.trim().toLowerCase()`
+    - SRS 间隔（天）：`INTERVALS = [1, 2, 4, 7, 15, 30]`，stage 0..5；答对后 `nextReviewAt = 用户时区当日结束 + INTERVALS[newStage]` 天
+    - **时区：** 服务端存 UTC；「当日」由 `X-Timezone` 请求头（缺省 `Asia/Shanghai`）或用户 profile 决定
+    - **已掌握统计：** `stage >= 5` 且 `DATEDIFF(next_review_at, today) >= 30`（REQ-EBBING-7）
+    - **学习完成度：** `round(masteredCount / 已入组总词数 × 100)`，已入组总词数为 0 时返回 0
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+tags:
+  - name: Auth
+    description: 注册、登录、Token
+  - name: Settings
+    description: 词书勾选、分组大小、用户偏好
+  - name: Books
+    description: 词书列表与导入
+  - name: Words
+    description: 单词池（未入组）
+  - name: Groups
+    description: 学习分组
+  - name: Study
+    description: 卡片学习
+  - name: Today
+    description: 今日首页
+  - name: Quiz
+    description: 默写测验（掌握度写入口）
+  - name: Images
+    description: 卡拍图片
+  - name: Stains
+    description: 卡片污渍
+  - name: Stats
+    description: 统计与成就
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: 注册
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 注册成功并登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: 账号已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: 账号或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: 刷新 Access Token
+      description: 每次刷新签发新 refreshToken，旧 refreshToken 从 Redis 吊销。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 登出
+      description: 提供 refreshToken 时仅吊销该设备会话；省略时吊销该用户全部 refresh token。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '204':
+          description: 已登出
+
+  /settings:
+    get:
+      tags: [Settings]
+      summary: 获取用户设置与词书汇总
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettingsResponse'
+    put:
+      tags: [Settings]
+      summary: 保存词书勾选与分组大小（触发增量追加分组）
+      description: |
+        持久化 `bookIds` 与 `groupSize` 后调用 `GroupService.appendGroupsForNewWords`。
+        仅对尚未入组的 wordKey 追加新 groups；已有分组与学习数据不变。
+        变更 `groupSize` 仅影响**后续** append 的新 auto 组，不拆分/合并已有 groups。
+        相同 body 重复调用幂等；delta 为空时 `appendedGroups = { count: 0, groups: [] }`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveBooksSettingsRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaveBooksSettingsResponse'
+
+  /settings/preferences:
+    patch:
+      tags: [Settings]
+      summary: 更新用户偏好（不触发分组追加）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferencesPatchRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSettingsResponse'
+
+  /books:
+    get:
+      tags: [Books]
+      summary: 词书列表
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookListResponse'
+
+  /books/import/preview:
+    post:
+      tags: [Books]
+      summary: 导入预览（解析文件）
+      description: |
+        支持 JSON / CSV / TXT（REQ-BOOK-6）。服务端解析后暂存结果并返回 `previewToken`（TTL 15 分钟，confirm 后作废）。
+        同书内重复 `en` 去重；无效行跳过。单文件上限 5MB。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookImportPreviewResponse'
+        '413':
+          description: 文件过大
+        '422':
+          description: 解析失败或无有效单词
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: 导入频率超限
+
+  /books/import:
+    post:
+      tags: [Books]
+      summary: 确认导入词书
+      description: |
+        使用 preview 阶段返回的 token 确认入库。成功后自动勾选该书（`selected=true`），并清除 `user_book_selection` 中对该书的旧勾选冲突。
+        不自动追加分组，需用户再 `PUT /settings` 触发 append。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookImportConfirmRequest'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookImportConfirmResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: previewToken 无效
+        '410':
+          description: previewToken 已过期
+        '409':
+          description: 同名 imported 词书冲突
+        '429':
+          description: 导入频率超限
+
+  /books/{bookId}:
+    delete:
+      tags: [Books]
+      summary: 删除导入词书
+      description: 仅 `source=imported` 且归属当前用户。删除后从用户勾选列表移除；已入组单词保留。
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '204':
+          description: 已删除
+        '403':
+          description: 内置词书不可删
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /words/unassigned:
+    get:
+      tags: [Words]
+      summary: 未入组单词池
+      description: |
+        已勾选词书合并去重后，不在任何 group_words 中的词。用于手动添加分组（REQ-BOOK-16）。
+        `all=true` 时返回全量（上限 5000，不分页）；否则分页，默认 size=20。
+      parameters:
+        - name: all
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: q
+          in: query
+          description: 按 en/cn 前缀搜索（可选）
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnassignedWordsResponse'
+
+  /groups:
+    get:
+      tags: [Groups]
+      summary: 分组列表
+      parameters:
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [auto, custom]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, name]
+            default: createdAt
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupListResponse'
+
+  /groups/custom:
+    post:
+      tags: [Groups]
+      summary: 创建自定义分组
+      description: |
+        `wordKeys` 须来自已勾选词书的**未入组**词池（`GET /words/unassigned`）。
+        一词一组：`UNIQUE(user_id, word_key)`；已入组 key 返回 409。
+        服务端对重复 wordKey 去重；空数组或全部非法返回 400。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomGroupRequest'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupDetail'
+        '409':
+          description: wordKey 已入组或非法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /groups/{groupId}:
+    get:
+      tags: [Groups]
+      summary: 分组详情
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /groups/{groupId}/words:
+    get:
+      tags: [Groups]
+      summary: 分组单词列表（只读掌握度）
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupWordsResponse'
+
+  /groups/{groupId}/stains/batch:
+    post:
+      tags: [Stains]
+      summary: 一键为分组内所有词生成污渍
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StainBatchRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StainBatchResponse'
+
+  /today:
+    get:
+      tags: [Today]
+      summary: 今日仪表盘
+      description: |
+        任务计数（REQ-TODAY-9~11）：
+        - `tasks.newWords.count`：已入组、`level=unlearned` 且 `hasQuizHistory=false`
+        - `tasks.dueReview.count` / `stats.dueReviewCount`：`nextReviewAt <= 用户当日`（排序 unknown > fuzzy > unlearned）
+        - `tasks.quiz.count`：默写题目池大小（到期复习 ∪ fuzzy/unknown，已入组词）
+        - `stats.masteredCount`：`stage>=5` 且 `DATEDIFF(next_review_at,today)>=30`
+        - `stats.completionPercent`：`round(masteredCount / 已入组总词数 × 100)`
+      parameters:
+        - name: X-Timezone
+          in: header
+          schema:
+            type: string
+            example: Asia/Shanghai
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TodayDashboard'
+
+  /study/groups/{groupId}:
+    get:
+      tags: [Study]
+      summary: 学习页卡片数据
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudyGroupPayload'
+
+  /study/sessions:
+    post:
+      tags: [Study]
+      summary: 上报学习 session 结束
+      description: 用于 study_logs、热力图与打卡；翻转浏览本身不改变掌握度。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudySessionReportRequest'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudySessionReportResponse'
+
+  /quiz/sessions:
+    post:
+      tags: [Quiz]
+      summary: 创建测验会话
+      description: |
+        每次进入测验页必须新建 session（REQ-NAV-6、REQ-QUIZ-2）。
+        出题范围：当前用户 **已入组**（group_words）的 wordKey。
+        出题池 = `nextReviewAt <= 当日` 的词 ∪ `level` 为 fuzzy/unknown 的词（REQ-TODAY-11）。
+        `source` 行为：`today` 全池抽题；`study` 默认按 `groupId` 过滤；`retry` 重建 session 重新抽题（REQ-QUIZ-10）。
+        实际出题数 = `min(|pool|, questionLimit)`，默认 limit=10。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuizSessionRequest'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizSessionCreated'
+        '422':
+          description: 无题可出
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /quiz/sessions/{sessionId}/answer:
+    post:
+      tags: [Quiz]
+      summary: 提交单题答案（掌握度唯一写入口）
+      description: |
+        **判题：** `answer.trim()` 与标准 `en` 比较，`equalsIgnoreCase`。
+        **掌握度唯一写入口** — 调用 `ReviewService.applyQuizResult`：
+
+        | 条件 | level | stage | nextReviewAt |
+        |------|-------|-------|--------------|
+        | 答对 | unlearned | min(stage+1, 5) | 用户时区当日结束 + INTERVALS[newStage] 天 |
+        | 答错（非连续第2次） | fuzzy | max(stage-1, 0) | 当日结束 + 1 天 |
+        | 连续第2次答错* | unknown | 0 | 当日结束（优先复习队列） |
+
+        *连续判定：写入本条答案**之前**，该 wordKey 最近一条 `quiz_answers` 为 `correct=false`。
+        `hasQuizHistory`：首次对该 wordKey 提交测验答案后恒为 true（无论对错）。
+        session `completed` 时服务端自动 upsert `study_logs`。
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitAnswerRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerResult'
+        '409':
+          description: 会话已完成或题号重复
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /quiz/sessions/{sessionId}/result:
+    get:
+      tags: [Quiz]
+      summary: 测验结果页
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuizResult'
+
+  /words/{wordKey}/image:
+    get:
+      tags: [Images]
+      summary: 获取卡片图片
+      parameters:
+        - $ref: '#/components/parameters/WordKey'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WordImageResponse'
+        '404':
+          description: 无图片
+    post:
+      tags: [Images]
+      summary: 上传或替换卡片图片
+      parameters:
+        - $ref: '#/components/parameters/WordKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, transform]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                transform:
+                  type: string
+                  description: ImageTransform JSON 字符串
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WordImageResponse'
+    patch:
+      tags: [Images]
+      summary: 仅更新图片 transform（不重传文件）
+      parameters:
+        - $ref: '#/components/parameters/WordKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageTransform'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WordImageResponse'
+    delete:
+      tags: [Images]
+      summary: 清除卡片图片
+      parameters:
+        - $ref: '#/components/parameters/WordKey'
+      responses:
+        '204':
+          description: 已清除
+
+  /words/{wordKey}/stain:
+    get:
+      tags: [Stains]
+      summary: 获取污渍配置
+      parameters:
+        - $ref: '#/components/parameters/WordKey'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WordStainResponse'
+    put:
+      tags: [Stains]
+      summary: 更新污渍
+      parameters:
+        - $ref: '#/components/parameters/WordKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StainUpdateRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WordStainResponse'
+
+  /stats/summary:
+    get:
+      tags: [Stats]
+      summary: 统计四宫格
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsSummary'
+
+  /stats/heatmap:
+    get:
+      tags: [Stats]
+      summary: 近 N 个月学习热力图
+      parameters:
+        - name: months
+          in: query
+          schema:
+            type: integer
+            default: 3
+            minimum: 1
+            maximum: 12
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsHeatmap'
+
+  /stats/achievements:
+    get:
+      tags: [Stats]
+      summary: 成就列表
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AchievementsResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    BookId:
+      name: bookId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    WordKey:
+      name: wordKey
+      in: path
+      required: true
+      schema:
+        type: string
+      description: en.trim().toLowerCase()，需 URL 编码
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Size:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    ValidationError:
+      description: 参数校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: 未认证或 Token 无效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    PageMeta:
+      type: object
+      required: [page, size, totalElements, totalPages]
+      properties:
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+
+    MasteryLevel:
+      type: string
+      enum: [unlearned, fuzzy, unknown]
+      description: |
+        unlearned — 未测验新词，或测验答对后在 SRS 在档（见 hasQuizHistory）
+        fuzzy — 最近一次测验答错（非连续第 2 次）
+        unknown — 同一 wordKey 跨 session 连续 2 次测验答错
+
+    MasterySnapshot:
+      type: object
+      required: [level, hasQuizHistory]
+      properties:
+        level:
+          $ref: '#/components/schemas/MasteryLevel'
+        stage:
+          type: integer
+          minimum: 0
+          maximum: 5
+          description: 无 review_plans 记录时省略或为 0
+        nextReviewAt:
+          type: string
+          format: date
+          nullable: true
+          description: 无计划时为 null
+        hasQuizHistory:
+          type: boolean
+          description: 首次对该 wordKey 提交测验答案后为 true；用于区分「新词未测验」与「答对后在 SRS 在档的 unlearned」
+
+    WordSummary:
+      type: object
+      required: [wordKey, en, cn]
+      properties:
+        wordKey:
+          type: string
+        en:
+          type: string
+        cn:
+          type: string
+        pos:
+          type: string
+          nullable: true
+        ph:
+          type: string
+          nullable: true
+
+    ImageTransform:
+      type: object
+      properties:
+        rotate:
+          type: number
+          default: 0
+        scale:
+          type: number
+          minimum: 0.2
+          maximum: 3
+          default: 1
+        offsetX:
+          type: number
+          default: 0
+        offsetY:
+          type: number
+          default: 0
+        showCn:
+          type: boolean
+          default: true
+        filters:
+          type: object
+          properties:
+            brightness:
+              type: number
+            contrast:
+              type: number
+            saturate:
+              type: number
+            grayscale:
+              type: number
+            sepia:
+              type: number
+
+    StainConfig:
+      type: object
+      properties:
+        seed:
+          type: integer
+          format: int64
+        mode:
+          type: string
+          enum: [random, single, multi]
+        density:
+          type: integer
+        aging:
+          type: integer
+        stains:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [coffee, ink, highlight, crayon, random-line]
+              x:
+                type: number
+              y:
+                type: number
+              size:
+                type: number
+              rotation:
+                type: number
+              intensity:
+                type: number
+              seed:
+                type: integer
+              layerOrder:
+                type: integer
+
+    WordCard:
+      allOf:
+        - $ref: '#/components/schemas/WordSummary'
+        - type: object
+          properties:
+            mastery:
+              $ref: '#/components/schemas/MasterySnapshot'
+            image:
+              $ref: '#/components/schemas/WordImagePayload'
+            stain:
+              $ref: '#/components/schemas/WordStainPayload'
+            detail:
+              type: object
+              nullable: true
+              properties:
+                meaning:
+                  type: string
+                examples:
+                  type: array
+                  items:
+                    type: string
+                etymology:
+                  type: string
+
+    WordImagePayload:
+      type: object
+      properties:
+        hasImage:
+          type: boolean
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+        transform:
+          $ref: '#/components/schemas/ImageTransform'
+
+    WordStainPayload:
+      type: object
+      properties:
+        hidden:
+          type: boolean
+        config:
+          $ref: '#/components/schemas/StainConfig'
+          nullable: true
+
+    RegisterRequest:
+      oneOf:
+        - type: object
+          required: [email, password]
+          properties:
+            email:
+              type: string
+              format: email
+            password:
+              type: string
+              minLength: 8
+        - type: object
+          required: [phone, password]
+          properties:
+            phone:
+              type: string
+              pattern: '^\+[1-9]\d{1,14}$'
+              description: E.164 格式
+            password:
+              type: string
+              minLength: 8
+      description: 邮箱或手机号二选一注册
+
+    LoginRequest:
+      type: object
+      required: [account, password]
+      properties:
+        account:
+          type: string
+          description: 邮箱或手机号，自动识别
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Access Token 秒数
+        user:
+          type: object
+          required: [id]
+          properties:
+            id:
+              type: integer
+              format: int64
+            email:
+              type: string
+              nullable: true
+            phone:
+              type: string
+              nullable: true
+
+    GroupSize:
+      type: integer
+      enum: [10, 20, 30, 50]
+
+    ThemeMode:
+      type: string
+      enum: [system, light, dark]
+
+    UserSettingsResponse:
+      type: object
+      required: [bookIds, groupSize, autoSpeak, themeMode, summary]
+      properties:
+        bookIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        groupSize:
+          $ref: '#/components/schemas/GroupSize'
+        autoSpeak:
+          type: boolean
+        themeMode:
+          $ref: '#/components/schemas/ThemeMode'
+        summary:
+          $ref: '#/components/schemas/BooksSummary'
+
+    SaveBooksSettingsRequest:
+      type: object
+      required: [bookIds, groupSize]
+      properties:
+        bookIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        groupSize:
+          $ref: '#/components/schemas/GroupSize'
+
+    SaveBooksSettingsResponse:
+      allOf:
+        - $ref: '#/components/schemas/UserSettingsResponse'
+        - type: object
+          properties:
+            appendedGroups:
+              type: object
+              properties:
+                count:
+                  type: integer
+                groups:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      wordCount:
+                        type: integer
+
+    PreferencesPatchRequest:
+      type: object
+      minProperties: 1
+      properties:
+        autoSpeak:
+          type: boolean
+        themeMode:
+          $ref: '#/components/schemas/ThemeMode'
+
+    BooksSummary:
+      type: object
+      required: [distinctSelectedCount, estimatedGroupCount, unassignedCount]
+      properties:
+        distinctSelectedCount:
+          type: integer
+          description: 已勾选词书合并去重后的 distinct wordKey 数
+        estimatedGroupCount:
+          type: integer
+          description: ceil(distinctSelectedCount / groupSize)；distinct=0 时为 0
+        unassignedCount:
+          type: integer
+          description: 已勾选词书中尚未入组的 wordKey 数
+
+    BookListResponse:
+      type: object
+      properties:
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookItem'
+
+    BookItem:
+      type: object
+      required: [id, name, source, wordCount, selected, canDelete]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        source:
+          type: string
+          enum: [builtin, imported]
+        wordCount:
+          type: integer
+        declaredCount:
+          type: integer
+          nullable: true
+        selected:
+          type: boolean
+        canDelete:
+          type: boolean
+
+    BookImportPreviewResponse:
+      type: object
+      required: [previewToken, suggestedName, totalCount, previewWords]
+      properties:
+        previewToken:
+          type: string
+          format: uuid
+          description: 服务端暂存解析结果，TTL 15 分钟
+        suggestedName:
+          type: string
+        totalCount:
+          type: integer
+          description: 去重后有效词数
+        deduplicatedCount:
+          type: integer
+          description: 同文件内被去重的重复行数
+        previewWords:
+          type: array
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/WordSummary'
+
+    BookImportConfirmRequest:
+      type: object
+      required: [previewToken, name]
+      properties:
+        previewToken:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+
+    BookImportConfirmResponse:
+      type: object
+      required: [book]
+      properties:
+        book:
+          $ref: '#/components/schemas/BookItem'
+          description: confirm 后 selected=true
+
+    UnassignedWordsResponse:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            words:
+              type: array
+              items:
+                $ref: '#/components/schemas/WordSummary'
+
+    GroupStats:
+      type: object
+      properties:
+        unlearned:
+          type: integer
+        fuzzy:
+          type: integer
+        unknown:
+          type: integer
+        total:
+          type: integer
+
+    GroupDetail:
+      type: object
+      required: [id, name, source, status, stats, progress]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        source:
+          type: string
+          enum: [auto, custom]
+        status:
+          type: string
+          enum: [not_started, learning, completed]
+        createdAt:
+          type: string
+          format: date-time
+        stats:
+          $ref: '#/components/schemas/GroupStats'
+        progress:
+          type: number
+          format: float
+          description: 测验已通过占比 = count(level=unlearned && hasQuizHistory) / total（REQ-GROUP-2）
+
+    GroupListResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupDetail'
+
+    GroupWordsResponse:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            words:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/WordSummary'
+                  - type: object
+                    properties:
+                      mastery:
+                        $ref: '#/components/schemas/MasterySnapshot'
+
+    CreateCustomGroupRequest:
+      type: object
+      required: [wordKeys]
+      properties:
+        wordKeys:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: string
+        name:
+          type: string
+          maxLength: 64
+          description: 可选；默认「自定义分组 {序号}」
+
+    TodayTask:
+      type: object
+      required: [count, label]
+      properties:
+        count:
+          type: integer
+          description: 待办规模（新词/到期/测验池大小）
+        label:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              groupId:
+                type: integer
+              groupName:
+                type: string
+              count:
+                type: integer
+
+    TodayDashboard:
+      type: object
+      required: [date, streakDays, stats, tasks]
+      properties:
+        date:
+          type: string
+          format: date
+        streakDays:
+          type: integer
+        stats:
+          type: object
+          required: [masteredCount, dueReviewCount, completionPercent]
+          properties:
+        masteredCount:
+          type: integer
+          description: stage>=5 且 DATEDIFF(next_review_at,today)>=30（REQ-EBBING-7）
+            dueReviewCount:
+              type: integer
+              description: 与 tasks.dueReview.count 一致
+            completionPercent:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: round(masteredCount / 已入组总词数 × 100)
+        tasks:
+          type: object
+          properties:
+            newWords:
+              $ref: '#/components/schemas/TodayTask'
+            dueReview:
+              $ref: '#/components/schemas/TodayTask'
+            quiz:
+              $ref: '#/components/schemas/TodayTask'
+        recommendedStudy:
+          type: object
+          properties:
+            groupId:
+              type: integer
+            groupName:
+              type: string
+            wordCount:
+              type: integer
+            reason:
+              type: string
+              enum: [new_words, due_review, mixed]
+
+    StudyGroupPayload:
+      type: object
+      properties:
+        group:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            source:
+              type: string
+        words:
+          type: array
+          items:
+            $ref: '#/components/schemas/WordCard'
+
+    StudySessionReportRequest:
+      type: object
+      required: [groupId]
+      properties:
+        groupId:
+          type: integer
+        durationSec:
+          type: integer
+        wordsViewed:
+          type: integer
+        completedAt:
+          type: string
+          format: date-time
+
+    StudySessionReportResponse:
+      type: object
+      properties:
+        logDate:
+          type: string
+          format: date
+        streakDays:
+          type: integer
+
+    CreateQuizSessionRequest:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [today, study, retry]
+          default: today
+        groupId:
+          type: integer
+          format: int64
+          nullable: true
+        questionLimit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 10
+
+    QuizQuestion:
+      type: object
+      properties:
+        questionIndex:
+          type: integer
+        wordKey:
+          type: string
+        prompt:
+          type: object
+          properties:
+            cn:
+              type: string
+            pos:
+              type: string
+            ph:
+              type: string
+
+    QuizSessionCreated:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [in_progress]
+        totalQuestions:
+          type: integer
+        currentIndex:
+          type: integer
+        score:
+          type: integer
+        question:
+          $ref: '#/components/schemas/QuizQuestion'
+
+    SubmitAnswerRequest:
+      type: object
+      required: [questionIndex, answer]
+      properties:
+        questionIndex:
+          type: integer
+        answer:
+          type: string
+
+    AnswerResult:
+      type: object
+      required: [correct, feedback, session]
+      properties:
+        correct:
+          type: boolean
+        expectedEn:
+          type: string
+          nullable: true
+          description: 答错时返回标准答案
+        feedback:
+          type: string
+          enum: [correct, wrong]
+        masteryUpdate:
+          type: object
+          required: [wordKey, before, after]
+          properties:
+            wordKey:
+              type: string
+            before:
+              $ref: '#/components/schemas/MasterySnapshot'
+            after:
+              $ref: '#/components/schemas/MasterySnapshot'
+        session:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [in_progress, completed]
+            score:
+              type: integer
+            currentIndex:
+              type: integer
+            totalQuestions:
+              type: integer
+            nextQuestion:
+              $ref: '#/components/schemas/QuizQuestion'
+              nullable: true
+
+    QuizResult:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        score:
+          type: integer
+        total:
+          type: integer
+        correctCount:
+          type: integer
+        wrongCount:
+          type: integer
+        accuracy:
+          type: number
+        rating:
+          type: string
+          enum: [excellent, good, keep_going]
+          description: excellent≥90%, good≥70%, keep_going<70%（REQ-QUIZ-9）
+        wrongWords:
+          type: array
+          items:
+            type: object
+            properties:
+              wordKey:
+                type: string
+              en:
+                type: string
+              cn:
+                type: string
+              userAnswer:
+                type: string
+
+    WordImageResponse:
+      type: object
+      properties:
+        wordKey:
+          type: string
+        hasImage:
+          type: boolean
+        imageUrl:
+          type: string
+        storageKey:
+          type: string
+        transform:
+          $ref: '#/components/schemas/ImageTransform'
+        updatedAt:
+          type: string
+          format: date-time
+
+    WordStainResponse:
+      type: object
+      properties:
+        wordKey:
+          type: string
+        hidden:
+          type: boolean
+        config:
+          $ref: '#/components/schemas/StainConfig'
+          nullable: true
+
+    StainUpdateRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [regenerate, set_hidden, set_visible, replace]
+        typeFilter:
+          type: array
+          items:
+            type: string
+            enum: [coffee, ink, highlight, crayon, random-line]
+          nullable: true
+        config:
+          $ref: '#/components/schemas/StainConfig'
+
+    StainBatchRequest:
+      type: object
+      properties:
+        typeFilter:
+          type: array
+          items:
+            type: string
+          nullable: true
+
+    StainBatchResponse:
+      type: object
+      properties:
+        groupId:
+          type: integer
+        updatedCount:
+          type: integer
+
+    StatsSummary:
+      type: object
+      properties:
+        masteredCount:
+          type: integer
+          description: stage>=5 且 DATEDIFF(next_review_at,today)>=30
+        streakDays:
+          type: integer
+        quizAccuracy:
+          type: number
+          description: 近 30 天测验正确率
+        totalStudyDays:
+          type: integer
+
+    StatsHeatmap:
+      type: object
+      properties:
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        days:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              level:
+                type: integer
+                minimum: 0
+                maximum: 3
+
+    AchievementsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              description:
+                type: string
+              unlocked:
+                type: boolean
+              unlockedAt:
+                type: string
+                format: date-time
+                nullable: true

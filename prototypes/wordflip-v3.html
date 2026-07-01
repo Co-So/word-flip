@@ -1,0 +1,1943 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>WordFlip</title>
+<style>
+/* === RESET === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif; background: #111; }
+
+/* === PHONE SHELL === */
+#shell {
+  width: 390px; max-width: 390px;
+  height: min(844px, calc(100vh - 40px));
+  margin: 20px auto;
+  background: #F7F6F2;
+  border-radius: 44px;
+  box-shadow: 0 0 0 10px #1a1a1a, 0 30px 80px rgba(0,0,0,0.6);
+  position: relative;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+/* notch */
+#shell::before {
+  content: '';
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 120px; height: 34px;
+  background: #1a1a1a;
+  border-radius: 0 0 20px 20px;
+  z-index: 1000;
+}
+
+@media (max-width: 449px) {
+  html, body { background: #F7F6F2; }
+  #shell {
+    width: 100vw; height: 100vh;
+    margin: 0 auto;
+    border-radius: 0;
+    box-shadow: none;
+    max-width: none;
+  }
+  #shell::before { display: none; }
+  .hdr { padding-top: 8px !important; }
+  .cards-grid { padding: 4px 12px !important; }
+}
+
+/* === TOKENS === */
+:root {
+  --bg: #F7F6F2;
+  --surface: #FFFFFF;
+  --surface2: #EFEDE7;
+  --border: rgba(0,0,0,0.07);
+  --text: #111111;
+  --text2: #666666;
+  --text3: #AAAAAA;
+  --ink: #1A1A2E;
+  --accent: #2D5BE3;
+  --accent2: #6B8FF8;
+  --accent-bg: #EEF1FD;
+  --green: #0B7B5C;
+  --green-bg: #E0F5EE;
+  --amber: #C47D00;
+  --amber-bg: #FEF3DC;
+  --red: #C0392B;
+  --red-bg: #FDECEA;
+  --r: 16px;
+  --rcard: 20px;
+  --sh: 0 2px 10px rgba(0,0,0,0.06);
+  --sh2: 0 6px 24px rgba(0,0,0,0.1);
+}
+
+/* === APP LAYOUT === */
+#app { flex: 1; position: relative; overflow: hidden; }
+.page {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  transition: transform 0.32s cubic-bezier(0.4,0,0.2,1), opacity 0.32s ease;
+}
+.page.hidden   { transform: translateX(100%); opacity: 0; pointer-events: none; }
+.page.behind   { transform: translateX(-28%); opacity: 0; pointer-events: none; }
+
+/* === BOTTOM NAV === */
+.bnav {
+  height: 60px; flex-shrink: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center;
+}
+.bn {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; gap: 3px;
+  cursor: pointer; padding: 6px 0;
+  transition: opacity 0.15s;
+}
+.bn:active { opacity: 0.6; }
+.bn-ic { font-size: 22px; line-height: 1; }
+.bn-lb { font-size: 10px; color: var(--text3); font-weight: 500; }
+.bn.on .bn-lb { color: var(--accent); font-weight: 700; }
+.bn.on .bn-ic { filter: none; }
+
+/* === HEADER === */
+.hdr {
+  height: 54px; flex-shrink: 0;
+  display: flex; align-items: center;
+  padding: 0 16px; gap: 10px;
+  background: var(--bg);
+  padding-top: 8px;
+}
+.hdr-title { flex: 1; font-size: 17px; font-weight: 700; text-align: center; letter-spacing: -0.3px; }
+.hbtn {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--surface); border: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; cursor: pointer; box-shadow: var(--sh);
+  transition: transform 0.12s;
+}
+.hbtn:active { transform: scale(0.9); }
+
+/* === SCROLL AREA === */
+.sc { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+.sc::-webkit-scrollbar { display: none; }
+
+/* === COMMON COMPONENTS === */
+.card {
+  background: var(--surface);
+  border-radius: var(--rcard);
+  box-shadow: var(--sh);
+  overflow: hidden;
+}
+.row {
+  display: flex; align-items: center;
+  padding: 14px 16px; gap: 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 0.12s;
+}
+.row:last-child { border-bottom: none; }
+.row:active { background: var(--surface2); }
+.row-ic {
+  width: 38px; height: 38px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 19px; flex-shrink: 0;
+}
+.row-info { flex: 1; }
+.row-label { font-size: 15px; font-weight: 600; }
+.row-sub { font-size: 12px; color: var(--text2); margin-top: 1px; }
+.row-right { font-size: 14px; color: var(--text3); }
+
+.toggle {
+  width: 48px; height: 28px; border-radius: 14px;
+  background: var(--surface2); border: none; cursor: pointer;
+  position: relative; flex-shrink: 0;
+  transition: background 0.22s;
+}
+.toggle::after {
+  content: ''; position: absolute;
+  width: 22px; height: 22px;
+  background: #fff; border-radius: 50%;
+  top: 3px; left: 3px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  transition: transform 0.22s cubic-bezier(0.34,1.4,0.64,1);
+}
+.toggle.on { background: var(--accent); }
+.toggle.on::after { transform: translateX(20px); }
+
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 4px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+}
+.pill.blue { background: var(--accent-bg); color: var(--accent); }
+.pill.green { background: var(--green-bg); color: var(--green); }
+.pill.amber { background: var(--amber-bg); color: var(--amber); }
+.pill.gray  { background: var(--surface2); color: var(--text3); }
+
+.btn-primary {
+  width: 100%; height: 50px; border-radius: 14px;
+  background: var(--accent); color: #fff;
+  border: none; font-size: 16px; font-weight: 700;
+  cursor: pointer; letter-spacing: 0.2px;
+  transition: transform 0.12s, opacity 0.12s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-primary:active { transform: scale(0.97); opacity: 0.9; }
+
+.btn-ghost {
+  width: 100%; height: 46px; border-radius: 14px;
+  background: transparent; color: var(--text2);
+  border: 1.5px solid var(--border);
+  font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: background 0.12s;
+  display: flex; align-items: center; justify-content: center;
+}
+.btn-ghost:active { background: var(--surface2); }
+
+.sec-label {
+  font-size: 11px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 16px 16px 8px;
+}
+
+/* === TOAST === */
+#toast {
+  position: absolute; bottom: 76px; left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: rgba(20,20,20,0.88);
+  color: #fff; padding: 9px 18px;
+  border-radius: 20px; font-size: 13px; font-weight: 500;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.22s, transform 0.22s;
+  white-space: nowrap; z-index: 999; backdrop-filter: blur(8px);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ====================================================
+   PAGE: TODAY
+==================================================== */
+#page-today .sc { padding-top: 6px; }
+
+.today-top {
+  padding: 12px 16px 0;
+  display: flex; justify-content: space-between; align-items: flex-start;
+}
+.today-greeting { font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.5px; }
+.today-date { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.streak-badge {
+  background: #FFF3E0; border-radius: 12px;
+  padding: 6px 10px; text-align: center;
+}
+.streak-num { font-size: 20px; font-weight: 800; color: #E65100; }
+.streak-lbl { font-size: 10px; color: #BF360C; font-weight: 600; }
+
+.today-big-btn {
+  margin: 14px 16px 0;
+  height: 76px; border-radius: 20px;
+  background: var(--accent);
+  border: none; cursor: pointer;
+  display: flex; align-items: center; padding: 0 20px; gap: 14px;
+  box-shadow: 0 6px 20px rgba(45,91,227,0.3);
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.today-big-btn:active { transform: scale(0.98); box-shadow: 0 2px 8px rgba(45,91,227,0.2); }
+.tbtn-icon { font-size: 32px; }
+.tbtn-text { flex: 1; text-align: left; }
+.tbtn-title { font-size: 18px; font-weight: 800; color: #fff; }
+.tbtn-sub { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 1px; }
+.tbtn-arr { font-size: 22px; color: rgba(255,255,255,0.6); }
+
+.today-stats {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px; margin: 12px 16px 0;
+}
+.ts-card {
+  background: var(--surface); border-radius: var(--r);
+  padding: 12px 10px; text-align: center; box-shadow: var(--sh);
+}
+.ts-num { font-size: 22px; font-weight: 800; color: var(--ink); }
+.ts-lbl { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+.today-tasks { margin: 12px 16px 0; display: flex; flex-direction: column; gap: 8px; }
+.task-row {
+  background: var(--surface); border-radius: var(--r);
+  padding: 12px 14px; display: flex; align-items: center; gap: 12px;
+  box-shadow: var(--sh); cursor: pointer; transition: transform 0.12s;
+}
+.task-row:active { transform: scale(0.98); }
+.task-ic { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.task-info { flex: 1; }
+.task-name { font-size: 14px; font-weight: 700; }
+.task-desc { font-size: 11px; color: var(--text2); margin-top: 1px; }
+.task-n { font-size: 20px; font-weight: 800; }
+
+/* ====================================================
+   PAGE: BOOKS (设置风格)
+==================================================== */
+.books-saved-info {
+  margin: 0 16px 4px;
+  background: var(--accent-bg);
+  border-radius: 12px; padding: 10px 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.bsi-text { flex: 1; font-size: 13px; color: var(--accent); font-weight: 600; }
+
+/* ====================================================
+   PAGE: STUDY
+==================================================== */
+.study-bar {
+  padding: 8px 12px; display: flex; gap: 8px;
+}
+.sbtn {
+  flex: 1; height: 36px; border-radius: 10px;
+  background: var(--surface); border: 1.5px solid var(--border);
+  font-size: 13px; font-weight: 700; color: var(--text2);
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
+  transition: all 0.15s;
+}
+.sbtn:active { background: var(--surface2); transform: scale(0.95); }
+.sbtn.accent { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+.cards-grid {
+  display: grid;
+  gap: 10px; padding: 4px 12px 16px;
+  position: relative;
+}
+.cards-grid.cols-1 { grid-template-columns: 1fr; }
+.cards-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.cards-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.cards-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+/* FLIP CARD */
+.fc-wrap {
+  aspect-ratio: 3/4.2;
+  perspective: 900px;
+  cursor: pointer;
+  position: relative;
+}
+.fc-inner {
+  width: 100%; height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.34,1.05,0.64,1);
+  will-change: transform;
+  border-radius: var(--rcard);
+}
+.fc-wrap.flipped .fc-inner { transform: rotateY(180deg); }
+.fc-front, .fc-back {
+  position: absolute; inset: 0;
+  border-radius: var(--rcard);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 10px;
+  box-shadow: var(--sh2);
+}
+.fc-front { background: var(--surface); }
+.fc-back  { background: var(--ink); transform: rotateY(180deg); }
+.fc-hint  { font-size: 10px; color: var(--text3); position: absolute; bottom: 8px; }
+.fc-back .fc-hint { color: rgba(255,255,255,0.3); }
+.fc-word  { font-size: 19px; font-weight: 800; color: var(--ink); text-align: center; line-height: 1.2; }
+.fc-pos   { font-size: 10px; color: var(--text3); margin-top: 4px; background: var(--surface2); padding: 2px 8px; border-radius: 20px; }
+.fc-cn    { font-size: 15px; font-weight: 700; color: #fff; text-align: center; line-height: 1.4; }
+.fc-ph    { font-size: 10px; color: rgba(255,255,255,0.5); margin-top: 5px; font-family: 'Courier New', monospace; }
+
+/* shuffle animation */
+@keyframes shuffle-out {
+  0%   { transform: translate(0,0) rotate(0deg); opacity:1; }
+  40%  { transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(0.95); opacity:0.8; }
+  100% { transform: translate(var(--tx2), var(--ty2)) rotate(var(--tr2)) scale(0.9); opacity:0; }
+}
+@keyframes shuffle-in {
+  0%   { transform: translate(0,0) rotate(0deg) scale(0.85); opacity:0; }
+  60%  { opacity:1; }
+  100% { transform: translate(0,0) rotate(0deg) scale(1); opacity:1; }
+}
+.fc-wrap.shuffling-out {
+  animation: shuffle-out 0.38s cubic-bezier(0.4,0,1,1) both;
+}
+.fc-wrap.shuffling-in {
+  animation: shuffle-in 0.4s cubic-bezier(0.2,0,0.3,1) both;
+}
+
+/* ====================================================
+   STAINS (memory marks on card front)
+==================================================== */
+.fc-stain {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.18;
+  mix-blend-mode: multiply;
+  z-index: 1;
+}
+/* coffee stain: brown radial blur */
+.stain-coffee {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, rgba(120,80,40,0.6) 0%, rgba(100,65,30,0.3) 45%, rgba(80,50,20,0.15) 70%, transparent 100%);
+  box-shadow: inset 0 0 10px rgba(90,55,20,0.2), 0 0 6px rgba(100,60,25,0.15);
+}
+/* ink blot: irregular dark blue shape */
+.stain-ink {
+  width: 36px; height: 36px;
+  border-radius: 50% 45% 55% 40% / 50% 55% 45% 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(20,30,80,0.7) 0%, rgba(15,25,60,0.4) 50%, rgba(10,20,40,0.2) 100%);
+  filter: blur(0.5px);
+}
+/* highlight: yellow semi-transparent bar */
+.stain-highlight {
+  width: 60px; height: 14px;
+  border-radius: 4px;
+  background: rgba(255, 220, 50, 0.45);
+  transform: rotate(-12deg);
+  box-shadow: 0 0 4px rgba(255,220,50,0.3);
+}
+/* fold corner: top-right curled corner effect */
+.stain-fold {
+  width: 0; height: 0;
+  border-style: solid;
+  border-width: 0 28px 28px 0;
+  border-color: transparent rgba(160,150,140,0.35) transparent transparent;
+  filter: drop-shadow(-1px 1px 2px rgba(0,0,0,0.1));
+}
+.stain-fold::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 0; height: 0;
+  border-style: solid;
+  border-width: 0 14px 14px 0;
+  border-color: transparent rgba(200,190,180,0.25) transparent transparent;
+}
+
+/* ====================================================
+   LONG PRESS & BOTTOM SHEET
+==================================================== */
+#sheet-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.35);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s ease;
+  z-index: 900;
+}
+#sheet-overlay.show { opacity: 1; pointer-events: auto; }
+
+#sheet-panel {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  padding: 20px 20px 28px;
+  transform: translateY(100%);
+  transition: transform 0.32s cubic-bezier(0.2,0,0.2,1);
+  z-index: 910;
+  max-height: 70%;
+  display: flex; flex-direction: column;
+}
+#sheet-panel.show { transform: translateY(0); }
+
+.sheet-handle {
+  width: 36px; height: 5px;
+  background: var(--surface2);
+  border-radius: 3px;
+  margin: 0 auto 14px;
+}
+.sheet-word {
+  font-size: 22px; font-weight: 800; color: var(--ink);
+  text-align: center; margin-bottom: 2px;
+}
+.sheet-ph {
+  font-size: 12px; color: var(--text3);
+  text-align: center; font-family: 'Courier New', monospace;
+  margin-bottom: 10px;
+}
+.sheet-pos {
+  display: inline-block;
+  font-size: 11px; color: var(--accent);
+  background: var(--accent-bg);
+  padding: 2px 10px; border-radius: 20px;
+  margin: 0 auto 12px;
+  font-weight: 700;
+}
+.sheet-block {
+  margin-bottom: 14px;
+}
+.sheet-label {
+  font-size: 11px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.sheet-text {
+  font-size: 14px; color: var(--text2); line-height: 1.5;
+}
+.sheet-examples {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sheet-ex {
+  font-size: 13px; color: var(--text);
+  background: var(--bg);
+  padding: 8px 10px; border-radius: 10px;
+  line-height: 1.4;
+}
+.sheet-actions {
+  display: flex; gap: 8px; margin-top: 6px;
+}
+.sheet-btn {
+  flex: 1; height: 44px; border-radius: 12px;
+  border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--text2);
+  font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: all 0.12s;
+}
+.sheet-btn:active { background: var(--surface2); transform: scale(0.97); }
+.sheet-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ====================================================
+   STUDY GUIDE OVERLAY
+==================================================== */
+#study-guide {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 920;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+#study-guide.show { opacity: 1; pointer-events: auto; }
+.guide-box {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 28px 24px;
+  width: 280px;
+  text-align: center;
+  box-shadow: var(--sh2);
+  transform: scale(0.92);
+  transition: transform 0.3s cubic-bezier(0.34,1.4,0.64,1);
+}
+#study-guide.show .guide-box { transform: scale(1); }
+.guide-icon { font-size: 42px; margin-bottom: 10px; }
+.guide-text { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 18px; line-height: 1.4; }
+.guide-btn {
+  width: 100%; height: 44px; border-radius: 12px;
+  background: var(--accent); color: #fff;
+  border: none; font-size: 15px; font-weight: 700;
+  cursor: pointer;
+}
+
+/* ====================================================
+   PAGE: GROUPS
+==================================================== */
+.grp-item {
+  background: var(--surface); border-radius: var(--rcard);
+  margin: 0 16px 10px; padding: 14px 16px;
+  box-shadow: var(--sh); cursor: pointer; transition: transform 0.12s;
+}
+.grp-item:active { transform: scale(0.98); }
+.grp-hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.grp-title { font-size: 15px; font-weight: 700; }
+.grp-stats { display: flex; gap: 14px; margin-bottom: 10px; }
+.gs { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.gs-n { font-size: 18px; font-weight: 800; }
+.gs-l { font-size: 10px; color: var(--text3); }
+.grp-bar { height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+.grp-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.6s; }
+
+/* ====================================================
+   PAGE: GROUP DETAIL
+==================================================== */
+.wd-row {
+  background: var(--surface); border-radius: var(--r);
+  margin: 0 16px 8px; padding: 12px 14px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: var(--sh);
+}
+.wd-left { flex: 1; }
+.wd-en { font-size: 15px; font-weight: 700; }
+.wd-cn { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.wd-status { display: flex; gap: 6px; }
+.ws-btn {
+  padding: 5px 10px; border-radius: 8px;
+  border: 1.5px solid var(--border);
+  font-size: 12px; font-weight: 700;
+  background: var(--surface2); color: var(--text2);
+  cursor: pointer; transition: all 0.15s;
+}
+.ws-btn.ok  { background: var(--green-bg);  border-color: var(--green);  color: var(--green); }
+.ws-btn.fuz { background: var(--amber-bg);  border-color: var(--amber);  color: var(--amber); }
+
+/* ====================================================
+   PAGE: QUIZ
+==================================================== */
+#quiz-sc {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 16px;
+}
+.quiz-pg { height: 4px; background: var(--surface2); margin: 0 16px; border-radius: 2px; overflow: hidden; }
+.quiz-pg-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.35s; }
+.quiz-meta { display: flex; justify-content: space-between; padding: 6px 16px; font-size: 12px; color: var(--text3); }
+
+.quiz-card {
+  margin: 8px 16px;
+  background: var(--ink); border-radius: var(--rcard);
+  padding: 24px 20px; text-align: center;
+  box-shadow: var(--sh2);
+}
+.qc-lbl { font-size: 11px; color: rgba(255,255,255,0.45); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px; }
+.qc-cn  { font-size: 24px; font-weight: 800; color: #fff; line-height: 1.3; }
+.qc-pos { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+
+.quiz-input-area { margin: 10px 16px 0; }
+.quiz-input {
+  width: 100%; height: 52px; border-radius: 14px;
+  border: 2px solid var(--border);
+  background: var(--surface); font-size: 20px; font-weight: 700;
+  text-align: center; color: var(--ink);
+  outline: none; letter-spacing: 1px;
+  transition: border-color 0.2s;
+}
+.quiz-input:focus { border-color: var(--accent); }
+.quiz-input.correct { border-color: var(--green); background: var(--green-bg); color: var(--green); }
+.quiz-input.wrong   { border-color: var(--red);   background: var(--red-bg);   color: var(--red);   }
+
+.quiz-answer-reveal {
+  text-align: center; padding: 6px 16px 0;
+  font-size: 14px; font-weight: 700;
+  min-height: 24px;
+}
+.quiz-answer-reveal.ok  { color: var(--green); }
+.quiz-answer-reveal.bad { color: var(--red);   }
+
+.quiz-submit {
+  margin: 10px 16px 0;
+}
+.quiz-result {
+  margin: 20px 16px;
+  background: var(--surface); border-radius: var(--rcard);
+  padding: 28px 20px; text-align: center;
+  box-shadow: var(--sh2);
+}
+.qr-emoji { font-size: 52px; margin-bottom: 10px; }
+.qr-title { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+.qr-sub   { font-size: 14px; color: var(--text2); margin-bottom: 20px; }
+.qr-stats { display: flex; justify-content: center; gap: 28px; margin-bottom: 22px; }
+.qrs { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.qrs-n { font-size: 26px; font-weight: 800; }
+.qrs-l { font-size: 11px; color: var(--text3); }
+
+/* ====================================================
+   PAGE: STATS
+==================================================== */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 16px; }
+.sg-card { background: var(--surface); border-radius: var(--r); padding: 14px; box-shadow: var(--sh); }
+.sg-n { font-size: 26px; font-weight: 800; }
+.sg-l { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+.heatmap { background: var(--surface); border-radius: var(--r); margin: 8px 16px 0; padding: 14px; box-shadow: var(--sh); }
+.hm-ttl { font-size: 13px; font-weight: 700; margin-bottom: 10px; }
+.hm-grid { display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px; }
+.hm-c { aspect-ratio: 1; border-radius: 3px; background: var(--surface2); }
+.hm-c.l1 { background: #BDD0FC; }
+.hm-c.l2 { background: #7FA3F9; }
+.hm-c.l3 { background: var(--accent); }
+
+.ach-list { display: flex; flex-direction: column; gap: 8px; margin: 0 16px; }
+.ach-row { background: var(--surface); border-radius: var(--r); padding: 12px 14px; display: flex; align-items: center; gap: 12px; box-shadow: var(--sh); }
+.ach-ic { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.ach-info { flex: 1; }
+.ach-name { font-size: 14px; font-weight: 700; }
+.ach-desc { font-size: 11px; color: var(--text2); }
+
+/* custom group page */
+.cg-words { padding: 0 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+.cg-word-chip {
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: 10px; padding: 6px 12px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  box-shadow: var(--sh); transition: all 0.15s;
+}
+.cg-word-chip.selected { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.cg-word-chip .ck { font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="shell">
+
+<!-- ======== TODAY ======== -->
+<div class="page" id="page-today">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">WordFlip</div>
+    <button class="hbtn" onclick="toast('🔔 提醒已开启')">🔔</button>
+  </div>
+  <div class="sc" style="padding-bottom:8px;">
+    <div class="today-top">
+      <div>
+        <div class="today-greeting">早上好 👋</div>
+        <div class="today-date" id="today-date"></div>
+      </div>
+      <div class="streak-badge">
+        <div class="streak-num">🔥7</div>
+        <div class="streak-lbl">连续天</div>
+      </div>
+    </div>
+
+    <div class="today-stats">
+      <div class="ts-card">
+        <div class="ts-num" style="color:var(--accent)">1,140</div>
+        <div class="ts-lbl">已掌握</div>
+      </div>
+      <div class="ts-card">
+        <div class="ts-num" style="color:var(--amber)">12</div>
+        <div class="ts-lbl">待复习</div>
+      </div>
+      <div class="ts-card">
+        <div class="ts-num" style="color:var(--green)">38%</div>
+        <div class="ts-lbl">完成度</div>
+      </div>
+    </div>
+
+    <div class="sec-label">今日任务</div>
+    <div class="today-tasks">
+      <div class="task-row" onclick="pushPage('study');initStudy()">
+        <div class="task-ic" style="background:var(--accent-bg)">📚</div>
+        <div class="task-info">
+          <div class="task-name">新词学习</div>
+          <div class="task-desc">第3组 · 雅思核心词</div>
+        </div>
+        <div class="task-n" style="color:var(--accent)">20</div>
+      </div>
+      <div class="task-row" onclick="pushPage('study');initStudy()">
+        <div class="task-ic" style="background:var(--amber-bg)">🔄</div>
+        <div class="task-info">
+          <div class="task-name">到期复习</div>
+          <div class="task-desc">艾宾浩斯 · 跨2个分组</div>
+        </div>
+        <div class="task-n" style="color:var(--amber)">12</div>
+      </div>
+      <div class="task-row" onclick="pushPage('quiz');initQuiz()">
+        <div class="task-ic" style="background:var(--green-bg)">✏️</div>
+        <div class="task-info">
+          <div class="task-name">默写测验</div>
+          <div class="task-desc">看中文 → 默写英文</div>
+        </div>
+        <div class="task-n" style="color:var(--green)">8</div>
+      </div>
+    </div>
+  </div>
+  <!-- 固定底部：开始学习按钮 -->
+  <div style="padding:10px 16px 6px; background:var(--bg); flex-shrink:0;">
+    <button class="today-big-btn" onclick="pushPage('study');initStudy()" style="margin:0;width:100%;">
+      <div class="tbtn-icon">📖</div>
+      <div class="tbtn-text">
+        <div class="tbtn-title">开始学习</div>
+        <div class="tbtn-sub">第3组 · 20个单词待学习</div>
+      </div>
+      <div class="tbtn-arr">›</div>
+    </button>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn on" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<!-- ======== BOOKS ======== -->
+<div class="page hidden" id="page-books">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">单词书</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div class="sec-label">选择单词书</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row" onclick="toggleBook(1)">
+        <div class="row-ic" style="background:#EEF1FD">📗</div>
+        <div class="row-info">
+          <div class="row-label">雅思核心词汇 3000</div>
+          <div class="row-sub">3000 个词汇</div>
+        </div>
+        <div id="bk1-check" style="font-size:18px">✅</div>
+      </div>
+      <div class="row" onclick="toggleBook(2)">
+        <div class="row-ic" style="background:#E0F5EE">📘</div>
+        <div class="row-info">
+          <div class="row-label">四级高频词汇</div>
+          <div class="row-sub">1500 个词汇</div>
+        </div>
+        <div id="bk2-check" style="font-size:18px">✅</div>
+      </div>
+      <div class="row" onclick="toggleBook(3)">
+        <div class="row-ic" style="background:#FEF3DC">📙</div>
+        <div class="row-info">
+          <div class="row-label">考研英语核心词</div>
+          <div class="row-sub">2500 个词汇</div>
+        </div>
+        <div id="bk3-check" style="font-size:18px">☐</div>
+      </div>
+    </div>
+
+    <div class="sec-label">分组大小</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row" onclick="selectSize(10)">
+        <div class="row-ic" style="background:var(--surface2)">🔟</div>
+        <div class="row-info"><div class="row-label">10 个 / 组</div><div class="row-sub">适合精细复习</div></div>
+        <div id="sz-10">☐</div>
+      </div>
+      <div class="row" onclick="selectSize(20)">
+        <div class="row-ic" style="background:var(--surface2)">2️⃣0️⃣</div>
+        <div class="row-info"><div class="row-label">20 个 / 组</div><div class="row-sub">均衡学习节奏</div></div>
+        <div id="sz-20" style="font-size:18px">✅</div>
+      </div>
+      <div class="row" onclick="selectSize(30)">
+        <div class="row-ic" style="background:var(--surface2)">3️⃣0️⃣</div>
+        <div class="row-info"><div class="row-label">30 个 / 组</div><div class="row-sub">高效集中学习</div></div>
+        <div id="sz-30">☐</div>
+      </div>
+      <div class="row" onclick="selectSize(50)">
+        <div class="row-ic" style="background:var(--surface2)">5️⃣0️⃣</div>
+        <div class="row-info"><div class="row-label">50 个 / 组</div><div class="row-sub">大量记忆训练</div></div>
+        <div id="sz-50">☐</div>
+      </div>
+    </div>
+
+    <div style="padding:4px 16px 0;background:var(--accent-bg);margin:8px 16px;border-radius:12px;padding:10px 14px;">
+      <div style="font-size:13px;color:var(--accent);font-weight:700;" id="books-summary">已选 4500 词（去重后）· 每组 20 词 · 共约 225 组</div>
+    </div>
+
+    <div style="padding:12px 16px 0;">
+      <button class="btn-primary" onclick="saveBooks()">💾 保存设置</button>
+    </div>
+
+    <div class="sec-label">自定义分组</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row" onclick="pushPage('custom-group')">
+        <div class="row-ic" style="background:var(--amber-bg)">✏️</div>
+        <div class="row-info">
+          <div class="row-label">手动添加分组</div>
+          <div class="row-sub">从词书中自选单词组成分组</div>
+        </div>
+        <div class="row-right">›</div>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn on" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<!-- ======== CUSTOM GROUP ======== -->
+<div class="page hidden" id="page-custom-group">
+  <div class="hdr" style="padding-top:42px;">
+    <button class="hbtn" onclick="popPage()">←</button>
+    <div class="hdr-title">手动添加分组</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div style="padding:10px 16px 4px;font-size:13px;color:var(--text2);">
+      点击选择单词，组成你的自定义分组
+    </div>
+    <div style="padding:0 16px 8px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:12px;color:var(--text3);" id="cg-count">已选 0 个</span>
+      <button class="btn-primary" style="width:auto;height:34px;padding:0 16px;font-size:13px;" onclick="saveCG()">保存分组</button>
+    </div>
+    <div class="cg-words" id="cg-words"></div>
+    <div style="height:16px"></div>
+  </div>
+</div>
+
+<!-- ======== STUDY ======== -->
+<div class="page hidden" id="page-study">
+  <div class="hdr" style="padding-top:42px;">
+    <button class="hbtn" onclick="popPage()">←</button>
+    <div class="hdr-title" id="study-title">第3组</div>
+    <button class="hbtn" onclick="pushPage('quiz');initQuiz()">✏️</button>
+  </div>
+  <div class="study-bar">
+    <button class="sbtn" id="shuffle-btn" onclick="shuffleCards()">🔀 打乱</button>
+    <button class="sbtn" onclick="flipAllCards()" id="flip-all-btn">🔄 全翻正面</button>
+  </div>
+  <div class="sc">
+    <div class="cards-grid" id="cards-grid"></div>
+  </div>
+  <!-- 首次引导浮层 -->
+  <div id="study-guide">
+    <div class="guide-box" onclick="dismissGuide()">
+      <div class="guide-icon">👆</div>
+      <div class="guide-text">长按卡片查看详细释义</div>
+      <button class="guide-btn" onclick="dismissGuide()">知道了</button>
+    </div>
+  </div>
+  <!-- 底部抽屉详情 -->
+  <div id="sheet-overlay" onclick="closeSheet()"></div>
+  <div id="sheet-panel">
+    <div class="sheet-handle"></div>
+    <div class="sheet-word" id="sheet-word"></div>
+    <div class="sheet-ph" id="sheet-ph"></div>
+    <div class="sheet-pos" id="sheet-pos"></div>
+    <div class="sc" style="overflow-y:auto;">
+      <div class="sheet-block">
+        <div class="sheet-label">词义</div>
+        <div class="sheet-text" id="sheet-meaning"></div>
+      </div>
+      <div class="sheet-block">
+        <div class="sheet-label">例句</div>
+        <div class="sheet-examples" id="sheet-examples"></div>
+      </div>
+      <div class="sheet-block">
+        <div class="sheet-label">词根词缀</div>
+        <div class="sheet-text" id="sheet-etymology"></div>
+      </div>
+      <div class="sheet-actions">
+        <button class="sheet-btn" onclick="changeStain()">🔄 换一个污渍</button>
+        <button class="sheet-btn primary" onclick="hideStain()">👁 关闭/隐藏污渍</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== GROUPS ======== -->
+<div class="page hidden" id="page-groups">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">分组管理</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div class="sec-label">雅思核心词汇 3000</div>
+    <div id="group-list"></div>
+    <div style="height:8px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn on" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<!-- ======== GROUP DETAIL ======== -->
+<div class="page hidden" id="page-gdetail">
+  <div class="hdr" style="padding-top:42px;">
+    <button class="hbtn" onclick="popPage()">←</button>
+    <div class="hdr-title" id="gd-title">第2组</div>
+    <div style="display:flex;gap:6px;">
+      <button class="hbtn" id="gd-stain-toggle" onclick="toggleGDetailMode()">🎨</button>
+      <button class="hbtn" onclick="pushPage('study');initStudy()">▶</button>
+    </div>
+  </div>
+  <div class="sc">
+    <div id="gd-list-section">
+      <div class="sec-label">单词掌握情况</div>
+      <div id="gd-list"></div>
+    </div>
+    <div id="gd-stain-section" style="display:none;">
+      <div style="padding: 10px 16px;">
+        <button class="btn-primary" style="height:44px;" onclick="regenerateAllStains()">🎲 一键生成所有污渍</button>
+      </div>
+      <div class="cards-grid" id="gd-stain-grid"></div>
+    </div>
+    <div style="height:8px"></div>
+  </div>
+</div>
+
+<!-- ======== QUIZ ======== -->
+<div class="page hidden" id="page-quiz">
+  <div class="hdr" style="padding-top:42px;">
+    <button class="hbtn" onclick="popPage()">←</button>
+    <div class="hdr-title">默写测验</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc" id="quiz-sc"></div>
+</div>
+
+<!-- ======== STATS ======== -->
+<div class="page hidden" id="page-stats">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">统计 & 成就</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div class="sec-label">学习数据</div>
+    <div class="stats-grid">
+      <div class="sg-card"><div class="sg-n" style="color:var(--accent)">1,140</div><div class="sg-l">已掌握单词</div></div>
+      <div class="sg-card"><div class="sg-n" style="color:var(--red)">🔥7</div><div class="sg-l">连续打卡</div></div>
+      <div class="sg-card"><div class="sg-n" style="color:var(--green)">87%</div><div class="sg-l">测验正确率</div></div>
+      <div class="sg-card"><div class="sg-n">42</div><div class="sg-l">累计学习天</div></div>
+    </div>
+
+    <div class="sec-label">学习日历</div>
+    <div class="heatmap">
+      <div class="hm-ttl">近3个月</div>
+      <div class="hm-grid" id="hm-grid"></div>
+      <div style="display:flex;align-items:center;gap:5px;margin-top:8px;font-size:10px;color:var(--text3);">
+        少
+        <div style="width:11px;height:11px;border-radius:2px;background:var(--surface2);"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:#BDD0FC;"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:#7FA3F9;"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:var(--accent);"></div>
+        多
+      </div>
+    </div>
+
+    <div class="sec-label">成就</div>
+    <div class="ach-list">
+      <div class="ach-row">
+        <div class="ach-ic" style="background:#FFF3E0">🔥</div>
+        <div class="ach-info"><div class="ach-name">坚持一周</div><div class="ach-desc">连续学习 7 天</div></div>
+        <div class="pill green">已解锁</div>
+      </div>
+      <div class="ach-row">
+        <div class="ach-ic" style="background:#E8EAF6">💯</div>
+        <div class="ach-info"><div class="ach-name">千词达人</div><div class="ach-desc">掌握 1000 个单词</div></div>
+        <div class="pill green">已解锁</div>
+      </div>
+      <div class="ach-row" style="opacity:0.4">
+        <div class="ach-ic" style="background:var(--surface2)">📖</div>
+        <div class="ach-info"><div class="ach-name">完成第一本词书</div><div class="ach-desc">完整学完任意一本</div></div>
+        <div class="pill gray">未解锁</div>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn on" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<!-- ======== SETTINGS ======== -->
+<div class="page hidden" id="page-settings">
+  <div class="hdr" style="padding-top:42px;">
+    <div style="width:34px"></div>
+    <div class="hdr-title">设置</div>
+    <div style="width:34px"></div>
+  </div>
+  <div class="sc">
+    <div class="sec-label">学习体验</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row">
+        <div class="row-ic" style="background:var(--accent-bg)">🔊</div>
+        <div class="row-info"><div class="row-label">翻转时自动发音</div><div class="row-sub">翻到背面播放单词读音</div></div>
+        <button class="toggle on" id="toggle-speak" onclick="toggleSpeak(this)"></button>
+      </div>
+      <div class="row">
+        <div class="row-ic" style="background:var(--green-bg)">🧠</div>
+        <div class="row-info"><div class="row-label">艾宾浩斯间隔</div><div class="row-sub">标准方案 · 1-2-4-7-15-30天</div></div>
+        <div class="row-right">›</div>
+      </div>
+      <div class="row">
+        <div class="row-ic" style="background:var(--amber-bg)">🔁</div>
+        <div class="row-info"><div class="row-label">默认学习方向</div><div class="row-sub">看英文回忆中文</div></div>
+        <div class="row-right">›</div>
+      </div>
+    </div>
+    <div class="sec-label">提醒</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row">
+        <div class="row-ic" style="background:#FCE8E3">🔔</div>
+        <div class="row-info"><div class="row-label">每日提醒</div><div class="row-sub">21:00</div></div>
+        <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+      </div>
+      <div class="row">
+        <div class="row-ic" style="background:var(--accent-bg)">⚡</div>
+        <div class="row-info"><div class="row-label">复习到期提醒</div><div class="row-sub">有到期单词时额外通知</div></div>
+        <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+      </div>
+    </div>
+    <div class="sec-label">数据</div>
+    <div style="margin:0 16px;" class="card">
+      <div class="row" onclick="toast('☁️ 云同步开发中')">
+        <div class="row-ic" style="background:var(--green-bg)">☁️</div>
+        <div class="row-info"><div class="row-label">云端备份</div><div class="row-sub">上次备份：今天 09:32</div></div>
+        <div class="row-right">›</div>
+      </div>
+      <div class="row" onclick="toast('📤 导出为 CSV')">
+        <div class="row-ic" style="background:var(--amber-bg)">📤</div>
+        <div class="row-info"><div class="row-label">导出单词本</div><div class="row-sub">CSV / Anki / Quizlet 格式</div></div>
+        <div class="row-right">›</div>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+  </div>
+  <div class="bnav">
+    <div class="bn on" onclick="navTo('settings')"><div class="bn-ic">⚙️</div><div class="bn-lb">设置</div></div>
+    <div class="bn" onclick="navTo('books')"><div class="bn-ic">📚</div><div class="bn-lb">词书</div></div>
+    <div class="bn" onclick="navTo('groups')"><div class="bn-ic">📋</div><div class="bn-lb">分组</div></div>
+    <div class="bn" onclick="navTo('stats')"><div class="bn-ic">📊</div><div class="bn-lb">统计</div></div>
+    <div class="bn" onclick="navTo('today')"><div class="bn-ic">🏠</div><div class="bn-lb">今日</div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+</div><!-- /shell -->
+
+<script>
+// ── DATA ──
+const WORDS = [
+  {en:'abandon',   cn:'放弃；抛弃',       pos:'v.',     ph:'/əˈbændən/',
+    detail: {
+      meaning: 'to leave behind or give up completely; to desert',
+      examples: [
+        'He abandoned his car in the snow during the storm.',
+        'The captain ordered the crew to abandon the sinking ship.',
+        'She abandoned her dreams of becoming a singer after years of failure.'
+      ],
+      etymology: 'a- (to) + bandon (jurisdiction, control) → from Old French "abandoner", meaning to surrender or leave'
+    }
+  },
+  {en:'abstract',  cn:'抽象的；摘要',     pos:'adj./n.',ph:'/ˈæbstrækt/',
+    detail: {
+      meaning: 'existing as an idea rather than a physical thing; a summary of a longer text',
+      examples: [
+        'The painting was completely abstract, with no recognizable objects.',
+        'Please read the abstract before deciding to download the full paper.',
+        'Honesty is an abstract concept that means different things to different people.'
+      ],
+      etymology: 'abs- (away from) + tractus (drawn, pulled) → Latin "abstractus", drawn away from concrete reality'
+    }
+  },
+  {en:'academic',  cn:'学术的；学院的',   pos:'adj.',   ph:'/ˌækəˈdemɪk/',
+    detail: {
+      meaning: 'relating to education and scholarship; of theoretical interest only',
+      examples: [
+        'She had an excellent academic record throughout university.',
+        'The debate was purely academic since no one could change the decision.',
+        'Academic research shows that sleep is crucial for memory consolidation.'
+      ],
+      etymology: 'from Latin "Academia", the name of the garden where Plato taught in Athens, named after the hero Akademos'
+    }
+  },
+  {en:'accelerate',cn:'加速；促进',       pos:'v.',     ph:'/əkˈseləreɪt/',
+    detail: {
+      meaning: 'to increase in speed or rate; to make something happen faster',
+      examples: [
+        'The car accelerated rapidly as it entered the highway.',
+        'New technology continues to accelerate the pace of change.',
+        'The company decided to accelerate its expansion into Asian markets.'
+      ],
+      etymology: 'ad- (to) + celerare (to hasten) from Latin "celer" (swift) → to make faster, speed up'
+    }
+  },
+  {en:'access',    cn:'通道；获取',       pos:'n./v.',  ph:'/ˈækses/',
+    detail: {
+      meaning: 'the means or right to enter or use something; to obtain or retrieve data',
+      examples: [
+        'Wheelchair access to the building is via the side entrance.',
+        'You need a password to access the company database.',
+        'The Internet provides access to a vast amount of information.'
+      ],
+      etymology: 'Latin "accessus", from "accedere" (to approach) → ad- (to) + cedere (to go, yield)'
+    }
+  },
+  {en:'accommodate',cn:'容纳；提供住宿', pos:'v.',     ph:'/əˈkɒmədeɪt/',
+    detail: {
+      meaning: 'to provide lodging or sufficient space for; to adapt to someone\'s needs',
+      examples: [
+        'The hotel can accommodate up to 500 guests at a time.',
+        'Teachers should accommodate students with different learning styles.',
+        'My eyes took a while to accommodate to the dark room.'
+      ],
+      etymology: 'ad- (to) + commodare (to fit, adapt) from Latin "commodus" (convenient, suitable)'
+    }
+  },
+  {en:'accomplish',cn:'完成；实现',       pos:'v.',     ph:'/əˈkʌmplɪʃ/',
+    detail: {
+      meaning: 'to achieve or complete successfully; to fulfill a goal',
+      examples: [
+        'She accomplished her mission of visiting every country in Europe.',
+        'What do you hope to accomplish in your new role?',
+        'The team accomplished the project two weeks ahead of schedule.'
+      ],
+      etymology: 'Old French "accomplir", from Latin "accomplere" (to complete) → ad- (to) + complere (to fill up)'
+    }
+  },
+  {en:'accurate',  cn:'准确的；精确的',   pos:'adj.',   ph:'/ˈækjərət/',
+    detail: {
+      meaning: 'correct in all details; free from errors or mistakes',
+      examples: [
+        'The weather forecast was remarkably accurate for the entire week.',
+        'Make sure all measurements are accurate before cutting the wood.',
+        'He gave an accurate description of the suspect to the police.'
+      ],
+      etymology: 'Latin "accuratus" (done with care), from "accūrāre" (to take care of) → ad- (to) + cūra (care)'
+    }
+  },
+  {en:'acknowledge',cn:'承认；致谢',      pos:'v.',     ph:'/əkˈnɒlɪdʒ/',
+    detail: {
+      meaning: 'to accept or admit the truth of; to express thanks or recognition',
+      examples: [
+        'He refused to acknowledge that he had made a mistake.',
+        'I would like to acknowledge my supervisor for her guidance.',
+        'The system will acknowledge receipt of your email automatically.'
+      ],
+      etymology: 'from Middle English, blend of "know" and "acquaint" with the prefix "ac-" (toward) → to make known, recognize'
+    }
+  },
+  {en:'acquire',   cn:'获得；习得',       pos:'v.',     ph:'/əˈkwaɪər/',
+    detail: {
+      meaning: 'to obtain or gain possession of; to learn or develop a skill',
+      examples: [
+        'The company acquired three smaller firms last year.',
+        'Children acquire language naturally through exposure.',
+        'It takes years of practice to acquire true expertise in this field.'
+      ],
+      etymology: 'Latin "acquirere" (to seek, obtain) → ad- (to) + quaerere (to seek, search for)'
+    }
+  },
+];
+
+const GROUPS_DATA = [
+  {id:1,name:'第1组',total:10,ok:8,fuz:1,status:'done'},
+  {id:2,name:'第2组',total:10,ok:5,fuz:3,status:'learning'},
+  {id:3,name:'第3组',total:10,ok:2,fuz:2,status:'learning'},
+  {id:4,name:'第4组',total:10,ok:0,fuz:0,status:'not-started'},
+  {id:5,name:'第5组',total:10,ok:0,fuz:0,status:'not-started'},
+];
+
+// ── LOCAL STORAGE HELPERS ──
+function getLS(key, fallback) {
+  try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v); }
+  catch(e) { return fallback; }
+}
+function setLS(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {} }
+
+// ── SETTINGS ──
+let autoSpeak = getLS('wordflip_autoSpeak', true);
+let gdetailMode = 'list';
+let currentGDetailGroup = null;
+
+function updateSpeakToggle() {
+  const el = document.getElementById('toggle-speak');
+  if (el) el.classList.toggle('on', autoSpeak);
+}
+function toggleSpeak(btn) {
+  autoSpeak = !autoSpeak;
+  btn.classList.toggle('on', autoSpeak);
+  setLS('wordflip_autoSpeak', autoSpeak);
+  toast(autoSpeak ? '🔊 翻转时自动发音已开启' : '🔇 翻转时自动发音已关闭');
+}
+
+// ── GRID COLUMNS ──
+function getGridColumns() {
+  const isMobile = window.innerWidth < 450;
+  const shell = document.getElementById('shell');
+  const containerWidth = isMobile ? window.innerWidth : shell.clientWidth;
+  const availableWidth = containerWidth - 24; // subtract .cards-grid padding
+  if (availableWidth < 340) return 1;
+  if (availableWidth < 510) return 2;
+  if (availableWidth < 680) return 3;
+  return 4;
+}
+function updateGridColumns() {
+  const grid = document.getElementById('cards-grid');
+  if (!grid) return;
+  const cols = getGridColumns();
+  grid.className = 'cards-grid cols-' + cols;
+}
+function updateStainGridColumns() {
+  const grid = document.getElementById('gd-stain-grid');
+  if (!grid) return;
+  const cols = getGridColumns();
+  grid.className = 'cards-grid cols-' + cols;
+}
+window.addEventListener('resize', () => {
+  updateGridColumns();
+  if (currentPage === 'gdetail' && gdetailMode === 'stain') {
+    updateStainGridColumns();
+  }
+});
+
+// ── STAINS ──
+const STAIN_TYPES = ['coffee','ink','highlight','fold'];
+function wordSeed(word) {
+  let s = 0;
+  for (let i = 0; i < word.length; i++) s += word.charCodeAt(i);
+  return s;
+}
+function seededRandom(seed) {
+  const x = Math.sin(seed * 9301 + 49297) * 233280;
+  return x - Math.floor(x);
+}
+function getStainConfig(word) {
+  const hiddenSet = getLS('wordflip_stainsHidden', {});
+  if (hiddenSet[word]) return null;
+  const customSet = getLS('wordflip_stainsCustom', {});
+  if (customSet[word]) return customSet[word];
+  const seed = wordSeed(word);
+  const typeIdx = Math.floor(seededRandom(seed) * STAIN_TYPES.length);
+  const type = STAIN_TYPES[typeIdx];
+  const posSeed = seededRandom(seed + 1);
+  // position: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right, 4=center-ish
+  const posIdx = Math.floor(posSeed * 5);
+  const positions = [
+    {top:'8px',left:'8px',bottom:'auto',right:'auto'},
+    {top:'8px',left:'auto',bottom:'auto',right:'8px'},
+    {top:'auto',left:'8px',bottom:'8px',right:'auto'},
+    {top:'auto',left:'auto',bottom:'8px',right:'8px'},
+    {top:'50%',left:'50%',bottom:'auto',right:'auto',transform:'translate(-50%,-50%)'},
+  ];
+  const rot = Math.round((seededRandom(seed + 2) - 0.5) * 60);
+  const scale = 0.8 + seededRandom(seed + 3) * 0.5;
+  return { type, pos: positions[posIdx], rot, scale };
+}
+function setStainCustom(word, cfg) { const s = getLS('wordflip_stainsCustom', {}); s[word] = cfg; setLS('wordflip_stainsCustom', s); }
+function hideStainFor(word) { const s = getLS('wordflip_stainsHidden', {}); s[word] = true; setLS('wordflip_stainsHidden', s); }
+function showStainFor(word) { const s = getLS('wordflip_stainsHidden', {}); delete s[word]; setLS('wordflip_stainsHidden', s); }
+function isStainHidden(word) { return !!getLS('wordflip_stainsHidden', {})[word]; }
+
+function generateStainHTML(word) {
+  const cfg = getStainConfig(word);
+  if (!cfg) return '';
+  const style = `position:absolute;${cfg.pos.top !== 'auto' ? 'top:'+cfg.pos.top+';' : ''}${cfg.pos.left !== 'auto' ? 'left:'+cfg.pos.left+';' : ''}${cfg.pos.bottom !== 'auto' ? 'bottom:'+cfg.pos.bottom+';' : ''}${cfg.pos.right !== 'auto' ? 'right:'+cfg.pos.right+';' : ''}${cfg.pos.transform ? 'transform:'+cfg.pos.transform+' rotate('+cfg.rot+'deg) scale('+cfg.scale+');' : 'transform:rotate('+cfg.rot+'deg) scale('+cfg.scale+');'}`;
+  return `<div class="fc-stain stain-${cfg.type}" style="${style}"></div>`;
+}
+
+function randomStainConfig(word) {
+  const seed = Date.now() + wordSeed(word);
+  const typeIdx = Math.floor(seededRandom(seed) * STAIN_TYPES.length);
+  const type = STAIN_TYPES[typeIdx];
+  const posIdx = Math.floor(seededRandom(seed + 1) * 5);
+  const positions = [
+    {top:'8px',left:'8px',bottom:'auto',right:'auto'},
+    {top:'8px',left:'auto',bottom:'auto',right:'8px'},
+    {top:'auto',left:'8px',bottom:'8px',right:'auto'},
+    {top:'auto',left:'auto',bottom:'8px',right:'8px'},
+    {top:'50%',left:'50%',bottom:'auto',right:'auto',transform:'translate(-50%,-50%)'},
+  ];
+  const rot = Math.round((seededRandom(seed + 2) - 0.5) * 60);
+  const scale = 0.8 + seededRandom(seed + 3) * 0.5;
+  return { type, pos: positions[posIdx], rot, scale };
+}
+
+// ── ROUTING ──
+let currentPage = 'today';
+let pageStack   = [];
+
+function navTo(id) {
+  if (id === currentPage) return;
+  const from = document.getElementById('page-' + currentPage);
+  const to   = document.getElementById('page-' + id);
+  from.classList.add('behind');
+  setTimeout(() => from.classList.add('hidden'), 320);
+  to.classList.remove('hidden','behind');
+  currentPage = id;
+  pageStack = [];
+  if (id === 'groups') renderGroups();
+  if (id === 'stats')  renderHeatmap();
+  if (id === 'custom-group') renderCG();
+  if (id === 'settings') updateSpeakToggle();
+}
+
+function pushPage(id) {
+  const from = document.getElementById('page-' + currentPage);
+  const to   = document.getElementById('page-' + id);
+  from.classList.add('behind');
+  to.classList.remove('hidden','behind');
+  pageStack.push(currentPage);
+  currentPage = id;
+  if (id === 'groups') renderGroups();
+  if (id === 'custom-group') renderCG();
+  if (id === 'study') {
+    // check first-time guide
+    setTimeout(() => {
+      if (!getLS('studyGuideShown', false)) {
+        showGuide();
+      }
+    }, 400);
+  }
+}
+
+function popPage() {
+  const prev = pageStack.pop() || 'today';
+  const cur  = document.getElementById('page-' + currentPage);
+  const to   = document.getElementById('page-' + prev);
+  cur.classList.add('hidden');
+  to.classList.remove('hidden','behind');
+  currentPage = prev;
+  if (prev === 'settings') updateSpeakToggle();
+}
+
+// ── TOAST ──
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ── BOOKS ──
+const bkChecked = {1:true, 2:true, 3:false};
+let groupSize = 20;
+function toggleBook(id) {
+  bkChecked[id] = !bkChecked[id];
+  document.getElementById('bk'+id+'-check').textContent = bkChecked[id] ? '✅' : '☐';
+  updateBooksSummary();
+}
+function selectSize(n) {
+  [10,20,30,50].forEach(s => {
+    document.getElementById('sz-'+s).textContent = (s===n) ? '✅' : '☐';
+  });
+  groupSize = n;
+  updateBooksSummary();
+}
+function updateBooksSummary() {
+  const total = (bkChecked[1]?3000:0)+(bkChecked[2]?1500:0)+(bkChecked[3]?2500:0);
+  document.getElementById('books-summary').textContent =
+    `已选 ${total} 词（去重后）· 每组 ${groupSize} 词 · 共约 ${Math.ceil(total/groupSize)} 组`;
+}
+function saveBooks() { toast('✅ 设置已保存'); }
+
+// ── CUSTOM GROUP ──
+let cgSelected = new Set();
+function renderCG() {
+  cgSelected.clear();
+  const el = document.getElementById('cg-words');
+  el.innerHTML = '';
+  WORDS.forEach((w,i) => {
+    const chip = document.createElement('div');
+    chip.className = 'cg-word-chip';
+    chip.innerHTML = `<span class="ck">○</span> ${w.en}`;
+    chip.onclick = () => {
+      if (cgSelected.has(i)) { cgSelected.delete(i); chip.classList.remove('selected'); chip.querySelector('.ck').textContent='○'; }
+      else { cgSelected.add(i); chip.classList.add('selected'); chip.querySelector('.ck').textContent='✓'; }
+      document.getElementById('cg-count').textContent = `已选 ${cgSelected.size} 个`;
+    };
+    el.appendChild(chip);
+  });
+}
+function saveCG() {
+  if (cgSelected.size === 0) { toast('请先选择单词'); return; }
+  toast(`✅ 自定义分组已保存，共 ${cgSelected.size} 个单词`);
+  popPage();
+}
+
+// ── STUDY / CARDS ──
+let cardFlipped = {};
+let allShowBack = false;
+let studyWords  = [];
+let currentSheetWord = null;
+
+function initStudy() {
+  cardFlipped  = {};
+  allShowBack  = false;
+  studyWords   = [...WORDS].sort(() => Math.random()-0.5);
+  renderCards();
+  const btn = document.getElementById('flip-all-btn');
+  if (btn) btn.textContent = '🔄 全翻背面';
+}
+
+function renderCards() {
+  const grid = document.getElementById('cards-grid');
+  grid.innerHTML = '';
+  studyWords.forEach((w, i) => {
+    const isFlipped = cardFlipped[i] || false;
+    const wrap = document.createElement('div');
+    wrap.className = 'fc-wrap' + (isFlipped ? ' flipped' : '');
+    wrap.id = 'fc-' + i;
+    const stainHTML = generateStainHTML(w.en);
+    wrap.innerHTML = `
+      <div class="fc-inner">
+        <div class="fc-front">
+          ${stainHTML}
+          <div class="fc-word">${w.en}</div>
+          <div class="fc-pos">${w.pos}</div>
+          <div class="fc-hint">翻转</div>
+        </div>
+        <div class="fc-back">
+          <div class="fc-cn">${w.cn}</div>
+          <div class="fc-ph">${w.ph}</div>
+          <div class="fc-hint">翻转</div>
+        </div>
+      </div>`;
+    // click for flip
+    wrap.addEventListener('click', () => toggleCard(i));
+    // long press for sheet
+    attachLongPress(wrap, w);
+    grid.appendChild(wrap);
+  });
+  updateGridColumns();
+}
+
+function toggleCard(i) {
+  if (isSheetOpen()) return;
+  cardFlipped[i] = !cardFlipped[i];
+  const el = document.getElementById('fc-' + i);
+  el.classList.toggle('flipped', cardFlipped[i]);
+  if (autoSpeak) {
+    const utter = new SpeechSynthesisUtterance(studyWords[i].en);
+    utter.lang = 'en-US';
+    utter.rate = 0.9;
+    speechSynthesis.speak(utter);
+  }
+  toast('🔊 ' + studyWords[i].ph);
+}
+
+function flipAllCards() {
+  allShowBack = !allShowBack;
+  studyWords.forEach((_, i) => { cardFlipped[i] = allShowBack; });
+  document.querySelectorAll('.fc-wrap').forEach((el, i) => el.classList.toggle('flipped', allShowBack));
+  const btn = document.getElementById('flip-all-btn');
+  btn.textContent = allShowBack ? '🔄 全翻正面' : '🔄 全翻背面';
+  toast(allShowBack ? '👁 看中文模式' : '👁 看英文模式');
+}
+
+function shuffleCards() {
+  const grid = document.getElementById('cards-grid');
+  const cards = Array.from(grid.children);
+  const btn = document.getElementById('shuffle-btn');
+  btn.disabled = true;
+
+  // Step 1: fly out
+  cards.forEach((c, i) => {
+    const tx  = (Math.random()-0.5)*180 + 'px';
+    const ty  = (Math.random()-0.5)*200 + 'px';
+    const tx2 = (Math.random()-0.5)*300 + 'px';
+    const ty2 = (Math.random()-0.5)*340 + 'px';
+    const tr  = (Math.random()-0.5)*60  + 'deg';
+    const tr2 = (Math.random()-0.5)*120 + 'deg';
+    c.style.setProperty('--tx',  tx);
+    c.style.setProperty('--ty',  ty);
+    c.style.setProperty('--tx2', tx2);
+    c.style.setProperty('--ty2', ty2);
+    c.style.setProperty('--tr',  tr);
+    c.style.setProperty('--tr2', tr2);
+    c.style.animationDelay = (i * 28) + 'ms';
+    c.classList.add('shuffling-out');
+  });
+
+  // Step 2: reorder & fly in
+  setTimeout(() => {
+    studyWords = [...studyWords].sort(() => Math.random()-0.5);
+    // preserve flipped state mapping by word
+    const oldFlipped = {...cardFlipped};
+    cardFlipped = {};
+    cards.forEach(c => { c.classList.remove('shuffling-out'); c.style.opacity = '0'; });
+    grid.innerHTML = '';
+    studyWords.forEach((w, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'fc-wrap shuffling-in';
+      wrap.id = 'fc-' + i;
+      const stainHTML = generateStainHTML(w.en);
+      wrap.innerHTML = `
+        <div class="fc-inner">
+          <div class="fc-front">
+            ${stainHTML}
+            <div class="fc-word">${w.en}</div>
+            <div class="fc-pos">${w.pos}</div>
+            <div class="fc-hint">翻转</div>
+          </div>
+          <div class="fc-back">
+            <div class="fc-cn">${w.cn}</div>
+            <div class="fc-ph">${w.ph}</div>
+            <div class="fc-hint">翻转</div>
+          </div>
+        </div>`;
+      wrap.addEventListener('click', () => toggleCard(i));
+      attachLongPress(wrap, w);
+      wrap.style.animationDelay = (i * 40) + 'ms';
+      grid.appendChild(wrap);
+    });
+    updateGridColumns();
+    setTimeout(() => { btn.disabled = false; }, 600);
+    toast('🔀 已打乱');
+  }, 480);
+}
+
+// ── LONG PRESS & SHEET ──
+function attachLongPress(el, word) {
+  let timer = null;
+  let startX = 0, startY = 0;
+  const start = (e) => {
+    const t = e.touches ? e.touches[0] : e;
+    startX = t.clientX; startY = t.clientY;
+    timer = setTimeout(() => {
+      timer = null;
+      openSheet(word);
+    }, 500);
+  };
+  const cancel = (e) => {
+    if (timer) { clearTimeout(timer); timer = null; }
+  };
+  const move = (e) => {
+    if (!timer) return;
+    const t = e.touches ? e.touches[0] : e;
+    if (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) {
+      clearTimeout(timer); timer = null;
+    }
+  };
+  el.addEventListener('mousedown', start);
+  el.addEventListener('touchstart', start, {passive:true});
+  el.addEventListener('mouseup', cancel);
+  el.addEventListener('mouseleave', cancel);
+  el.addEventListener('touchend', cancel);
+  el.addEventListener('touchmove', move, {passive:true});
+}
+
+function isSheetOpen() {
+  return document.getElementById('sheet-panel').classList.contains('show');
+}
+
+function openSheet(word) {
+  currentSheetWord = word;
+  const overlay = document.getElementById('sheet-overlay');
+  const panel = document.getElementById('sheet-panel');
+  document.getElementById('sheet-word').textContent = word.en;
+  document.getElementById('sheet-ph').textContent = word.ph;
+  document.getElementById('sheet-pos').textContent = word.pos;
+  const d = word.detail || {};
+  document.getElementById('sheet-meaning').textContent = d.meaning || '暂无详细释义';
+  const exEl = document.getElementById('sheet-examples');
+  exEl.innerHTML = '';
+  const exs = d.examples || [];
+  if (exs.length) {
+    exs.forEach(ex => {
+      const div = document.createElement('div');
+      div.className = 'sheet-ex';
+      div.textContent = ex;
+      exEl.appendChild(div);
+    });
+  } else {
+    exEl.innerHTML = '<div class="sheet-ex">暂无例句</div>';
+  }
+  document.getElementById('sheet-etymology').textContent = d.etymology || '暂无词根词缀信息';
+  overlay.classList.add('show');
+  panel.classList.add('show');
+  // prevent body scroll
+  const sc = document.querySelector('#page-study .sc');
+  if (sc) sc.style.overflow = 'hidden';
+}
+
+function closeSheet() {
+  const overlay = document.getElementById('sheet-overlay');
+  const panel = document.getElementById('sheet-panel');
+  overlay.classList.remove('show');
+  panel.classList.remove('show');
+  const sc = document.querySelector('#page-study .sc');
+  if (sc) sc.style.overflow = '';
+  currentSheetWord = null;
+}
+
+function changeStain() {
+  if (!currentSheetWord) return;
+  const cfg = randomStainConfig(currentSheetWord.en);
+  setStainCustom(currentSheetWord.en, cfg);
+  showStainFor(currentSheetWord.en);
+  renderCards();
+  toast('🔄 已更换污渍');
+  closeSheet();
+}
+
+function hideStain() {
+  if (!currentSheetWord) return;
+  hideStainFor(currentSheetWord.en);
+  renderCards();
+  toast('👁 已隐藏污渍');
+  closeSheet();
+}
+
+// ── STUDY GUIDE ──
+function showGuide() {
+  const g = document.getElementById('study-guide');
+  g.classList.add('show');
+}
+function dismissGuide() {
+  const g = document.getElementById('study-guide');
+  g.classList.remove('show');
+  setLS('studyGuideShown', true);
+}
+
+// ── GROUPS ──
+function renderGroups() {
+  const el = document.getElementById('group-list');
+  el.innerHTML = '';
+  GROUPS_DATA.forEach(g => {
+    const pct = Math.round(g.ok / g.total * 100);
+    const statusLabel = {done:'已完成', learning:'学习中', 'not-started':'未开始'}[g.status];
+    const statusColor = {done:'green', learning:'blue', 'not-started':'gray'}[g.status];
+    const div = document.createElement('div');
+    div.className = 'grp-item';
+    div.innerHTML = `
+      <div class="grp-hd">
+        <div class="grp-title">${g.name}</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="pill ${statusColor}">${statusLabel}</div>
+          <button class="hbtn" style="width:28px;height:28px;font-size:13px;" onclick="event.stopPropagation();openStainMode(${g.id})" title="制作污渍">🎨</button>
+        </div>
+      </div>
+      <div class="grp-stats">
+        <div class="gs"><div class="gs-n" style="color:var(--green)">${g.ok}</div><div class="gs-l">已记得</div></div>
+        <div class="gs"><div class="gs-n" style="color:var(--amber)">${g.fuz}</div><div class="gs-l">模糊</div></div>
+        <div class="gs"><div class="gs-n" style="color:var(--text3)">${g.total-g.ok-g.fuz}</div><div class="gs-l">未学</div></div>
+        <div class="gs"><div class="gs-n">${g.total}</div><div class="gs-l">总词</div></div>
+      </div>
+      <div class="grp-bar"><div class="grp-fill" style="width:${pct}%"></div></div>`;
+    div.onclick = () => {
+      gdetailMode = 'list';
+      openGDetail(g);
+    };
+    el.appendChild(div);
+  });
+}
+
+function openGDetail(g) {
+  currentGDetailGroup = g;
+  document.getElementById('gd-title').textContent = g.name;
+  const listSection = document.getElementById('gd-list-section');
+  const stainSection = document.getElementById('gd-stain-section');
+  
+  if (gdetailMode === 'list') {
+    listSection.style.display = '';
+    stainSection.style.display = 'none';
+    renderGDetailList(g);
+  } else {
+    listSection.style.display = 'none';
+    stainSection.style.display = '';
+    renderGDetailStain(g);
+  }
+  
+  if (currentPage !== 'gdetail') {
+    pushPage('gdetail');
+  }
+}
+
+function toggleGDetailMode() {
+  gdetailMode = gdetailMode === 'list' ? 'stain' : 'list';
+  if (currentGDetailGroup) {
+    openGDetail(currentGDetailGroup);
+  }
+}
+
+function openStainMode(gid) {
+  const g = GROUPS_DATA.find(x => x.id === gid);
+  if (!g) return;
+  gdetailMode = 'stain';
+  openGDetail(g);
+}
+
+function renderGDetailList(g) {
+  const el = document.getElementById('gd-list');
+  el.innerHTML = '';
+  const statuses = ['ok','fuz','','ok','fuz','','ok','','',''];
+  WORDS.forEach((w, i) => {
+    const st = statuses[i] || '';
+    const div = document.createElement('div');
+    div.className = 'wd-row';
+    div.innerHTML = `
+      <div class="wd-left">
+        <div class="wd-en">${w.en}</div>
+        <div class="wd-cn">${w.cn} <span style="color:var(--text3);font-size:11px;">${w.pos}</span></div>
+      </div>
+      <div class="wd-status">
+        <button class="ws-btn ${st==='ok'?'ok':''}" onclick="setWS(this,'ok')">记得</button>
+        <button class="ws-btn ${st==='fuz'?'fuz':''}" onclick="setWS(this,'fuz')">模糊</button>
+      </div>`;
+    el.appendChild(div);
+  });
+}
+
+function renderGDetailStain(g) {
+  const grid = document.getElementById('gd-stain-grid');
+  grid.innerHTML = '';
+  WORDS.forEach((w, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'fc-wrap';
+    const stainHTML = generateStainHTML(w.en);
+    wrap.innerHTML = `
+      <div class="fc-inner" style="transform: none;">
+        <div class="fc-front" style="position:relative;">
+          ${stainHTML}
+          <div class="fc-word" style="font-size:16px;">${w.en}</div>
+          <div class="fc-pos">${w.pos}</div>
+        </div>
+      </div>`;
+    
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;gap:6px;margin-top:6px;';
+    const hidden = isStainHidden(w.en);
+    actions.innerHTML = `
+      <button class="sheet-btn" style="flex:1;height:32px;font-size:12px;" onclick="changeStainFor('${w.en}')">🔄 换一个</button>
+      <button class="sheet-btn primary" style="flex:1;height:32px;font-size:12px;" onclick="toggleStainHidden('${w.en}')">${hidden?'👁 显示':'👁 隐藏'}</button>
+    `;
+    
+    const item = document.createElement('div');
+    item.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
+    item.appendChild(wrap);
+    item.appendChild(actions);
+    grid.appendChild(item);
+  });
+  updateStainGridColumns();
+}
+
+function setWS(btn, st) {
+  const btns = btn.closest('.wd-status').querySelectorAll('.ws-btn');
+  btns.forEach(b => b.classList.remove('ok','fuz'));
+  if (!btn.classList.contains(st)) {
+    btn.classList.add(st);
+    toast(st==='ok' ? '✅ 已记得' : '〜 模糊，加入复习计划');
+  }
+}
+
+function changeStainFor(word) {
+  const cfg = randomStainConfig(word);
+  setStainCustom(word, cfg);
+  showStainFor(word);
+  if (currentGDetailGroup) renderGDetailStain(currentGDetailGroup);
+  if (currentPage === 'study') renderCards();
+  toast('🔄 已更换污渍');
+}
+
+function toggleStainHidden(word) {
+  if (isStainHidden(word)) {
+    showStainFor(word);
+    toast('👁 已显示污渍');
+  } else {
+    hideStainFor(word);
+    toast('👁 已隐藏污渍');
+  }
+  if (currentGDetailGroup) renderGDetailStain(currentGDetailGroup);
+  if (currentPage === 'study') renderCards();
+}
+
+function regenerateAllStains() {
+  if (!currentGDetailGroup) return;
+  WORDS.forEach(w => {
+    const cfg = randomStainConfig(w.en);
+    setStainCustom(w.en, cfg);
+    showStainFor(w.en);
+  });
+  if (currentGDetailGroup) renderGDetailStain(currentGDetailGroup);
+  if (currentPage === 'study') renderCards();
+  toast('🎲 已为所有单词生成新污渍');
+}
+
+function previewStain(ev, word) {
+  ev.stopPropagation();
+  const wObj = WORDS.find(x => x.en === word);
+  if (!wObj) return;
+  if (isStainHidden(word)) {
+    showStainFor(word);
+    toast('👁 已显示污渍');
+    const btn = ev.currentTarget;
+    btn.textContent = '🎨';
+    btn.title = '点击预览/更换污渍';
+    if (currentPage === 'study') renderCards();
+  } else {
+    openSheet(wObj);
+  }
+}
+
+// ── QUIZ ──
+let quizWords, quizIdx, quizScore, quizMisses;
+
+function initQuiz() {
+  quizWords = [...WORDS].sort(() => Math.random()-0.5).slice(0, 6);
+  quizIdx = 0; quizScore = 0; quizMisses = [];
+  renderQuizQ();
+}
+
+function renderQuizQ() {
+  const sc = document.getElementById('quiz-sc');
+  if (quizIdx >= quizWords.length) { renderQuizResult(sc); return; }
+  const w   = quizWords[quizIdx];
+  const pct = Math.round(quizIdx / quizWords.length * 100);
+  sc.innerHTML = `
+    <div class="quiz-pg"><div class="quiz-pg-fill" style="width:${pct}%"></div></div>
+    <div class="quiz-meta"><span>${quizIdx+1} / ${quizWords.length}</span><span>得分 ${quizScore}</span></div>
+    <div class="quiz-card">
+      <div class="qc-lbl">看中文 · 默写英文单词</div>
+      <div class="qc-cn">${w.cn}</div>
+      <div class="qc-pos">${w.pos} ${w.ph}</div>
+    </div>
+    <div class="quiz-input-area">
+      <input class="quiz-input" id="quiz-inp" placeholder="输入英文单词" autocomplete="off" autocorrect="off" spellcheck="false"
+        onkeydown="if(event.key==='Enter')submitQuiz()">
+    </div>
+    <div class="quiz-answer-reveal" id="quiz-reveal"></div>
+    <div class="quiz-submit" style="padding:10px 16px 0;">
+      <button class="btn-primary" onclick="submitQuiz()">确认</button>
+    </div>`;
+  setTimeout(() => { const inp = document.getElementById('quiz-inp'); if(inp) inp.focus(); }, 100);
+}
+
+function submitQuiz() {
+  const inp = document.getElementById('quiz-inp');
+  const w   = quizWords[quizIdx];
+  if (!inp || inp.disabled) return;
+  const val = inp.value.trim().toLowerCase();
+  const ans = w.en.toLowerCase();
+  const ok  = val === ans;
+  inp.disabled = true;
+  inp.classList.add(ok ? 'correct' : 'wrong');
+  const rev = document.getElementById('quiz-reveal');
+  if (ok) {
+    rev.textContent = '✓ 正确！';
+    rev.className = 'quiz-answer-reveal ok';
+    quizScore++;
+    toast('✅ 已自动标记为「记得」');
+  } else {
+    rev.textContent = `✗ 正确拼写：${w.en}`;
+    rev.className = 'quiz-answer-reveal bad';
+    quizMisses.push(w);
+    toast('〜 已自动标记为「模糊」，加入复习计划');
+  }
+  setTimeout(() => { quizIdx++; renderQuizQ(); }, 1400);
+}
+
+function renderQuizResult(sc) {
+  const pct = Math.round(quizScore / quizWords.length * 100);
+  const emoji = pct >= 80 ? '🎉' : pct >= 50 ? '😊' : '💪';
+  sc.innerHTML = `
+    <div class="quiz-result">
+      <div class="qr-emoji">${emoji}</div>
+      <div class="qr-title">${pct>=80?'太棒了！':pct>=50?'不错！':'继续加油！'}</div>
+      <div class="qr-sub">测验完成 · 错误单词已自动加入艾宾浩斯复习计划</div>
+      <div class="qr-stats">
+        <div class="qrs"><div class="qrs-n" style="color:var(--green)">${quizScore}</div><div class="qrs-l">答对</div></div>
+        <div class="qrs"><div class="qrs-n" style="color:var(--red)">${quizWords.length-quizScore}</div><div class="qrs-l">答错</div></div>
+        <div class="qrs"><div class="qrs-n" style="color:var(--accent)">${pct}%</div><div class="qrs-l">正确率</div></div>
+      </div>
+      <button class="btn-primary" onclick="initQuiz()">再来一次</button>
+      <div style="height:10px"></div>
+      <button class="btn-ghost" onclick="popPage()">返回</button>
+    </div>`;
+}
+
+// ── HEATMAP ──
+function renderHeatmap() {
+  const grid = document.getElementById('hm-grid');
+  if (grid.children.length) return;
+  for (let i = 0; i < 91; i++) {
+    const c = document.createElement('div');
+    const r = Math.random();
+    c.className = 'hm-c' + (r<0.25?'':r<0.5?' l1':r<0.72?' l2':' l3');
+    grid.appendChild(c);
+  }
+}
+
+// ── INIT ──
+document.getElementById('today-date').textContent =
+  new Date().toLocaleDateString('zh-CN', {month:'long', day:'numeric', weekday:'long'});
+initStudy();
+updateSpeakToggle();
+</script>
+</body>
+</html>
