@@ -1,12 +1,16 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.kapt)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
 
 android {
     namespace = "com.wordflip"
+    buildFeatures {
+        compose = true
+    }
     defaultConfig {
         applicationId = "com.wordflip"
         versionCode = 1
@@ -54,11 +58,8 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
-    kapt(libs.hilt.compiler)
+    // Kotlin 2.2+ 使用 KSP 替代 kapt 处理 Hilt 注解
+    ksp(libs.hilt.compiler)
 
     debugImplementation(libs.androidx.compose.ui.tooling.preview)
-}
-
-kapt {
-    correctErrorTypes = true
 }
