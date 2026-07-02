@@ -36,3 +36,9 @@ val SageDarkOnSurfaceVariant = Color(0xFFCAC4D0)
 
 val SageDarkSuccess = Color(0xFF6DD5A8)
 val SageDarkError = Color(0xFFF2B8B5)
+
+// 学习卡片 — MASTER §2.4 / §3.5
+val SageStudyCard = Color(0xFFFFFFFF)
+val SageStudyCardInk = Color(0xFF1A1A2E)
+val SageStudyCardBackText = Color(0xFF333333)
+val SageDarkStudyCard = Color(0xFF252525)

@@ -10,6 +10,7 @@ android {
     namespace = "com.wordflip"
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     defaultConfig {
         applicationId = "com.wordflip"

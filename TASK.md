@@ -1,7 +1,7 @@
 # WordFlip 任务清单（TASK）
 
-> 版本：v1.0  
-> 日期：2026-06-30  
+> 版本：v1.3  
+> 日期：2026-07-02  
 > 用法：完成一项将 `[ ]` 改为 `[x]`。任务按依赖顺序排列，建议自上而下打勾。  
 > 关联：[requirements.md](docs/wordflip/requirements.md) · [architecture.md](docs/wordflip/architecture.md) · [STRUCTURE.md](STRUCTURE.md)
 
@@ -11,17 +11,34 @@
 
 | 阶段 | 说明 | 进度 |
 |------|------|------|
-| **D** | 文档与设计（已定稿） | 见 §D |
+| **D** | 文档与设计（已定稿） | 16 / 18 |
 | **I** | 基础设施 Docker | 7 / 8 |
-| **S** | 后端脚手架 + 公共层 | 16 / 18 |
-| **A** | Android 脚手架 + 公共层 | 9 / 16 |
-| **P0** | 登录 + 词书 + 分组 | 0 / 42 |
-| **P1** | 今日 + 学习 + SRS 读 | 0 / 28 |
-| **P2** | 默写测验 + 掌握度写 | 0 / 22 |
-| **P3** | 卡拍 + 图片 + 污渍 | 0 / 26 |
-| **P4** | 统计 + 设置完善 | 0 / 14 |
+| **S** | 后端脚手架 + 公共层 | 18 / 21 |
+| **A** | Android 脚手架 + 公共层 | 9 / 14 |
+| **P0** | 登录 + 词书 + 分组 | 12 / 50 |
+| **P1** | 今日 + 学习 + SRS 读 | 14 / 28 |
+| **P2** | 默写测验 + 掌握度写 | 6 / 21 |
+| **P3** | 卡拍 + 图片 + 污渍 | 0 / 19 |
+| **P4** | 统计 + 设置完善 | 8 / 14 |
 | **Q** | 联调、测试、发布准备 | 0 / 12 |
 | **B** | 二期 Backlog | — |
+
+### 当前焦点（2026-07-02）
+
+Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登录。
+
+| 区域 | 状态 |
+|------|------|
+| 五个 Tab | **全部 Mock UI 可点通**（设置 / 词书 / 分组 / 统计 / 今日） |
+| 子页 | 学习 / 分组详情 / 默写测验 |
+| 设置 | DataStore 持久化自动发音（默认开）+ 主题；退出登录可回 Auth |
+| 学习体验 | 翻转 TTS 对齐 v5（每次点击翻转朗读）；FlipCard 正反面均可点；MainScreen 顶部留白已修 |
+| 统计 | 近 12 周学习柱状图（替代 GitHub 式热力图，可读性更好） |
+| 后端 P0+ | 未启动（⛔ Docker I-07 / Flyway S-18） |
+
+**已打通导航：** 今日 ↔ 学习 / 测验；词书保存；分组详情 → 学习 / 测验。
+
+**建议下一波：** P3 卡拍/污渍 Mock，或启动 Docker + 后端 P0 Auth/Settings API。
 
 ---
 
@@ -141,8 +158,8 @@
 ### A.3 导航壳
 
 - [x] A-15 实现底部 5 Tab 导航壳（设置 / 词书 / 分组 / 统计 / 今日）
-- [ ] A-16 实现子页面栈（Navigation 嵌套 graph，对齐 REQ-NAV-1~5）— 主 Tab 已完成，子页 P0 起
-- [ ] A-17 实现 Toast 组件（底部导航上方居中，2s 消失）
+- [x] A-16 实现子页面栈（Navigation 嵌套 graph，对齐 REQ-NAV-1~5）— Study / GroupDetail / Quiz Mock 子页已完成；CustomGroup / 卡拍待 P0/P3
+- [x] A-17 实现 Toast 组件（底部导航上方居中，2s 消失）
 - [x] A-18 登录态路由：未登录仅 Auth，已登录进 Main
 
 ---
@@ -192,31 +209,31 @@
 
 ### P0-A Android · Auth
 
-- [ ] P0-A01 创建 `feature-auth` 模块
-- [ ] P0-A02 登录页 UI（account + password）
+- [x] P0-A01 创建 `feature-auth` 模块
+- [x] P0-A02 登录页 UI（account + password）— 占位 UI，任意输入可进 Main（Debug 默认跳过）
 - [ ] P0-A03 注册页 UI（email 或 phone + password）
 - [ ] P0-A04 `AuthViewModel` 对接 register / login API
 - [ ] P0-A05 登录成功导航至今日页；失败 Toast
-- [ ] P0-A06 设置页「退出登录」清除 Token 回登录页
+- [ ] P0-A06 设置页「退出登录」清除 Token 回登录页 — Mock 退出已接 NavHost；Token/API 待 P0
 
 ### P0-A Android · 词书
 
-- [ ] P0-A10 创建 `feature-books` 模块
-- [ ] P0-A11 词书列表页：内置三本 + imported 卡片
-- [ ] P0-A12 勾选切换 + 底部分组大小 10/20/30/50
-- [ ] P0-A13 汇总行：distinct 词数 · 每组 N · 约 M 组
-- [ ] P0-A14 「保存设置」调用 PUT /settings；Toast 成功
-- [ ] P0-A15 「导入单词书」文件选择 → preview → confirm 流程
-- [ ] P0-A16 删除 imported 词书确认对话框
-- [ ] P0-A17 「手动添加分组」入口 → CustomGroup 页（见 P0-A20）
+- [x] P0-A10 创建 `feature-books` 模块
+- [x] P0-A11 词书列表页：内置三本 + imported 卡片
+- [x] P0-A12 勾选切换 + 底部分组大小 10/20/30/50
+- [x] P0-A13 汇总行：distinct 词数 · 每组 N · 约 M 组
+- [x] P0-A14 「保存设置」调用 PUT /settings；Toast 成功 — Mock 本地模拟 append
+- [ ] P0-A15 「导入单词书」文件选择 → preview → confirm 流程 — Toast 占位
+- [x] P0-A16 删除 imported 词书确认对话框 — Mock 已完成，待接 DELETE API
+- [ ] P0-A17 「手动添加分组」入口 → CustomGroup 页（见 P0-A21）— Toast 占位
 
 ### P0-A Android · 分组
 
-- [ ] P0-A20 创建 `feature-groups` 模块（含 CustomGroup 子页）
-- [ ] P0-A21 CustomGroup：拉取 unassigned chips，多选保存
-- [ ] P0-A22 分组列表页：组名、状态、四维统计、进度条
-- [ ] P0-A23 分组详情列表模式（只读掌握度 Chip，无手动改态按钮）
-- [ ] P0-A24 分组卡片快捷入口：卡拍 / 污渍（导航占位，P3 实现）
+- [x] P0-A20 创建 `feature-groups` 模块 — CustomGroup 子页待 P0-A21
+- [ ] P0-A21 CustomGroup：拉取 unassigned chips，多选保存 — 待实现
+- [x] P0-A22 分组列表页：组名、状态、四维统计、进度条
+- [x] P0-A23 分组详情列表模式（只读掌握度 Chip，无手动改态按钮）
+- [ ] P0-A24 分组卡片快捷入口：卡拍 / 污渍（导航占位，P3 实现）— Toast 占位
 
 ### P0 联调验收
 
@@ -249,27 +266,27 @@
 
 ### P1-A Android · 今日
 
-- [ ] P1-A01 创建 `feature-today` 模块
-- [ ] P1-A02 今日页布局：问候 + 日期 +  streak（REQ-TODAY-1~2）
-- [ ] P1-A03 三格统计 + 三行任务（REQ-TODAY-3~4）
-- [ ] P1-A04 底部固定「开始学习」按钮
-- [ ] P1-A05 点击任务行 / 开始学习 → 导航至 Study（带 groupId）
+- [x] P1-A01 创建 `feature-today` 模块
+- [x] P1-A02 今日页布局：问候 + 日期 +  streak（REQ-TODAY-1~2）
+- [x] P1-A03 三格统计 + 三行任务（REQ-TODAY-3~4）
+- [x] P1-A04 底部固定「开始学习」按钮
+- [x] P1-A05 点击任务行 / 开始学习 → 导航至 Study（带 groupId）；默写测验任务 → Quiz
 
 ### P1-A Android · 学习
 
-- [ ] P1-A10 创建 `feature-study` 模块
-- [ ] P1-A11 两列卡片网格 + Flip 动画（对齐 v5 曲线）
-- [ ] P1-A12 打乱 / 全翻按钮与动画
-- [ ] P1-A13 长按 BottomSheet 详情（词义、例句、词根）
-- [ ] P1-A14 首次引导浮层「长按查看详情」（REQ-STUDY-23）
-- [ ] P1-A15 自动发音 Toggle 联动（TTS）
+- [x] P1-A10 创建 `feature-study` 模块
+- [x] P1-A11 两列卡片网格 + Flip 动画（对齐 v5 曲线）
+- [ ] P1-A12 打乱 / 全翻按钮与动画 — 基础打乱已实现，v5 飞出飞入动画待补
+- [x] P1-A13 长按 BottomSheet 详情（词义、例句、词根）
+- [x] P1-A14 首次引导浮层「长按查看详情」（REQ-STUDY-23）
+- [x] P1-A15 自动发音 Toggle 联动（TTS）— 对齐 v5：每次翻转朗读；默认开启；TTS 异步就绪队列；详情页语速独立
 - [ ] P1-A16 学习结束上报 POST /study/sessions
-- [ ] P1-A17 顶栏入口 → 测验页（P2 后打通）
+- [x] P1-A17 顶栏入口 → 测验页 — Mock 导航已打通
 
 ### P1-A Android · 分组详情增强
 
-- [ ] P1-A20 分组详情掌握度 Chip：未学习 / 模糊 / 不认识（只读）
-- [ ] P1-A21 分组 progress 进度条绑定 API
+- [x] P1-A20 分组详情掌握度 Chip：未学习 / 模糊 / 不认识（只读）
+- [x] P1-A21 分组 progress 进度条绑定 API — Mock 数据绑定，待接 GET /groups
 
 ### P1 联调验收
 
@@ -298,20 +315,20 @@
 
 ### P2-A Android · 测验
 
-- [ ] P2-A01 创建 `feature-quiz` 模块
-- [ ] P2-A02 进入测验强制新建 session（REQ-NAV-6）
-- [ ] P2-A03 题目 UI：进度条、题号、得分、中文卡、输入框
-- [ ] P2-A04 提交后反馈 1.4s 自动下一题
-- [ ] P2-A05 结果页：评价语、统计、错题列表
-- [ ] P2-A06 「再来一次」retry source；「返回」pop 栈
-- [ ] P2-A07 测验后刷新分组详情 / 今日页掌握度展示
+- [x] P2-A01 创建 `feature-quiz` 模块
+- [x] P2-A02 进入测验强制新建 session（REQ-NAV-6）— nonce ViewModelKey + startSession
+- [x] P2-A03 题目 UI：进度条、题号、得分、中文卡、输入框
+- [x] P2-A04 提交后反馈 1.4s 自动下一题
+- [x] P2-A05 结果页：评价语、统计、错题列表
+- [x] P2-A06 「再来一次」retry source；「返回」pop 栈 — Mock 本地 reSession
+- [ ] P2-A07 测验后刷新分组详情 / 今日页掌握度展示 — 待接 API
 
 ### P2 联调验收
 
 - [ ] P2-T01 答对 → level=unlearned, stage+1, next_review_at 正确
 - [ ] P2-T02 连续两次答错 → unknown
 - [ ] P2-T03 分组详情掌握度仅随测验变化（学习翻转不改态）
-- [ ] P2-T04 Android 完整测验 10 题流程
+- [ ] P2-T04 Android 完整测验 10 题流程 — Mock 可手工走通，待接 API 验证掌握度写入
 
 ---
 
@@ -337,7 +354,7 @@
 - [ ] P3-A05 图片编辑器：裁剪/旋转/缩放/滤镜/showCn（对齐 v5）
 - [ ] P3-A06 保存 → POST image；清除 → DELETE
 - [ ] P3-A07 学习页卡片背面展示用户图片
-- [ ] P3-A08 污渍渲染组件（Compose Canvas / 复用 v5 算法）
+- [ ] P3-A08 污渍渲染组件（Compose Canvas / 复用 v5 算法）— `StainOverlay` 已用于学习 FlipCard；批量/详情模式待 P3
 - [ ] P3-A09 详情抽屉「换一个污渍」「隐藏污渍」
 - [ ] P3-A10 分组详情污渍模式：筛选、单卡换、一键生成、显示/隐藏
 
@@ -362,19 +379,19 @@
 
 ### P4-A Android · 统计与设置
 
-- [ ] P4-A01 创建 `feature-stats` 模块
-- [ ] P4-A02 统计四宫格 UI
-- [ ] P4-A03 热力日历 4 级色阶 + 图例
-- [ ] P4-A04 成就列表（已解锁 / 未解锁样式）
-- [ ] P4-A05 创建 `feature-settings` 模块
-- [ ] P4-A06 自动发音 Toggle + PATCH preferences
-- [ ] P4-A07 外观：跟随系统 / 浅色 / 深色（REQ-SETTINGS-7）
-- [ ] P4-A08 规划项入口保留占位（艾宾浩斯方案、提醒、导出）— 仅 UI 不可点或 Toast
+- [x] P4-A01 创建 `feature-stats` 模块
+- [x] P4-A02 统计四宫格 UI
+- [x] P4-A03 学习活动柱状图（近 12 周）+ 说明文案 + 图例 — 替代原 4 级热力日历
+- [x] P4-A04 成就列表（已解锁 / 未解锁样式）
+- [x] P4-A05 创建 `feature-settings` 模块
+- [x] P4-A06 自动发音 Toggle + DataStore 持久化 + Toast — 默认开；StudyScreen 直连偏好；待 PATCH preferences API
+- [x] P4-A07 外观：跟随系统 / 浅色 / 深色（REQ-SETTINGS-7）— DataStore + 即时生效
+- [x] P4-A08 规划项入口保留占位（艾宾浩斯方案、提醒、导出）— Toast 占位
 
 ### P4 联调验收
 
-- [ ] P4-T01 测验后 quizAccuracy 变化
-- [ ] P4-T02 主题切换立即生效且持久化
+- [ ] P4-T01 测验后 quizAccuracy 变化 — Mock 静态数据，待接 GET /stats
+- [ ] P4-T02 主题切换立即生效且持久化 — Mock DataStore 已验证，待服务端同步
 
 ---
 
@@ -438,6 +455,9 @@ flowchart TD
 | 日期 | 版本 | 说明 |
 |------|------|------|
 | 2026-06-30 | v1.0 | 初版：D/I/S/A + P0～P4 + Q + Backlog |
+| 2026-07-02 | v1.1 | 同步 Android Mock UI 进度：词书/分组/今日/学习/测验；修正各阶段完成数；补充当前焦点 |
+| 2026-07-02 | v1.2 | P4 统计+设置 Mock UI；主题 DataStore；TASK 进度更新 |
+| 2026-07-02 | v1.3 | Android Mock 全流程：词书/分组/今日/学习/测验/统计/设置；UX 修复（顶部留白、FlipCard 点击、TTS v5 行为、统计柱状图） |
 
 ---
 
