@@ -1,7 +1,7 @@
 # WordFlip 任务清单（TASK）
 
-> 版本：v1.3  
-> 日期：2026-07-02  
+> 版本：v1.5  
+> 日期：2026-07-05  
 > 用法：完成一项将 `[ ]` 改为 `[x]`。任务按依赖顺序排列，建议自上而下打勾。  
 > 关联：[requirements.md](docs/wordflip/requirements.md) · [architecture.md](docs/wordflip/architecture.md) · [STRUCTURE.md](STRUCTURE.md)
 
@@ -16,14 +16,14 @@
 | **S** | 后端脚手架 + 公共层 | 18 / 21 |
 | **A** | Android 脚手架 + 公共层 | 9 / 14 |
 | **P0** | 登录 + 词书 + 分组 | 12 / 50 |
-| **P1** | 今日 + 学习 + SRS 读 | 14 / 28 |
+| **P1** | 今日 + 学习 + SRS 读 | 15 / 28 |
 | **P2** | 默写测验 + 掌握度写 | 6 / 21 |
 | **P3** | 卡拍 + 图片 + 污渍 | 0 / 19 |
 | **P4** | 统计 + 设置完善 | 8 / 14 |
 | **Q** | 联调、测试、发布准备 | 0 / 12 |
 | **B** | 二期 Backlog | — |
 
-### 当前焦点（2026-07-02）
+### 当前焦点（2026-07-03）
 
 Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登录。
 
@@ -31,9 +31,9 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 |------|------|
 | 五个 Tab | **全部 Mock UI 可点通**（设置 / 词书 / 分组 / 统计 / 今日） |
 | 子页 | 学习 / 分组详情 / 默写测验 |
-| 设置 | DataStore 持久化自动发音（默认开）+ 主题；退出登录可回 Auth |
-| 学习体验 | 翻转 TTS 对齐 v5（每次点击翻转朗读）；FlipCard 正反面均可点；MainScreen 顶部留白已修 |
-| 统计 | 近 12 周学习柱状图（替代 GitHub 式热力图，可读性更好） |
+| 设置 | DataStore 持久化自动发音（默认开）+ 主题；开启发音时 TTS 不可用 Toast 提示 |
+| 学习体验 | 参考 pukepai.html 扑克牌式打乱：散开 → 收拢成叠 → 发牌；打乱后回顶部；翻转 TTS；FlipCard 双面可点；顶部留白已修 |
+| 统计 | 近 12 周学习柱状图 |
 | 后端 P0+ | 未启动（⛔ Docker I-07 / Flyway S-18） |
 
 **已打通导航：** 今日 ↔ 学习 / 测验；词书保存；分组详情 → 学习 / 测验。
@@ -276,7 +276,7 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 
 - [x] P1-A10 创建 `feature-study` 模块
 - [x] P1-A11 两列卡片网格 + Flip 动画（对齐 v5 曲线）
-- [ ] P1-A12 打乱 / 全翻按钮与动画 — 基础打乱已实现，v5 飞出飞入动画待补
+- [x] P1-A12 打乱 / 全翻按钮与动画 — 参考 pukepai.html 扑克牌式打乱：散开 → 收拢成叠 → 发牌到新位置；视觉-数据解耦；发完牌即已打乱；打乱后自动回顶部；reduced motion 降级；全翻 Toast 已有
 - [x] P1-A13 长按 BottomSheet 详情（词义、例句、词根）
 - [x] P1-A14 首次引导浮层「长按查看详情」（REQ-STUDY-23）
 - [x] P1-A15 自动发音 Toggle 联动（TTS）— 对齐 v5：每次翻转朗读；默认开启；TTS 异步就绪队列；详情页语速独立
@@ -384,7 +384,7 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 - [x] P4-A03 学习活动柱状图（近 12 周）+ 说明文案 + 图例 — 替代原 4 级热力日历
 - [x] P4-A04 成就列表（已解锁 / 未解锁样式）
 - [x] P4-A05 创建 `feature-settings` 模块
-- [x] P4-A06 自动发音 Toggle + DataStore 持久化 + Toast — 默认开；StudyScreen 直连偏好；待 PATCH preferences API
+- [x] P4-A06 自动发音 Toggle + DataStore 持久化 + Toast — 默认开；开启时 TTS 不可用提示；待 PATCH preferences API
 - [x] P4-A07 外观：跟随系统 / 浅色 / 深色（REQ-SETTINGS-7）— DataStore + 即时生效
 - [x] P4-A08 规划项入口保留占位（艾宾浩斯方案、提醒、导出）— Toast 占位
 
@@ -457,7 +457,9 @@ flowchart TD
 | 2026-06-30 | v1.0 | 初版：D/I/S/A + P0～P4 + Q + Backlog |
 | 2026-07-02 | v1.1 | 同步 Android Mock UI 进度：词书/分组/今日/学习/测验；修正各阶段完成数；补充当前焦点 |
 | 2026-07-02 | v1.2 | P4 统计+设置 Mock UI；主题 DataStore；TASK 进度更新 |
-| 2026-07-02 | v1.3 | Android Mock 全流程：词书/分组/今日/学习/测验/统计/设置；UX 修复（顶部留白、FlipCard 点击、TTS v5 行为、统计柱状图） |
+| 2026-07-02 | v1.3 | Android Mock 全流程；UX 修复（留白、FlipCard、TTS、统计柱状图） |
+| 2026-07-03 | v1.4 | P1-A12 打乱飞出/飞入动画；设置页 TTS 不可用 Toast
+|| 2026-07-05 | v1.5 | 学习页打乱动画升级：参考 pukepai.html 散开 → 收拢 → 发牌；打乱后回顶部；视觉-数据解耦 | |
 
 ---
 

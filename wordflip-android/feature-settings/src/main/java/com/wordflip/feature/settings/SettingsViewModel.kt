@@ -1,5 +1,6 @@
 package com.wordflip.feature.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -19,6 +20,7 @@ import kotlinx.coroutines.launch
  */
 class SettingsViewModel(
     private val preferences: SettingsPreferences,
+    private val appContext: Context,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
@@ -42,6 +44,13 @@ class SettingsViewModel(
 
     fun toggleAutoSpeak(enabled: Boolean) {
         viewModelScope.launch {
+            if (enabled && !checkTtsAvailable(appContext)) {
+                _events.emit(
+                    SettingsUiEvent.Toast(
+                        "未检测到可用的文字转语音，请在系统设置中安装或启用",
+                    ),
+                )
+            }
             preferences.setAutoSpeak(enabled)
             _events.emit(
                 SettingsUiEvent.Toast(if (enabled) "已开启自动发音" else "已关闭自动发音"),
@@ -70,10 +79,11 @@ class SettingsViewModel(
 
     class Factory(
         private val preferences: SettingsPreferences,
+        private val appContext: Context,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return SettingsViewModel(preferences) as T
+            return SettingsViewModel(preferences, appContext) as T
         }
     }
 }

@@ -40,5 +40,7 @@ val SageDarkError = Color(0xFFF2B8B5)
 // 学习卡片 — MASTER §2.4 / §3.5
 val SageStudyCard = Color(0xFFFFFFFF)
 val SageStudyCardInk = Color(0xFF1A1A2E)
-val SageStudyCardBackText = Color(0xFF333333)
+val SageStudyCardBack = SageStudyCardInk
+val SageStudyCardBackText = Color(0xFFFFFFFF)
+val SageStudyCardBackPh = Color(0x80FFFFFF)
 val SageDarkStudyCard = Color(0xFF252525)

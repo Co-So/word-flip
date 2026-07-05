@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>扑克牌洗牌发牌 Demo</title>
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+
+    overflow:hidden;
+    background:#146b3a;
+    font-family:Arial;
+
+}
+
+.table{
+
+    position:relative;
+    width:100vw;
+    height:100vh;
+
+}
+
+.deck{
+
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+}
+
+.card{
+
+    width:70px;
+    height:100px;
+
+    border-radius:8px;
+
+    position:absolute;
+
+    background:
+    linear-gradient(135deg,#0b55d4,#07328f);
+
+    border:2px solid white;
+
+    box-shadow:
+    0 6px 12px rgba(0,0,0,.4);
+
+    transition:
+    left .45s ease,
+    top .45s ease,
+    transform .45s ease;
+
+}
+
+.card::before{
+
+    content:"";
+
+    position:absolute;
+
+    inset:8px;
+
+    border:2px dashed rgba(255,255,255,.5);
+
+    border-radius:5px;
+
+}
+
+.controls{
+
+    position:absolute;
+    left:50%;
+    bottom:30px;
+    transform:translateX(-50%);
+    z-index:999;
+
+}
+
+button{
+
+    padding:12px 30px;
+    font-size:18px;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+    margin:0 10px;
+
+}
+
+button:hover{
+
+    transform:scale(1.05);
+
+}
+
+.player{
+
+    position:absolute;
+}
+
+#p0{
+    left:50%;
+    bottom:60px;
+}
+
+#p1{
+    right:120px;
+    top:50%;
+}
+
+#p2{
+    left:50%;
+    top:60px;
+}
+
+#p3{
+    left:120px;
+    top:50%;
+}
+
+.playerLabel{
+
+    color:white;
+    text-align:center;
+    margin-bottom:10px;
+    font-size:18px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="table">
+
+<div class="deck" id="deck"></div>
+
+<div id="p0" class="player">
+<div class="playerLabel">玩家1</div>
+</div>
+
+<div id="p1" class="player">
+<div class="playerLabel">玩家2</div>
+</div>
+
+<div id="p2" class="player">
+<div class="playerLabel">玩家3</div>
+</div>
+
+<div id="p3" class="player">
+<div class="playerLabel">玩家4</div>
+</div>
+
+<div class="controls">
+
+<button onclick="shuffle()">洗牌</button>
+
+<button onclick="deal()">发牌</button>
+
+</div>
+
+</div>
+
+<script>
+
+const deck=document.getElementById("deck");
+
+let cards=[];
+
+for(let i=0;i<52;i++){
+
+    let c=document.createElement("div");
+
+    c.className="card";
+
+    c.style.left="0px";
+    c.style.top="0px";
+
+    c.style.zIndex=i;
+
+    deck.appendChild(c);
+
+    cards.push(c);
+
+}
+
+function fisherYates(array){
+
+    for(let i=array.length-1;i>0;i--){
+
+        let j=Math.floor(Math.random()*(i+1));
+
+        [array[i],array[j]]=[array[j],array[i]];
+
+    }
+
+}
+
+function shuffle(){
+
+    cards.forEach((card,index)=>{
+
+        setTimeout(()=>{
+
+            card.style.transform=
+            `translate(${Math.random()*120-60}px,
+                       ${Math.random()*120-60}px)
+             rotate(${Math.random()*720-360}deg)`;
+
+        },index*10);
+
+    });
+
+    setTimeout(()=>{
+
+        fisherYates(cards);
+
+        cards.forEach((card,index)=>{
+
+            card.style.left="0px";
+
+            card.style.top="0px";
+
+            card.style.transform="translate(0,0) rotate(0deg)";
+
+            card.style.zIndex=index;
+
+        });
+
+    },1200);
+
+}
+
+function deal(){
+
+    const pos=[
+
+        {x:0,y:260},
+
+        {x:420,y:0},
+
+        {x:0,y:-260},
+
+        {x:-420,y:0}
+
+    ];
+
+    let count=0;
+
+    for(let r=0;r<5;r++){
+
+        for(let p=0;p<4;p++){
+
+            let card=cards[count];
+
+            let offset=r*25;
+
+            let x=pos[p].x;
+
+            let y=pos[p].y;
+
+            if(p==0){
+
+                x+=offset-50;
+
+            }
+
+            if(p==2){
+
+                x+=offset-50;
+
+            }
+
+            if(p==1){
+
+                y+=offset-50;
+
+            }
+
+            if(p==3){
+
+                y+=offset-50;
+
+            }
+
+            setTimeout(()=>{
+
+                card.style.left=x+"px";
+
+                card.style.top=y+"px";
+
+                card.style.transform=
+                `rotate(${offset-10}deg)`;
+
+            },count*120);
+
+            count++;
+
+        }
+
+    }
+
+}
+
+</script>
+
+</body>
+</html>

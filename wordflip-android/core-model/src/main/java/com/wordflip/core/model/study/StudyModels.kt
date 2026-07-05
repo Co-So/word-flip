@@ -36,6 +36,8 @@ data class WordDetail(
 data class WordImagePayload(
     val hasImage: Boolean = false,
     val imageUrl: String? = null,
+    /** 有图时是否在底部 overlay 显示中文（REQ-STUDY-19） */
+    val showCnOnImage: Boolean = true,
 )
 
 /** 污渍占位，seed 供 Canvas 确定性渲染 */
