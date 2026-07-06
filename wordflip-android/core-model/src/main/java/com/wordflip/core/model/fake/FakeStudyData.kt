@@ -7,6 +7,7 @@ import com.wordflip.core.model.study.StudyGroupInfo
 import com.wordflip.core.model.study.StudyGroupPayload
 import com.wordflip.core.model.study.WordCard
 import com.wordflip.core.model.study.WordDetail
+import com.wordflip.core.model.media.StainGenerator
 import com.wordflip.core.model.study.WordStainPayload
 import com.wordflip.core.model.study.WordSummary
 
@@ -103,7 +104,8 @@ object FakeStudyData {
         example: String,
         etymology: String,
     ): WordCard {
-        val seed = stableHash(wordKey)
+        val seed = StainGenerator.stableSeed(wordKey)
+        val stainConfig = StainGenerator.generate(wordKey, overrideSeed = seed)
         return WordCard(
             wordKey = wordKey,
             en = en,
@@ -119,16 +121,7 @@ object FakeStudyData {
                 examples = listOf(example, "暂无更多例句"),
                 etymology = etymology,
             ),
-            stain = WordStainPayload(hidden = false, seed = seed),
+            stain = WordStainPayload(hidden = false, seed = seed, config = stainConfig),
         )
-    }
-
-    /** 与后端 P3 stableHash 概念一致的轻量 hash，供污渍 Canvas 使用 */
-    private fun stableHash(wordKey: String): Long {
-        var hash = 0L
-        for (ch in wordKey) {
-            hash = 31L * hash + ch.code
-        }
-        return hash
     }
 }

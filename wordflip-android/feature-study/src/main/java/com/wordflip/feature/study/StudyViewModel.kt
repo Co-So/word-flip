@@ -5,8 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.wordflip.core.model.fake.FakeStudyData
+import com.wordflip.core.model.media.ImageFilters
+import com.wordflip.core.model.media.ImageTransform
+import com.wordflip.core.model.media.StainMode
+import com.wordflip.core.model.media.StainType
+import com.wordflip.core.model.fake.MockWordMediaStore
 import com.wordflip.core.model.study.WordCard
-import kotlin.random.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,8 +35,28 @@ class StudyViewModel(
     private val _events = MutableSharedFlow<StudyUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<StudyUiEvent> = _events.asSharedFlow()
 
+    private var baseWords: List<WordCard> = emptyList()
+
     init {
         loadGroup()
+        viewModelScope.launch {
+            MockWordMediaStore.revision.collect {
+                refreshMediaOverlay()
+            }
+        }
+    }
+
+    private fun refreshMediaOverlay() {
+        val content = _uiState.value as? StudyUiState.Content ?: return
+        updateContent { state ->
+            // 保留当前打乱顺序，仅叠加图片/污渍 Mock 状态
+            state.copy(
+                orderedWords = state.orderedWords.map { card ->
+                    val base = baseWords.find { it.wordKey == card.wordKey } ?: card
+                    MockWordMediaStore.applyToWordCard(base)
+                },
+            )
+        }
     }
 
     private fun loadGroup() {
@@ -45,9 +69,10 @@ class StudyViewModel(
                 return@launch
             }
             val guideDismissed = guidePreferences.isGuideDismissed()
+            baseWords = payload.words
             _uiState.value = StudyUiState.Content(
                 payload = payload,
-                orderedWords = payload.words,
+                orderedWords = MockWordMediaStore.applyToWords(baseWords),
                 flipStates = payload.words.associate { it.wordKey to false },
                 isShuffling = false,
                 detailWordKey = null,
@@ -181,40 +206,112 @@ class StudyViewModel(
         }
     }
 
-    /** REQ-STUDY-18 / REQ-STAIN-4：详情抽屉换一个污渍 */
-    fun changeStain(wordKey: String) {
-        updateContent { content ->
-            content.copy(
-                orderedWords = content.orderedWords.map { word ->
-                    if (word.wordKey != wordKey) word
-                    else word.copy(
-                        stain = word.stain.copy(
-                            seed = Random.nextLong(),
-                            hidden = false,
-                        ),
-                    )
-                },
-            )
+    /** 记录选图目标词（相册/相机 Activity Result 回调时使用） */
+    fun markPickTarget(wordKey: String) {
+        pickTargetWordKey = wordKey
+    }
+
+    fun onImagePickedFromLauncher(uri: String) {
+        val state = _uiState.value as? StudyUiState.Content
+        val key = pickTargetWordKey
+            ?: state?.detailWordKey
+            ?: return
+        // 从详情抽屉选图后进编辑器，关闭时应回到抽屉
+        if (state?.detailWordKey == key) {
+            editorReturnDetailWordKey = key
         }
+        pickTargetWordKey = null
+        MockWordMediaStore.saveImage(key, uri)
+        updateContent { it.copy(editorWordKey = key, detailWordKey = null) }
         viewModelScope.launch {
-            _events.emit(StudyUiEvent.Toast("已更换污渍"))
-            closeDetail()
+            _events.emit(StudyUiEvent.Toast("已添加图片"))
         }
     }
 
-    /** REQ-STUDY-18 / REQ-STAIN-5：详情抽屉隐藏污渍 */
-    fun hideStain(wordKey: String) {
-        updateContent { content ->
-            content.copy(
-                orderedWords = content.orderedWords.map { word ->
-                    if (word.wordKey != wordKey) word
-                    else word.copy(stain = word.stain.copy(hidden = true))
-                },
+    /** 从详情抽屉进入编辑器时记录，关闭后恢复抽屉 */
+    private var editorReturnDetailWordKey: String? = null
+
+    /** 详情抽屉「编辑照片」 */
+    fun openImageEditor(wordKey: String) {
+        val state = _uiState.value as? StudyUiState.Content
+        editorReturnDetailWordKey =
+            if (state?.detailWordKey == wordKey) wordKey else null
+        updateContent { it.copy(editorWordKey = wordKey, detailWordKey = null) }
+    }
+
+    fun closeImageEditor() {
+        val returnDetail = editorReturnDetailWordKey
+        editorReturnDetailWordKey = null
+        updateContent {
+            it.copy(
+                editorWordKey = null,
+                detailWordKey = returnDetail,
             )
         }
+    }
+
+    /** 编辑器内换图：关闭编辑器并弹出选图 Sheet */
+    fun requestReplaceImage(wordKey: String) {
+        markPickTarget(wordKey)
+        updateContent { it.copy(editorWordKey = null, imagePickSheetWordKey = wordKey) }
+    }
+
+    fun closeImagePickSheet() {
+        updateContent { it.copy(imagePickSheetWordKey = null) }
+    }
+
+    fun saveImageEdit(
+        wordKey: String,
+        transform: ImageTransform,
+        filters: ImageFilters,
+        showCn: Boolean,
+    ) {
+        val stored = MockWordMediaStore.getImage(wordKey) ?: return
+        MockWordMediaStore.saveImage(
+            wordKey = wordKey,
+            localUri = stored.localUri,
+            transform = transform,
+            filters = filters,
+            showCnOnImage = showCn,
+        )
+        closeImageEditor()
         viewModelScope.launch {
-            _events.emit(StudyUiEvent.Toast("已隐藏污渍"))
-            closeDetail()
+            _events.emit(StudyUiEvent.Toast("已保存到卡片"))
+        }
+    }
+
+    private var pickTargetWordKey: String? = null
+
+    fun editorWord(): WordCard? {
+        val key = (_uiState.value as? StudyUiState.Content)?.editorWordKey ?: return null
+        return currentWord(key)
+    }
+
+    /** REQ-STUDY-18 / REQ-STAIN-4：换一个污渍；保持抽屉打开以便连续预览 */
+    fun changeStain(
+        wordKey: String,
+        allowedTypes: List<StainType> = StainType.entries,
+    ) {
+        val types = allowedTypes.ifEmpty { StainType.entries }
+        val mode = when (types.size) {
+            1 -> StainMode.SINGLE
+            StainType.entries.size -> StainMode.RANDOM
+            else -> StainMode.MULTI
+        }
+        MockWordMediaStore.regenerateStain(
+            wordKey = wordKey,
+            mode = mode,
+            allowedTypes = types,
+        )
+    }
+
+    /** REQ-STUDY-18 / REQ-STAIN-5~7：显示/隐藏污渍切换 */
+    fun toggleStainVisibility(wordKey: String) {
+        val word = currentWord(wordKey) ?: return
+        if (word.stain.hidden) {
+            MockWordMediaStore.showStain(wordKey)
+        } else {
+            MockWordMediaStore.hideStain(wordKey)
         }
     }
 
@@ -227,18 +324,11 @@ class StudyViewModel(
             }
             return
         }
-        val nextShow = !word.image.showCnOnImage
-        updateContent { content ->
-            content.copy(
-                orderedWords = content.orderedWords.map { w ->
-                    if (w.wordKey != wordKey) w
-                    else w.copy(image = w.image.copy(showCnOnImage = nextShow))
-                },
-            )
-        }
+        MockWordMediaStore.toggleShowCnOnImage(wordKey)
         viewModelScope.launch {
+            val next = MockWordMediaStore.getImage(wordKey)?.showCnOnImage == true
             _events.emit(
-                StudyUiEvent.Toast(if (nextShow) "已显示中文" else "已隐藏中文"),
+                StudyUiEvent.Toast(if (next) "已显示中文" else "已隐藏中文"),
             )
         }
     }

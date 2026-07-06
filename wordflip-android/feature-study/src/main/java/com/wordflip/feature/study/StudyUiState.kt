@@ -39,6 +39,10 @@ sealed interface StudyUiState {
         /** 打乱结束后短暂抑制 LazyGrid item 动画，避免闪烁 */
         val shuffleSettling: Boolean = false,
         val detailWordKey: String?,
+        /** 详情页选图后打开的图片编辑器（P3-A07） */
+        val editorWordKey: String? = null,
+        /** 编辑器「换图」时弹出的选图 Sheet */
+        val imagePickSheetWordKey: String? = null,
         val showGuide: Boolean,
         val allFlippedToBack: Boolean,
     ) : StudyUiState

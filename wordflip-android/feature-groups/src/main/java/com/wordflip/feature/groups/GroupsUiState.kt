@@ -11,18 +11,10 @@ sealed interface GroupsUiState {
     data class Error(val message: String) : GroupsUiState
 }
 
-/** 分组详情页 UI 状态 */
-sealed interface GroupDetailUiState {
-    data object Loading : GroupDetailUiState
-
-    data class Content(
-        val group: GroupDetail,
-        val words: List<com.wordflip.core.model.group.GroupWordItem>,
-    ) : GroupDetailUiState
-
-    data class Error(val message: String) : GroupDetailUiState
-}
-
 sealed interface GroupsUiEvent {
     data class Toast(val message: String) : GroupsUiEvent
+
+    data class NavigateToSnapshot(val groupId: Int, val groupName: String) : GroupsUiEvent
+
+    data class NavigateToStainMode(val groupId: Int, val groupName: String) : GroupsUiEvent
 }

@@ -44,6 +44,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.wordflip.core.model.media.ImageFilters
+import com.wordflip.core.model.media.ImageTransform
+import com.wordflip.core.model.media.StainConfig
+import com.wordflip.core.ui.image.WordImageBack
 import com.wordflip.core.ui.theme.SageDarkStudyCard
 import com.wordflip.core.ui.theme.SageStudyCard
 import com.wordflip.core.ui.theme.SageStudyCardBack
@@ -68,12 +72,17 @@ fun FlipCard(
     pos: String?,
     stainSeed: Long,
     stainHidden: Boolean,
+    stainConfig: StainConfig? = null,
+    wordKey: String = en.lowercase(),
     isFlipped: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
     interactionEnabled: Boolean = true,
     hasImage: Boolean = false,
+    imageUrl: String? = null,
+    imageTransform: ImageTransform? = null,
+    imageFilters: ImageFilters? = null,
     showCnOnImage: Boolean = true,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -139,7 +148,9 @@ fun FlipCard(
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         StainOverlay(
+                            wordKey = wordKey,
                             seed = stainSeed,
+                            config = stainConfig,
                             hidden = stainHidden,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -182,6 +193,9 @@ fun FlipCard(
                         cn = cn,
                         ph = ph,
                         hasImage = hasImage,
+                        imageUrl = imageUrl,
+                        imageTransform = imageTransform,
+                        imageFilters = imageFilters,
                         showCnOnImage = showCnOnImage,
                     )
                 }
@@ -196,32 +210,25 @@ private fun CardBackContent(
     cn: String,
     ph: String?,
     hasImage: Boolean,
+    imageUrl: String?,
+    imageTransform: ImageTransform?,
+    imageFilters: ImageFilters?,
     showCnOnImage: Boolean,
 ) {
-    if (hasImage) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // P3 接入 Coil 后替换为真实图片；Mock 阶段黑底占位
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black),
-            )
-            if (showCnOnImage) {
-                Text(
-                    text = cn,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.45f))
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SageStudyCardBackText,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 20.sp,
-                )
-            }
-        }
+    if (hasImage && !imageUrl.isNullOrBlank()) {
+        WordImageBack(
+            imageUri = imageUrl,
+            cn = cn,
+            transform = imageTransform,
+            filters = imageFilters,
+            showCnOnImage = showCnOnImage,
+        )
+    } else if (hasImage) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        )
     } else {
         Column(
             modifier = Modifier

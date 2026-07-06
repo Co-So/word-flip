@@ -33,15 +33,15 @@ class GroupsViewModel : ViewModel() {
         }
     }
 
-    fun onSnapshotClick() {
+    fun onSnapshotClick(groupId: Int, groupName: String) {
         viewModelScope.launch {
-            _events.emit(GroupsUiEvent.Toast("卡拍功能即将上线"))
+            _events.emit(GroupsUiEvent.NavigateToSnapshot(groupId, groupName))
         }
     }
 
-    fun onStainClick() {
+    fun onStainClick(groupId: Int, groupName: String) {
         viewModelScope.launch {
-            _events.emit(GroupsUiEvent.Toast("制作污渍功能即将上线"))
+            _events.emit(GroupsUiEvent.NavigateToStainMode(groupId, groupName))
         }
     }
 }

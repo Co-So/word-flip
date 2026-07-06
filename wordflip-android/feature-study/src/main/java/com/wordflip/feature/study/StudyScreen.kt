@@ -1,11 +1,18 @@
 package com.wordflip.feature.study
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -32,6 +39,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.wordflip.core.image.ImageEditorScreen
+import com.wordflip.core.image.rememberImagePickerLaunchers
+import com.wordflip.core.model.media.ImageFilters
+import com.wordflip.core.model.media.ImageTransform
+import com.wordflip.core.ui.component.WordFlipBottomSheet
 import com.wordflip.core.ui.component.FlipCard
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.WordFlipToastHost
@@ -64,6 +76,10 @@ fun StudyScreen(
     // 与 MainActivity 同一 DataStore 实例，Compose 层实时读开关
     val autoSpeak by settingsPreferences.autoSpeakFlow.collectAsState(initial = true)
     val (snackbarHostState, toast) = rememberWordFlipToast()
+    val pickLaunchers = rememberImagePickerLaunchers(
+        onImagePicked = viewModel::onImagePickedFromLauncher,
+        onCameraDenied = { toast.show("需要相机权限才能拍照") },
+    )
     val tts = remember { StudyTtsHelper(context) }
     val isDetailSpeaking by tts.isDetailSpeaking.collectAsState()
     var displayRate by remember { mutableStateOf(1.0f) }
@@ -80,90 +96,166 @@ fun StudyScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier,
-        containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { WordFlipToastHost(snackbarHostState) },
-        topBar = {
-            WordFlipTopBar(
-                title = groupName.ifBlank { "学习" },
-                onNavigateBack = onNavigateBack,
-                actions = {
-                    // REQ-STUDY-1：测验入口占位（P2）
-                    WordFlipTopBarAction(
-                        icon = Icons.Outlined.Spellcheck,
-                        contentDescription = "默写测验",
-                        onClick = onNavigateToQuiz,
-                    )
-                },
-            )
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            when (val state = uiState) {
-                StudyUiState.Loading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                is StudyUiState.Error -> {
-                    NetworkErrorView(
-                        message = state.message,
-                        onRetry = { /* reload via new ViewModel instance not trivial; ignore for mock */ },
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                is StudyUiState.Content -> {
-                    StudyContent(
-                        state = state,
-                        reduceMotion = reduceMotion,
-                        onShuffle = viewModel::shuffle,
-                        onFlipAll = {
-                            viewModel.flipAll(toBack = !state.allFlippedToBack)
+    val contentState = uiState as? StudyUiState.Content
+    val editorWord = contentState?.editorWordKey?.let { viewModel.currentWord(it) }
+    val isEditorOpen = editorWord != null && editorWord.image.hasImage
+
+    /** 子层优先：选图 Sheet → 编辑器 → 详情抽屉 → 退出学习页 */
+    val handleNavigateBack: () -> Unit = {
+        when {
+            contentState?.imagePickSheetWordKey != null -> viewModel.closeImagePickSheet()
+            isEditorOpen -> viewModel.closeImageEditor()
+            contentState?.detailWordKey != null -> viewModel.closeDetail()
+            else -> onNavigateBack()
+        }
+    }
+
+    BackHandler(enabled = contentState?.imagePickSheetWordKey != null) {
+        viewModel.closeImagePickSheet()
+    }
+    BackHandler(enabled = isEditorOpen) {
+        viewModel.closeImageEditor()
+    }
+    BackHandler(enabled = contentState?.detailWordKey != null && !isEditorOpen) {
+        viewModel.closeDetail()
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.background,
+            snackbarHost = { WordFlipToastHost(snackbarHostState) },
+            topBar = {
+                // 编辑器全屏时隐藏学习页 TopBar，避免误触返回「今日」
+                if (!isEditorOpen) {
+                    WordFlipTopBar(
+                        title = groupName.ifBlank { "学习" },
+                        onNavigateBack = handleNavigateBack,
+                        actions = {
+                            WordFlipTopBarAction(
+                                icon = Icons.Outlined.Spellcheck,
+                                contentDescription = "默写测验",
+                                onClick = onNavigateToQuiz,
+                            )
                         },
-                        onCardClick = { wordKey ->
-                            if (state.detailWordKey == null) {
-                                viewModel.toggleFlip(wordKey)
-                                // 对齐 v5：每次点击翻转时朗读；开关关闭则静音
-                                if (autoSpeak) {
-                                    viewModel.currentWord(wordKey)?.let { tts.speakForCard(it.en) }
+                    )
+                }
+            },
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
+                when (val state = uiState) {
+                    StudyUiState.Loading -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    is StudyUiState.Error -> {
+                        NetworkErrorView(
+                            message = state.message,
+                            onRetry = { /* reload via new ViewModel instance not trivial; ignore for mock */ },
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+                    is StudyUiState.Content -> {
+                        StudyContent(
+                            state = state,
+                            reduceMotion = reduceMotion,
+                            onShuffle = viewModel::shuffle,
+                            onFlipAll = {
+                                viewModel.flipAll(toBack = !state.allFlippedToBack)
+                            },
+                            onCardClick = { wordKey ->
+                                if (state.detailWordKey == null) {
+                                    viewModel.toggleFlip(wordKey)
+                                    if (autoSpeak) {
+                                        viewModel.currentWord(wordKey)?.let { tts.speakForCard(it.en) }
+                                    }
                                 }
-                            }
-                        },
-                        onCardLongClick = viewModel::openDetail,
-                    )
-                    StudyDetailSheet(
-                        word = viewModel.detailWord(),
-                        visible = state.detailWordKey != null,
-                        speechRate = displayRate,
-                        isDetailSpeaking = isDetailSpeaking,
-                        onDismiss = viewModel::closeDetail,
-                        onSpeak = {
-                            viewModel.detailWord()?.let { tts.speakForDetail(it.en) }
-                        },
-                        onRateDown = {
-                            tts.adjustDetailRate(-0.25f)
-                            displayRate = tts.detailRate
-                        },
-                        onRateUp = {
-                            tts.adjustDetailRate(0.25f)
-                            displayRate = tts.detailRate
-                        },
-                        onChangeStain = viewModel::changeStain,
-                        onHideStain = viewModel::hideStain,
-                        onToggleShowCnOnImage = viewModel::toggleShowCnOnImage,
-                    )
-                    StudyGuideOverlay(
-                        visible = state.showGuide,
-                        onDismiss = viewModel::dismissGuide,
-                    )
+                            },
+                            onCardLongClick = viewModel::openDetail,
+                        )
+                        StudyDetailSheet(
+                            word = viewModel.detailWord(),
+                            visible = state.detailWordKey != null && !isEditorOpen,
+                            speechRate = displayRate,
+                            isDetailSpeaking = isDetailSpeaking,
+                            onDismiss = viewModel::closeDetail,
+                            onSpeak = {
+                                viewModel.detailWord()?.let { tts.speakForDetail(it.en) }
+                            },
+                            onRateDown = {
+                                tts.adjustDetailRate(-0.25f)
+                                displayRate = tts.detailRate
+                            },
+                            onRateUp = {
+                                tts.adjustDetailRate(0.25f)
+                                displayRate = tts.detailRate
+                            },
+                            onChangeStain = viewModel::changeStain,
+                            onToggleStainVisibility = viewModel::toggleStainVisibility,
+                            onToggleShowCnOnImage = viewModel::toggleShowCnOnImage,
+                            onTakePhoto = { key ->
+                                viewModel.markPickTarget(key)
+                                pickLaunchers.takePhoto()
+                            },
+                            onPickGallery = { key ->
+                                viewModel.markPickTarget(key)
+                                pickLaunchers.pickFromGallery()
+                            },
+                            onEditPhoto = viewModel::openImageEditor,
+                        )
+                        val pickSheetKey = state.imagePickSheetWordKey
+                        if (pickSheetKey != null) {
+                            StudyImagePickSheet(
+                                visible = true,
+                                onDismiss = viewModel::closeImagePickSheet,
+                                onPickGallery = {
+                                    viewModel.markPickTarget(pickSheetKey)
+                                    pickLaunchers.pickFromGallery()
+                                    viewModel.closeImagePickSheet()
+                                },
+                                onTakePhoto = {
+                                    viewModel.markPickTarget(pickSheetKey)
+                                    pickLaunchers.takePhoto()
+                                    viewModel.closeImagePickSheet()
+                                },
+                            )
+                        }
+                        StudyGuideOverlay(
+                            visible = state.showGuide,
+                            onDismiss = viewModel::dismissGuide,
+                        )
+                    }
                 }
             }
+        }
+
+        if (isEditorOpen && editorWord != null) {
+            ImageEditorScreen(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(10f),
+                wordEn = editorWord.en,
+                cn = editorWord.cn,
+                imageUri = editorWord.image.imageUrl.orEmpty(),
+                initialTransform = editorWord.image.transform ?: ImageTransform(
+                    showCn = editorWord.image.showCnOnImage,
+                ),
+                initialFilters = editorWord.image.filters ?: ImageFilters(),
+                initialShowCn = editorWord.image.showCnOnImage,
+                onDismiss = viewModel::closeImageEditor,
+                onSave = { transform, filters, showCn ->
+                    viewModel.saveImageEdit(editorWord.wordKey, transform, filters, showCn)
+                },
+                onReplaceImage = {
+                    viewModel.requestReplaceImage(editorWord.wordKey)
+                },
+            )
         }
     }
 }
@@ -279,9 +371,14 @@ private fun StudyContent(
                             cn = word.cn,
                             ph = word.ph,
                             pos = word.pos,
+                            wordKey = word.wordKey,
                             stainSeed = word.stain.seed,
                             stainHidden = word.stain.hidden,
+                            stainConfig = word.stain.config,
                             hasImage = word.image.hasImage,
+                            imageUrl = word.image.imageUrl,
+                            imageTransform = word.image.transform,
+                            imageFilters = word.image.filters,
                             showCnOnImage = word.image.showCnOnImage,
                             isFlipped = flipped,
                             onClick = { onCardClick(word.wordKey) },
@@ -291,6 +388,35 @@ private fun StudyContent(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/** 学习页选图 Sheet（编辑器换图复用） */
+@Composable
+private fun StudyImagePickSheet(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    onPickGallery: () -> Unit,
+    onTakePhoto: () -> Unit,
+) {
+    WordFlipBottomSheet(visible = visible, onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "选择图片",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Button(onClick = onPickGallery, modifier = Modifier.fillMaxWidth()) {
+                Text("从相册选择")
+            }
+            OutlinedButton(onClick = onTakePhoto, modifier = Modifier.fillMaxWidth()) {
+                Text("拍照")
             }
         }
     }

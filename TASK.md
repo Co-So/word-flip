@@ -1,7 +1,7 @@
 # WordFlip 任务清单（TASK）
 
-> 版本：v1.5  
-> 日期：2026-07-05  
+> 版本：v1.7  
+> 日期：2026-07-06  
 > 用法：完成一项将 `[ ]` 改为 `[x]`。任务按依赖顺序排列，建议自上而下打勾。  
 > 关联：[requirements.md](docs/wordflip/requirements.md) · [architecture.md](docs/wordflip/architecture.md) · [STRUCTURE.md](STRUCTURE.md)
 
@@ -15,30 +15,31 @@
 | **I** | 基础设施 Docker | 7 / 8 |
 | **S** | 后端脚手架 + 公共层 | 18 / 21 |
 | **A** | Android 脚手架 + 公共层 | 9 / 14 |
-| **P0** | 登录 + 词书 + 分组 | 12 / 50 |
+| **P0** | 登录 + 词书 + 分组 | 13 / 50 |
 | **P1** | 今日 + 学习 + SRS 读 | 15 / 28 |
 | **P2** | 默写测验 + 掌握度写 | 6 / 21 |
-| **P3** | 卡拍 + 图片 + 污渍 | 0 / 19 |
+| **P3** | 卡拍 + 图片 + 污渍 | 13 / 22 |
 | **P4** | 统计 + 设置完善 | 8 / 14 |
 | **Q** | 联调、测试、发布准备 | 0 / 12 |
 | **B** | 二期 Backlog | — |
 
-### 当前焦点（2026-07-03）
+### 当前焦点（2026-07-06）
 
 Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登录。
 
 | 区域 | 状态 |
 |------|------|
 | 五个 Tab | **全部 Mock UI 可点通**（设置 / 词书 / 分组 / 统计 / 今日） |
-| 子页 | 学习 / 分组详情 / 默写测验 |
+| 子页 | 学习 / 分组详情 / 默写测验 / **卡拍** |
 | 设置 | DataStore 持久化自动发音（默认开）+ 主题；开启发音时 TTS 不可用 Toast 提示 |
-| 学习体验 | 参考 pukepai.html 扑克牌式打乱：散开 → 收拢成叠 → 发牌；打乱后回顶部；翻转 TTS；FlipCard 双面可点；顶部留白已修 |
+| 学习体验 | 扑克牌式打乱；FlipCard 展示用户图片 + 多类型污渍；详情抽屉污渍/照片快捷按钮 + 迷你预览 |
+| P3 媒体 | 卡拍选图/拍照/编辑器 Mock；编辑器返回拦截；`MockWordMediaStore` 跨页共享；分组污渍模式 |
 | 统计 | 近 12 周学习柱状图 |
 | 后端 P0+ | 未启动（⛔ Docker I-07 / Flyway S-18） |
 
-**已打通导航：** 今日 ↔ 学习 / 测验；词书保存；分组详情 → 学习 / 测验。
+**已打通导航：** 今日 ↔ 学习 / 测验；词书保存；分组详情 → 学习 / 测验；分组卡 → 卡拍 / 污渍模式。
 
-**建议下一波：** P3 卡拍/污渍 Mock，或启动 Docker + 后端 P0 Auth/Settings API。
+**建议下一波：** 启动 Docker + 后端 P0 Auth/Settings API，或 P1-A16 学习 session 上报。
 
 ---
 
@@ -233,7 +234,7 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 - [ ] P0-A21 CustomGroup：拉取 unassigned chips，多选保存 — 待实现
 - [x] P0-A22 分组列表页：组名、状态、四维统计、进度条
 - [x] P0-A23 分组详情列表模式（只读掌握度 Chip，无手动改态按钮）
-- [ ] P0-A24 分组卡片快捷入口：卡拍 / 污渍（导航占位，P3 实现）— Toast 占位
+- [x] P0-A24 分组卡片快捷入口：卡拍 / 污渍 — 导航至 Snapshot / 分组详情污渍模式
 
 ### P0 联调验收
 
@@ -347,16 +348,19 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 
 ### P3-A Android · 媒体
 
-- [ ] P3-A01 创建 `core-image` 模块（transform JSON 与 openapi 一致）
-- [ ] P3-A02 创建 `feature-snapshot` 模块
-- [ ] P3-A03 卡拍页：组内卡片网格，无图背面可点出 Sheet
-- [ ] P3-A04 CameraX 拍照 + 相册选择
-- [ ] P3-A05 图片编辑器：裁剪/旋转/缩放/滤镜/showCn（对齐 v5）
-- [ ] P3-A06 保存 → POST image；清除 → DELETE
-- [ ] P3-A07 学习页卡片背面展示用户图片
-- [ ] P3-A08 污渍渲染组件（Compose Canvas / 复用 v5 算法）— `StainOverlay` 已用于学习 FlipCard；批量/详情模式待 P3
-- [ ] P3-A09 详情抽屉「换一个污渍」「隐藏污渍」
-- [ ] P3-A10 分组详情污渍模式：筛选、单卡换、一键生成、显示/隐藏
+- [x] P3-A01 创建 `core-image` 模块（ImageTransform / ImageFilters / StainConfig 对齐 openapi）
+- [x] P3-A02 创建 `feature-snapshot` 模块
+- [x] P3-A03 卡拍页：组内卡片网格，无图背面可点出 Sheet
+- [x] P3-A04 CameraX 拍照 + 相册选择 — TakePicture + PickVisualMedia
+- [x] P3-A05 图片编辑器：裁剪/旋转/缩放/滤镜/showCn（对齐 v5）
+- [x] P3-A06 保存 → POST image；清除 → DELETE — Mock `MockWordMediaStore`
+- [x] P3-A07 学习页卡片背面展示用户图片 — Coil + WordImageBack
+- [x] P3-A08 污渍渲染组件（Compose Canvas 多类型）— 咖啡/墨水/荧光/蜡笔/线条
+- [x] P3-A09 详情抽屉污渍/照片：调色板/相机快捷按钮 + 下拉菜单 + 污渍迷你预览 + 显示/隐藏切换
+- [x] P3-A10 分组详情污渍模式：筛选、单卡换、一键生成、显示/隐藏
+- [x] P3-A11 学习页详情抽屉接入拍照/相册/图片编辑 — `StudyScreen` + `MockWordMediaStore`
+- [x] P3-A12 图片编辑器系统返回拦截 + 全屏 overlay — 学习页/卡拍页 `BackHandler`
+- [x] P3-A13 详情抽屉可滚动布局 — 避免照片/污渍操作被挤出可视区
 
 ### P3 联调验收
 
@@ -458,8 +462,10 @@ flowchart TD
 | 2026-07-02 | v1.1 | 同步 Android Mock UI 进度：词书/分组/今日/学习/测验；修正各阶段完成数；补充当前焦点 |
 | 2026-07-02 | v1.2 | P4 统计+设置 Mock UI；主题 DataStore；TASK 进度更新 |
 | 2026-07-02 | v1.3 | Android Mock 全流程；UX 修复（留白、FlipCard、TTS、统计柱状图） |
-| 2026-07-03 | v1.4 | P1-A12 打乱飞出/飞入动画；设置页 TTS 不可用 Toast
-|| 2026-07-05 | v1.5 | 学习页打乱动画升级：参考 pukepai.html 散开 → 收拢 → 发牌；打乱后回顶部；视觉-数据解耦 | |
+| 2026-07-03 | v1.4 | P1-A12 打乱飞出/飞入动画；设置页 TTS 不可用 Toast |
+| 2026-07-05 | v1.5 | 学习页打乱动画升级：参考 pukepai.html 散开 → 收拢 → 发牌；打乱后回顶部；视觉-数据解耦 |
+| 2026-07-06 | v1.6 | P3 Android Mock：卡拍/图片编辑器/多类型污渍；MockWordMediaStore 跨页共享；分组污渍模式 |
+| 2026-07-06 | v1.7 | 学习页详情抽屉污渍/照片紧凑 UX + 迷你预览；图片编辑返回拦截；分组卡拍/污渍导航打通 |
 
 ---
 

@@ -11,7 +11,8 @@ object MainRoutes {
     const val TODAY = "today"
 
     const val STUDY = "study/{groupId}?groupName={groupName}&wordCount={wordCount}"
-    const val GROUP_DETAIL = "group_detail/{groupId}?groupName={groupName}"
+    const val GROUP_DETAIL = "group_detail/{groupId}?groupName={groupName}&stainMode={stainMode}"
+    const val SNAPSHOT = "snapshot/{groupId}?groupName={groupName}"
     const val QUIZ = "quiz?source={source}&groupId={groupId}&nonce={nonce}"
 
     fun studyRoute(groupId: Int, groupName: String, wordCount: Int): String {
@@ -19,9 +20,14 @@ object MainRoutes {
         return "study/$groupId?groupName=$encodedName&wordCount=$wordCount"
     }
 
-    fun groupDetailRoute(groupId: Int, groupName: String): String {
+    fun groupDetailRoute(groupId: Int, groupName: String, stainMode: Boolean = false): String {
         val encodedName = Uri.encode(groupName)
-        return "group_detail/$groupId?groupName=$encodedName"
+        return "group_detail/$groupId?groupName=$encodedName&stainMode=$stainMode"
+    }
+
+    fun snapshotRoute(groupId: Int, groupName: String): String {
+        val encodedName = Uri.encode(groupName)
+        return "snapshot/$groupId?groupName=$encodedName"
     }
 
     fun quizRoute(

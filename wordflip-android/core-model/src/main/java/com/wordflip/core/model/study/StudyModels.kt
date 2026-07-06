@@ -1,5 +1,9 @@
 package com.wordflip.core.model.study
 
+import com.wordflip.core.model.media.ImageFilters
+import com.wordflip.core.model.media.ImageTransform
+import com.wordflip.core.model.media.StainConfig
+
 /**
  * 掌握度三态，对齐 openapi `MasteryLevel`；仅测验写入，学习页只读展示（分组详情用）。
  */
@@ -38,12 +42,15 @@ data class WordImagePayload(
     val imageUrl: String? = null,
     /** 有图时是否在底部 overlay 显示中文（REQ-STUDY-19） */
     val showCnOnImage: Boolean = true,
+    val transform: ImageTransform? = null,
+    val filters: ImageFilters? = null,
 )
 
-/** 污渍占位，seed 供 Canvas 确定性渲染 */
+/** 污渍配置；seed/config 供 Canvas 确定性渲染（REQ-STAIN-1） */
 data class WordStainPayload(
     val hidden: Boolean = false,
     val seed: Long = 0L,
+    val config: StainConfig? = null,
 )
 
 /**

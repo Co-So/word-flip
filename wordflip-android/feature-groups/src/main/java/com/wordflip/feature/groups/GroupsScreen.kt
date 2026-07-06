@@ -26,12 +26,14 @@ import com.wordflip.core.ui.component.WordFlipTopBar
 import com.wordflip.core.ui.component.rememberWordFlipToast
 
 /**
- * 分组管理页（REQ-GROUP-1~5）；卡拍/污渍快捷入口 Toast 占位。
+ * 分组管理页（REQ-GROUP-1~5）；卡拍/污渍入口导航至子页。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupsScreen(
     onNavigateToGroupDetail: (Int, String) -> Unit,
+    onNavigateToSnapshot: (Int, String) -> Unit,
+    onNavigateToStainMode: (Int, String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: GroupsViewModel = viewModel(),
 ) {
@@ -42,6 +44,8 @@ fun GroupsScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is GroupsUiEvent.Toast -> toast.show(event.message)
+                is GroupsUiEvent.NavigateToSnapshot -> onNavigateToSnapshot(event.groupId, event.groupName)
+                is GroupsUiEvent.NavigateToStainMode -> onNavigateToStainMode(event.groupId, event.groupName)
             }
         }
     }
@@ -89,8 +93,8 @@ fun GroupsScreen(
                             GroupCard(
                                 group = group,
                                 onClick = { onNavigateToGroupDetail(group.id, group.name) },
-                                onSnapshotClick = viewModel::onSnapshotClick,
-                                onStainClick = viewModel::onStainClick,
+                                onSnapshotClick = { viewModel.onSnapshotClick(group.id, group.name) },
+                                onStainClick = { viewModel.onStainClick(group.id, group.name) },
                             )
                         }
                     }

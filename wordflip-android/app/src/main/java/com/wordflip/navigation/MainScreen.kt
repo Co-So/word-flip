@@ -27,6 +27,7 @@ import com.wordflip.feature.settings.SettingsScreen
 import com.wordflip.feature.stats.StatsScreen
 import com.wordflip.feature.quiz.QuizScreen
 import com.wordflip.feature.quiz.parseQuizSource
+import com.wordflip.feature.snapshot.SnapshotScreen
 import com.wordflip.feature.study.StudyScreen
 import com.wordflip.feature.today.TodayScreen
 
@@ -103,6 +104,16 @@ fun MainScreen(
                             MainRoutes.groupDetailRoute(groupId, groupName),
                         )
                     },
+                    onNavigateToSnapshot = { groupId, groupName ->
+                        navController.navigate(
+                            MainRoutes.snapshotRoute(groupId, groupName),
+                        )
+                    },
+                    onNavigateToStainMode = { groupId, groupName ->
+                        navController.navigate(
+                            MainRoutes.groupDetailRoute(groupId, groupName, stainMode = true),
+                        )
+                    },
                 )
             }
             composable(MainRoutes.STATS) {
@@ -128,19 +139,43 @@ fun MainScreen(
                         type = NavType.StringType
                         defaultValue = ""
                     },
+                    navArgument("stainMode") {
+                        type = NavType.BoolType
+                        defaultValue = false
+                    },
                 ),
             ) { entry ->
                 val groupId = entry.arguments?.getInt("groupId") ?: 0
                 val groupName = entry.arguments?.getString("groupName").orEmpty()
+                val stainMode = entry.arguments?.getBoolean("stainMode") ?: false
                 GroupDetailScreen(
                     groupId = groupId,
                     groupName = groupName,
+                    initialStainMode = stainMode,
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToStudy = { nav ->
                         navController.navigate(
                             MainRoutes.studyRoute(nav.groupId, nav.groupName, nav.wordCount),
                         )
                     },
+                )
+            }
+            composable(
+                route = MainRoutes.SNAPSHOT,
+                arguments = listOf(
+                    navArgument("groupId") { type = NavType.IntType },
+                    navArgument("groupName") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) { entry ->
+                val groupId = entry.arguments?.getInt("groupId") ?: 0
+                val groupName = entry.arguments?.getString("groupName").orEmpty()
+                SnapshotScreen(
+                    groupId = groupId,
+                    groupName = groupName,
+                    onNavigateBack = { navController.popBackStack() },
                 )
             }
             composable(
