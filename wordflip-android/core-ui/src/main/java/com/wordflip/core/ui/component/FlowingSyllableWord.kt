@@ -1,4 +1,4 @@
-package com.wordflip.feature.study
+package com.wordflip.core.ui.component
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -28,7 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 /**
- * 详情抽屉居中单词：元音字母橙色高亮 + 朗读时逐字母流动动画（对齐 v5 `renderSyllableWord` 元音着色）。
+ * 居中单词展示：元音字母橙色高亮 + 朗读时逐字母流动动画（对齐 v5 `renderSyllableWord`）。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -37,13 +37,11 @@ fun FlowingSyllableWord(
     isSpeaking: Boolean,
     speechRate: Float,
     modifier: Modifier = Modifier,
-    /** 仅详情页朗读时启用流动动画，卡片点击发音不触发 */
+    /** 为 false 时仅元音着色，不播放流动动画 */
     animateFlow: Boolean = true,
 ) {
     val letterIndices = remember(word) { word.indices.filter { word[it].isLetter() } }
     var flowingIndex by remember(word) { mutableIntStateOf(-1) }
-
-    // 动画时长按字母数估算（v5：word.length * 0.08 / rate）
     val letterCount = remember(word) { letterIndices.size.coerceAtLeast(1) }
 
     LaunchedEffect(isSpeaking, word, speechRate, animateFlow) {

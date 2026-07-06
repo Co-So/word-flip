@@ -9,6 +9,7 @@ import com.wordflip.core.model.quiz.QuizFeedbackType
 import com.wordflip.core.model.quiz.QuizQuestionItem
 import com.wordflip.core.model.quiz.QuizSource
 import com.wordflip.core.model.quiz.QuizWrongWord
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,8 @@ class QuizViewModel(
     private val wrongWords = mutableListOf<QuizWrongWord>()
     /** 本会话连续答错计数，用于 Mock 连续 2 错 → unknown（REQ-QUIZ-6） */
     private val consecutiveWrongByWord = mutableMapOf<String, Int>()
+    /** 答对后自动下一题的协程，手动点「下一题」时取消 */
+    private var autoAdvanceJob: Job? = null
 
     init {
         startSession()
@@ -65,18 +68,52 @@ class QuizViewModel(
     fun onAnswerChange(value: String) {
         val state = _uiState.value as? QuizUiState.Question ?: return
         if (!state.inputEnabled) return
-        _uiState.value = state.copy(userAnswer = value, feedback = null)
+        _uiState.value = state.copy(
+            userAnswer = value,
+            practiceHint = if (state.consolidationActive) null else state.practiceHint,
+            practicePassed = if (state.consolidationActive) false else state.practicePassed,
+            feedback = if (state.consolidationActive) state.feedback else null,
+        )
     }
 
+    /** 提交：正式测验或巩固练习（由 consolidationActive 区分） */
     fun submitAnswer() {
         val state = _uiState.value as? QuizUiState.Question ?: return
         if (!state.inputEnabled || state.userAnswer.isBlank()) return
+        if (state.consolidationActive) {
+            submitPractice()
+            return
+        }
+        submitOfficial(state)
+    }
 
+    /** 切换「盖住单词」：盖住后原位置改显中文 */
+    fun toggleHintCovered() {
+        val state = _uiState.value as? QuizUiState.Question ?: return
+        if (!state.consolidationActive) return
+        _uiState.value = state.copy(hintPanelCovered = !state.hintPanelCovered)
+    }
+
+    /** 进入下一题：巩固练习通过后，或答对反馈期间手动跳过等待 */
+    fun goToNextQuestion() {
+        val state = _uiState.value as? QuizUiState.Question ?: return
+        when {
+            state.consolidationActive -> {
+                if (!state.practicePassed) return
+                advanceAfterFeedback()
+            }
+            state.feedback?.type == QuizFeedbackType.CORRECT && !state.inputEnabled -> {
+                autoAdvanceJob?.cancel()
+                autoAdvanceJob = null
+                advanceAfterFeedback()
+            }
+        }
+    }
+
+    private fun submitOfficial(state: QuizUiState.Question) {
         val question = state.question
         val trimmed = state.userAnswer.trim()
         val correct = trimmed.equals(question.expectedEn, ignoreCase = true)
-
-        // 判题前读取连续错题次数
         val wrongStreakBefore = if (correct) 0 else consecutiveWrongByWord[question.wordKey].orElse(0)
 
         val (before, after) = FakeQuizData.mockMasteryAfterAnswer(
@@ -112,15 +149,49 @@ class QuizViewModel(
             )
         }
 
-        _uiState.value = state.copy(inputEnabled = false, feedback = feedback)
-
-        viewModelScope.launch {
-            delay(FEEDBACK_DELAY_MS)
-            advanceAfterFeedback()
+        if (correct) {
+            _uiState.value = state.copy(
+                inputEnabled = false,
+                feedback = feedback,
+                consolidationActive = false,
+            )
+            autoAdvanceJob?.cancel()
+            autoAdvanceJob = viewModelScope.launch {
+                delay(FEEDBACK_DELAY_MS)
+                advanceAfterFeedback()
+                autoAdvanceJob = null
+            }
+        } else {
+            // 答错：下方展示提示区，原输入框清空继续练习；须手动点「下一题」
+            _uiState.value = state.copy(
+                inputEnabled = true,
+                userAnswer = "",
+                feedback = feedback,
+                consolidationActive = true,
+                wrongAttemptAnswer = trimmed,
+                practiceHint = null,
+                practicePassed = false,
+                hintPanelCovered = false,
+            )
         }
     }
 
+    /** 巩固练习判题：不修改得分/掌握度/错题记录 */
+    private fun submitPractice() {
+        val state = _uiState.value as? QuizUiState.Question ?: return
+        val trimmed = state.userAnswer.trim()
+        if (trimmed.isBlank()) return
+
+        val correct = trimmed.equals(state.question.expectedEn, ignoreCase = true)
+        _uiState.value = state.copy(
+            practiceHint = if (correct) "对了！可以进入下一题" else "再试一次",
+            practicePassed = correct,
+        )
+    }
+
     private fun advanceAfterFeedback() {
+        autoAdvanceJob?.cancel()
+        autoAdvanceJob = null
         currentIndex += 1
         if (currentIndex >= questions.size) {
             _uiState.value = QuizUiState.Result(
@@ -151,6 +222,11 @@ class QuizViewModel(
             userAnswer = userAnswer,
             inputEnabled = inputEnabled,
             feedback = feedback,
+            consolidationActive = false,
+            wrongAttemptAnswer = null,
+            practiceHint = null,
+            practicePassed = false,
+            hintPanelCovered = false,
         )
     }
 
@@ -167,7 +243,7 @@ class QuizViewModel(
     }
 
     companion object {
-        /** REQ-QUIZ-7：判题展示约 1.4 秒后自动下一题 */
-        const val FEEDBACK_DELAY_MS = 1400L
+        /** REQ-QUIZ-7：答对短暂展示反馈后自动下一题，可手动跳过 */
+        const val FEEDBACK_DELAY_MS = 600L
     }
 }

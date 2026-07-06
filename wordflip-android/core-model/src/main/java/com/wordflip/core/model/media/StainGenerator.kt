@@ -93,21 +93,68 @@ object StainGenerator {
         existing: List<Pair<Float, Float>>,
         minDist: Float,
     ): Pair<Float, Float>? {
-        repeat(12) { attempt ->
-            val x = randRange(seed + attempt * 3, 0.12f, 0.88f)
-            val y = randRange(seed + attempt * 3 + 1, 0.12f, 0.88f)
+        var best: Pair<Float, Float>? = null
+        var bestScore = -1f
+        repeat(30) { attempt ->
+            val s = seed + attempt * 7919L
+            val zone = StainNoise.seededRandom(s)
+            val (x, y, score) = when {
+                zone < 0.6f -> {
+                    // 60% 边缘区域，污渍更像真实卡片
+                    val margin = 0.05f
+                    when (StainNoise.randInt(0, 3, s + 1L)) {
+                        0 -> Triple(
+                            StainNoise.randRange(margin, 0.25f, s + 2L),
+                            StainNoise.randRange(margin, 0.3f, s + 3L),
+                            0.6f,
+                        )
+                        1 -> Triple(
+                            StainNoise.randRange(0.75f, 1f - margin, s + 2L),
+                            StainNoise.randRange(margin, 0.3f, s + 3L),
+                            0.6f,
+                        )
+                        2 -> Triple(
+                            StainNoise.randRange(margin, 0.25f, s + 2L),
+                            StainNoise.randRange(0.7f, 1f - margin, s + 3L),
+                            0.6f,
+                        )
+                        else -> Triple(
+                            StainNoise.randRange(0.75f, 1f - margin, s + 2L),
+                            StainNoise.randRange(0.7f, 1f - margin, s + 3L),
+                            0.6f,
+                        )
+                    }
+                }
+                zone < 0.9f -> Triple(
+                    StainNoise.randRange(0.25f, 0.75f, s + 2L),
+                    StainNoise.randRange(0.25f, 0.75f, s + 3L),
+                    0.3f,
+                )
+                else -> Triple(
+                    StainNoise.randRange(0.15f, 0.85f, s + 2L),
+                    StainNoise.randRange(0.15f, 0.85f, s + 3L),
+                    0.1f,
+                )
+            }
+            // 避开中心文字区（REQ-STUDY-4 不遮挡主词）
+            val adjustedScore = if (x in 0.3f..0.7f && y in 0.35f..0.65f) score * 0.1f else score
             val ok = existing.all { (ex, ey) ->
                 val dx = x - ex
                 val dy = y - ey
                 dx * dx + dy * dy >= minDist * minDist
             }
-            if (ok) return x to y
+            if (ok && adjustedScore > bestScore) {
+                bestScore = adjustedScore
+                best = x to y
+            }
         }
-        return null
+        return best ?: run {
+            val x = StainNoise.randRange(0.1f, 0.9f, seed)
+            val y = StainNoise.randRange(0.1f, 0.9f, seed + 1L)
+            x to y
+        }
     }
 
-    private fun randRange(seed: Long, min: Float, max: Float): Float {
-        val r = Random(seed)
-        return min + r.nextFloat() * (max - min)
-    }
+    private fun randRange(seed: Long, min: Float, max: Float): Float =
+        StainNoise.randRange(min, max, seed)
 }

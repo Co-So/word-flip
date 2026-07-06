@@ -2,6 +2,7 @@ package com.wordflip.core.model.quiz
 
 import com.wordflip.core.model.study.MasteryLevel
 import com.wordflip.core.model.study.MasterySnapshot
+import com.wordflip.core.model.study.WordDetail
 
 /** 测验入口来源，对齐 openapi `CreateQuizSessionRequest.source` */
 enum class QuizSource {
@@ -25,6 +26,8 @@ data class QuizQuestionItem(
     val wordKey: String,
     val expectedEn: String,
     val prompt: QuizPrompt,
+    /** 错题巩固：词义详情（Mock 来自 WordCard.detail） */
+    val detail: WordDetail? = null,
 )
 
 /** 判题反馈类型，对齐 openapi `AnswerResult.feedback` */

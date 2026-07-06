@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import com.wordflip.core.model.media.StainType
 import com.wordflip.core.model.study.WordCard
 import com.wordflip.core.ui.component.FlipCard
+import com.wordflip.core.ui.component.FlowingSyllableWord
 import com.wordflip.core.ui.component.WordFlipBottomSheet
 
 /**

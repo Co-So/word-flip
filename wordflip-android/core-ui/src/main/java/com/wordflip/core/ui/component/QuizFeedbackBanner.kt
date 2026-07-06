@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.sp
 import com.wordflip.core.ui.theme.WordFlipColors
 
 /**
- * 判题反馈条（REQ-QUIZ-5~7）：1.4s 展示后自动下一题。
+ * 判题反馈条（REQ-QUIZ-5~7）：答对自动下一题；答错时详情区展示答案。
  */
 @Composable
 fun QuizFeedbackBanner(

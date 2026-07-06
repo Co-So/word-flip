@@ -13,7 +13,7 @@ object MainRoutes {
     const val STUDY = "study/{groupId}?groupName={groupName}&wordCount={wordCount}"
     const val GROUP_DETAIL = "group_detail/{groupId}?groupName={groupName}&stainMode={stainMode}"
     const val SNAPSHOT = "snapshot/{groupId}?groupName={groupName}"
-    const val QUIZ = "quiz?source={source}&groupId={groupId}&nonce={nonce}"
+    const val QUIZ = "quiz/{source}?groupId={groupId}&nonce={nonce}"
 
     fun studyRoute(groupId: Int, groupName: String, wordCount: Int): String {
         val encodedName = Uri.encode(groupName)
@@ -34,7 +34,7 @@ object MainRoutes {
         source: String = "today",
         groupId: Int = -1,
         nonce: Long = System.currentTimeMillis(),
-    ): String = "quiz?source=$source&groupId=$groupId&nonce=$nonce"
+    ): String = "quiz/$source?groupId=$groupId&nonce=$nonce"
 
     val tabRoutes = setOf(SETTINGS, BOOKS, GROUPS, STATS, TODAY)
 

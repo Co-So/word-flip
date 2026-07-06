@@ -48,6 +48,7 @@ object FakeQuizData {
                     pos = card.pos,
                     ph = card.ph,
                 ),
+                detail = card.detail,
             )
         }
 
