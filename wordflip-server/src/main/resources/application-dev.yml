@@ -11,6 +11,10 @@ spring:
       timeout: 2000ms
 
 wordflip:
+  jwt:
+    secret: dev-only-change-me-wordflip-jwt-secret-key-32bytes!!
+    access-expiration-minutes: 15
+    refresh-expiration-days: 7
   minio:
     endpoint: http://localhost:9000
     access-key: minioadmin

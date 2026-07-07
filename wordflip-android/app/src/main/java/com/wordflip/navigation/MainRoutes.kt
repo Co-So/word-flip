@@ -14,6 +14,7 @@ object MainRoutes {
     const val GROUP_DETAIL = "group_detail/{groupId}?groupName={groupName}&stainMode={stainMode}"
     const val SNAPSHOT = "snapshot/{groupId}?groupName={groupName}"
     const val QUIZ = "quiz/{source}?groupId={groupId}&nonce={nonce}"
+    const val CUSTOM_GROUP = "custom_group"
 
     fun studyRoute(groupId: Int, groupName: String, wordCount: Int): String {
         val encodedName = Uri.encode(groupName)

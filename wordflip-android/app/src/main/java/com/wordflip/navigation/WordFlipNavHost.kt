@@ -8,10 +8,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.wordflip.feature.auth.LoginScreen
+import com.wordflip.feature.auth.RegisterScreen
 import com.wordflip.feature.settings.SettingsPreferences
 
 object Routes {
     const val LOGIN = "login"
+    const val REGISTER = "register"
     const val MAIN = "main"
 }
 
@@ -40,12 +42,28 @@ fun WordFlipNavHost(
         modifier = modifier,
     ) {
         composable(Routes.LOGIN) {
-            LoginScreen(onLoginSuccess = {
-                onLoginSuccess()
-                navController.navigate(Routes.MAIN) {
-                    popUpTo(Routes.LOGIN) { inclusive = true }
-                }
-            })
+            LoginScreen(
+                onLoginSuccess = {
+                    onLoginSuccess()
+                    navController.navigate(Routes.MAIN) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                },
+                onNavigateToRegister = {
+                    navController.navigate(Routes.REGISTER)
+                },
+            )
+        }
+        composable(Routes.REGISTER) {
+            RegisterScreen(
+                onRegisterSuccess = {
+                    onLoginSuccess()
+                    navController.navigate(Routes.MAIN) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                },
+                onNavigateToLogin = { navController.popBackStack() },
+            )
         }
         composable(Routes.MAIN) {
             MainScreen(

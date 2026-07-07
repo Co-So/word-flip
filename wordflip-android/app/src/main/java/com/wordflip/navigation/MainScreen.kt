@@ -21,6 +21,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.wordflip.feature.books.BooksScreen
+import com.wordflip.feature.groups.CustomGroupScreen
 import com.wordflip.feature.groups.GroupDetailScreen
 import com.wordflip.feature.groups.GroupsScreen
 import com.wordflip.feature.settings.SettingsScreen
@@ -95,7 +96,11 @@ fun MainScreen(
                 )
             }
             composable(MainRoutes.BOOKS) {
-                BooksScreen()
+                BooksScreen(
+                    onNavigateToCustomGroup = {
+                        navController.navigate(MainRoutes.CUSTOM_GROUP)
+                    },
+                )
             }
             composable(MainRoutes.GROUPS) {
                 GroupsScreen(
@@ -234,6 +239,14 @@ fun MainScreen(
                     groupId = groupId,
                     viewModelKey = "quiz-$nonce",
                     onNavigateBack = { navController.popBackStack() },
+                )
+            }
+            composable(MainRoutes.CUSTOM_GROUP) {
+                CustomGroupScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onSaved = {
+                        navController.popBackStack()
+                    },
                 )
             }
         }

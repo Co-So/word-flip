@@ -29,5 +29,9 @@ springdoc:
     path: /swagger-ui.html
 
 wordflip:
+  jwt:
+    secret: ${WORDFLIP_JWT_SECRET:dev-only-change-me-wordflip-jwt-secret-key-32bytes!!}
+    access-expiration-minutes: 15
+    refresh-expiration-days: 7
   minio:
     bucket: wordflip

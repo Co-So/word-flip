@@ -1,6 +1,10 @@
 package com.wordflip.feature.books
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -35,8 +39,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wordflip.core.ui.component.BookListItem
 import com.wordflip.core.ui.component.NetworkErrorView
@@ -47,23 +55,46 @@ import com.wordflip.core.ui.component.rememberWordFlipToast
 private val GROUP_SIZE_OPTIONS = listOf(10, 20, 30, 50)
 
 /**
- * 词书页（REQ-BOOK-1~16）：勾选、分组大小、Sticky 保存栏；导入/手动分组 Toast 占位。
+ * 词书页（REQ-BOOK-1~16）：勾选、分组大小、Sticky 保存栏；导入与手动分组。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BooksScreen(
+    onNavigateToCustomGroup: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: BooksViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val (snackbarHostState, toast) = rememberWordFlipToast()
     var pendingDelete by remember { mutableStateOf<Pair<Long, String>?>(null) }
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.loadBooks()
+        }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.onFileSelected(context, uri)
+        }
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 is BooksUiEvent.Toast -> toast.show(event.message)
                 is BooksUiEvent.ConfirmDelete -> pendingDelete = event.bookId to event.bookName
+                BooksUiEvent.NavigateToCustomGroup -> onNavigateToCustomGroup()
+                BooksUiEvent.LaunchFilePicker -> {
+                    filePickerLauncher.launch(
+                        arrayOf("text/*", "application/json", "application/csv"),
+                    )
+                }
             }
         }
     }
@@ -140,72 +171,91 @@ fun BooksScreen(
                 )
             }
             is BooksUiState.Content -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    contentPadding = PaddingValues(bottom = 16.dp),
-                ) {
-                    items(state.books, key = { it.id }) { book ->
-                        BookListItem(
-                            book = book,
-                            onToggle = { viewModel.toggleBookSelection(book.id) },
-                            onDelete = if (book.canDelete) {
-                                { viewModel.requestDeleteBook(book.id) }
-                            } else {
-                                null
-                            },
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                if (state.isParsingImport) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
                     }
-                    item {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Text(
-                                text = "分组大小",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        contentPadding = PaddingValues(bottom = 16.dp),
+                    ) {
+                        items(state.books, key = { it.id }) { book ->
+                            BookListItem(
+                                book = book,
+                                onToggle = { viewModel.toggleBookSelection(book.id) },
+                                onDelete = if (book.canDelete) {
+                                    { viewModel.requestDeleteBook(book.id) }
+                                } else {
+                                    null
+                                },
                             )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                GROUP_SIZE_OPTIONS.forEach { size ->
-                                    FilterChip(
-                                        selected = state.groupSize == size,
-                                        onClick = { viewModel.setGroupSize(size) },
-                                        label = { Text("$size") },
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Text(
+                                    text = "分组大小",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    GROUP_SIZE_OPTIONS.forEach { size ->
+                                        FilterChip(
+                                            selected = state.groupSize == size,
+                                            onClick = { viewModel.setGroupSize(size) },
+                                            label = { Text("$size") },
+                                        )
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = viewModel::onImportClick,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(Icons.Outlined.UploadFile, contentDescription = null)
+                                    Text(
+                                        text = "导入单词书",
+                                        modifier = Modifier.padding(start = 8.dp),
                                     )
                                 }
-                            }
-                            OutlinedButton(
-                                onClick = viewModel::onImportClick,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(Icons.Outlined.UploadFile, contentDescription = null)
+                                OutlinedButton(
+                                    onClick = viewModel::onCustomGroupClick,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(Icons.Outlined.GroupAdd, contentDescription = null)
+                                    Text(
+                                        text = "手动添加分组",
+                                        modifier = Modifier.padding(start = 8.dp),
+                                    )
+                                }
                                 Text(
-                                    text = "导入单词书",
-                                    modifier = Modifier.padding(start = 8.dp),
+                                    text = "支持 JSON / CSV / TXT 格式",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            OutlinedButton(
-                                onClick = viewModel::onCustomGroupClick,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(Icons.Outlined.GroupAdd, contentDescription = null)
-                                Text(
-                                    text = "手动添加分组",
-                                    modifier = Modifier.padding(start = 8.dp),
-                                )
-                            }
-                            Text(
-                                text = "支持 JSON / CSV / TXT 格式",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                         }
                     }
+                }
+                state.importSheet?.let { sheet ->
+                    BookImportPreviewSheet(
+                        state = sheet,
+                        onNameChange = viewModel::updateImportName,
+                        onConfirm = viewModel::confirmImport,
+                        onDismiss = viewModel::cancelImport,
+                    )
                 }
             }
         }

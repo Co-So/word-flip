@@ -1,7 +1,7 @@
 # WordFlip 任务清单（TASK）
 
-> 版本：v1.8  
-> 日期：2026-07-06  
+> 版本：v2.1  
+> 日期：2026-07-07  
 > 用法：完成一项将 `[ ]` 改为 `[x]`。任务按依赖顺序排列，建议自上而下打勾。  
 > 关联：[requirements.md](docs/wordflip/requirements.md) · [architecture.md](docs/wordflip/architecture.md) · [STRUCTURE.md](STRUCTURE.md)
 
@@ -12,34 +12,37 @@
 | 阶段 | 说明 | 进度 |
 |------|------|------|
 | **D** | 文档与设计（已定稿） | 16 / 18 |
-| **I** | 基础设施 Docker | 7 / 8 |
-| **S** | 后端脚手架 + 公共层 | 18 / 21 |
+| **I** | 基础设施 Docker | 8 / 8 |
+| **S** | 后端脚手架 + 公共层 | 21 / 21 |
 | **A** | Android 脚手架 + 公共层 | 9 / 14 |
-| **P0** | 登录 + 词书 + 分组 | 13 / 50 |
+| **P0** | 登录 + 词书 + 分组 | 34 / 50 |
 | **P1** | 今日 + 学习 + SRS 读 | 15 / 28 |
 | **P2** | 默写测验 + 掌握度写 | 9 / 24 |
 | **P3** | 卡拍 + 图片 + 污渍 | 13 / 22 |
 | **P4** | 统计 + 设置完善 | 8 / 14 |
-| **Q** | 联调、测试、发布准备 | 0 / 12 |
+| **Q** | 联调、测试、发布准备 | 1 / 12 |
 | **B** | 二期 Backlog | — |
 
-### 当前焦点（2026-07-06）
+### 当前焦点（2026-07-07）
 
-Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登录。
+Android 采用 **Mock 数据 UI 先行**；后端 P0 Auth/Settings/Books **已本地跑通**。
 
 | 区域 | 状态 |
 |------|------|
 | 五个 Tab | **全部 Mock UI 可点通**（设置 / 词书 / 分组 / 统计 / 今日） |
-| 子页 | 学习 / 分组详情 / **默写测验（巩固+TTS）** / 卡拍 |
+| 子页 | 学习 / 分组详情 / 默写测验 / 卡拍 / **CustomGroup** |
+| 词书 | **导入 preview→confirm**（本地解析 TXT/CSV/JSON）；**手动添加分组** chips 多选 |
+| 认证 | **注册页 UI**（邮箱/手机切换 + 校验）；登录页密码可见性；Mock 注册进主页 |
 | 设置 | DataStore 持久化自动发音（默认开）+ 主题；开启发音时 TTS 不可用 Toast 提示 |
 | 学习体验 | 扑克牌式打乱；FlipCard 展示用户图片 + 多类型污渍；详情/测验共用 `FlowingSyllableWord` 元音高亮 |
 | P3 媒体 | 卡拍选图/拍照/编辑器 Mock；编辑器返回拦截；`MockWordMediaStore` 跨页共享；分组污渍模式 |
 | 统计 | 近 12 周学习柱状图 |
-| 后端 P0+ | 未启动（⛔ Docker I-07 / Flyway S-18） |
+| 基础设施 | **Docker MySQL/Redis/MinIO 已启动**；Flyway V1/V2 迁移成功 |
+| 后端 P0 | **Auth/Settings/Books API 已实现**；`spring-boot:run` + register/login 冒烟通过 |
 
-**已打通导航：** 今日 ↔ 学习 / 测验；词书保存；分组详情 → 学习 / 测验；分组卡 → 卡拍 / 污渍模式。
+**已打通导航：** 今日 ↔ 学习 / 测验；词书 → CustomGroup / 导入；词书保存；分组详情 → 学习 / 测验；分组卡 → 卡拍 / 污渍模式；登录 ↔ 注册。
 
-**建议下一波：** 启动 Docker + 后端 P0 Auth/Settings API，或 P1-A16 学习 session 上报。
+**建议下一波：** P0-A04 AuthViewModel 接真 API；或 P0-B31~35 Groups 读 API + P0-B20~25 词书导入 API。
 
 ---
 
@@ -95,7 +98,7 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 - [x] I-04 Redis：持久化可选、端口 6379
 - [x] I-05 MinIO：bucket `wordflip` 自动创建脚本或文档说明
 - [x] I-06 更新 `docker/README.md` 启动与停止命令
-- [ ] I-07 验证本机：`docker compose up -d` 无报错 ⛔ 需启动 Docker Desktop
+- [x] I-07 验证本机：`docker compose up -d` 无报错
 - [x] I-08 记录 MinIO Console 默认账号与 bucket 创建步骤
 
 ---
@@ -123,12 +126,12 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 - [x] S-15 编写 V1 续：word_images、word_stains、study_logs
 - [x] S-16 编写 V1 续：achievement_definitions、user_achievements
 - [x] S-17 编写 `V2__seed_builtin_books.sql`（三本内置词书占位数据）
-- [ ] S-18 本地启动验证 Flyway 迁移成功 ⛔ 依赖 I-07 Docker
+- [x] S-18 本地启动验证 Flyway 迁移成功
 
 ### S.3 横切能力
 
 - [x] S-20 实现统一 `ErrorResponse` + `@ControllerAdvice` 全局异常
-- [ ] S-21 实现 JWT：Access 15min + Refresh 7d（Redis 存 Refresh）— 占位 `JwtPlaceholder`，P0 实现
+- [x] S-21 实现 JWT：Access 15min + Refresh 7d（Redis 存 Refresh）
 - [x] S-22 实现 Spring Security 过滤器链（白名单 Auth 端点）
 - [x] S-23 封装 MinIO `StorageService`（upload / delete / presigned URL）— 骨架占位
 - [ ] S-24 封装 Redis 缓存工具（today 缓存 key 删除）
@@ -171,24 +174,24 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 
 ### P0-B 后端 · Auth
 
-- [ ] P0-B01 实体 `User` + `UserSettings` + Repository
-- [ ] P0-B02 `POST /auth/register`（email 或 phone 二选一）
-- [ ] P0-B03 `POST /auth/login`（account 自动识别）
-- [ ] P0-B04 `POST /auth/refresh` + Refresh 轮换写 Redis
-- [ ] P0-B05 `POST /auth/logout` 吊销 Refresh
-- [ ] P0-B06 注册同事务创建 `user_settings` 默认行
-- [ ] P0-B07 密码 BCrypt；登录失败不泄露账号是否存在
+- [x] P0-B01 实体 `User` + `UserSettings` + Repository
+- [x] P0-B02 `POST /auth/register`（email 或 phone 二选一）
+- [x] P0-B03 `POST /auth/login`（account 自动识别）
+- [x] P0-B04 `POST /auth/refresh` + Refresh 轮换写 Redis
+- [x] P0-B05 `POST /auth/logout` 吊销 Refresh
+- [x] P0-B06 注册同事务创建 `user_settings` 默认行
+- [x] P0-B07 密码 BCrypt；登录失败不泄露账号是否存在
 
 ### P0-B 后端 · Settings & Books
 
-- [ ] P0-B10 实体 `Book`、`BookWord`、`UserBookSelection`、`UserWordLexicon`
-- [ ] P0-B11 `GET /books`（builtin + 当前用户 imported，含 selected）
-- [ ] P0-B12 `GET /settings` + `PUT /settings`（bookIds + groupSize）
-- [ ] P0-B13 `PATCH /settings/preferences`（autoSpeak、themeMode）
-- [ ] P0-B14 `BookService`：distinct 词数、estimatedGroupCount 计算
-- [ ] P0-B15 `PUT /settings` 后调用 `GroupService.appendGroupsForNewWords`
-- [ ] P0-B16 增量 append：delta 计算、按 groupSize 切分、INSERT groups + group_words
-- [ ] P0-B17 验证 UNIQUE(user_id, word_key) 冲突返回 409
+- [x] P0-B10 实体 `Book`、`BookWord`、`UserBookSelection`、`UserWordLexicon`
+- [x] P0-B11 `GET /books`（builtin + 当前用户 imported，含 selected）
+- [x] P0-B12 `GET /settings` + `PUT /settings`（bookIds + groupSize）
+- [x] P0-B13 `PATCH /settings/preferences`（autoSpeak、themeMode）
+- [x] P0-B14 `BookService`：distinct 词数、estimatedGroupCount 计算
+- [x] P0-B15 `PUT /settings` 后调用 `GroupService.appendGroupsForNewWords`
+- [x] P0-B16 增量 append：delta 计算、按 groupSize 切分、INSERT groups + group_words
+- [x] P0-B17 验证 UNIQUE(user_id, word_key) 冲突返回 409
 
 ### P0-B 后端 · 词书导入
 
@@ -201,7 +204,7 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 
 ### P0-B 后端 · Groups
 
-- [ ] P0-B30 实体 `Group`、`GroupWord` + Repository
+- [x] P0-B30 实体 `Group`、`GroupWord` + Repository
 - [ ] P0-B31 `GET /groups`（source 过滤、sort createdAt）
 - [ ] P0-B32 `GET /groups/{groupId}` + 聚合 stats / progress
 - [ ] P0-B33 `GET /groups/{groupId}/words` 分页 + 只读 mastery 占位（无测验时为 unlearned）
@@ -212,7 +215,7 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 
 - [x] P0-A01 创建 `feature-auth` 模块
 - [x] P0-A02 登录页 UI（account + password）— 占位 UI，任意输入可进 Main（Debug 默认跳过）
-- [ ] P0-A03 注册页 UI（email 或 phone + password）
+- [x] P0-A03 注册页 UI（email 或 phone + password）— 邮箱/手机 SegmentedButton + blur 校验；Mock 注册进主页
 - [ ] P0-A04 `AuthViewModel` 对接 register / login API
 - [ ] P0-A05 登录成功导航至今日页；失败 Toast
 - [ ] P0-A06 设置页「退出登录」清除 Token 回登录页 — Mock 退出已接 NavHost；Token/API 待 P0
@@ -224,21 +227,21 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 - [x] P0-A12 勾选切换 + 底部分组大小 10/20/30/50
 - [x] P0-A13 汇总行：distinct 词数 · 每组 N · 约 M 组
 - [x] P0-A14 「保存设置」调用 PUT /settings；Toast 成功 — Mock 本地模拟 append
-- [ ] P0-A15 「导入单词书」文件选择 → preview → confirm 流程 — Toast 占位
+- [x] P0-A15 「导入单词书」文件选择 → preview → confirm 流程 — OpenDocument + 本地解析 + BottomSheet Mock
 - [x] P0-A16 删除 imported 词书确认对话框 — Mock 已完成，待接 DELETE API
-- [ ] P0-A17 「手动添加分组」入口 → CustomGroup 页（见 P0-A21）— Toast 占位
+- [x] P0-A17 「手动添加分组」入口 → CustomGroup 页 — 词书页导航至 custom_group 子页
 
 ### P0-A Android · 分组
 
 - [x] P0-A20 创建 `feature-groups` 模块 — CustomGroup 子页待 P0-A21
-- [ ] P0-A21 CustomGroup：拉取 unassigned chips，多选保存 — 待实现
+- [x] P0-A21 CustomGroup：拉取 unassigned chips，多选保存 — FakeUnassignedWordsData + createCustomGroup
 - [x] P0-A22 分组列表页：组名、状态、四维统计、进度条
 - [x] P0-A23 分组详情列表模式（只读掌握度 Chip，无手动改态按钮）
 - [x] P0-A24 分组卡片快捷入口：卡拍 / 污渍 — 导航至 Snapshot / 分组详情污渍模式
 
 ### P0 联调验收
 
-- [ ] P0-T01 curl/E2E：注册 → 登录 → GET /books
+- [x] P0-T01 curl/E2E：注册 → 登录 → GET /books（PowerShell Invoke-RestMethod 本地冒烟通过）
 - [ ] P0-T02 勾选两本词书 → PUT /settings → 验证 appendedGroups
 - [ ] P0-T03 导入 CSV 小词书 → 保存设置 → 新词入组
 - [ ] P0-T04 Android 真机/模拟器走通 P0 全流程
@@ -404,8 +407,8 @@ Android 采用 **Mock 数据 UI 先行**，不接真 API；Debug 包默认已登
 
 ## §Q 联调、测试、发布准备
 
-- [ ] Q-01 后端：核心 Service 单元测试（applyQuizResult、appendGroups）
-- [ ] Q-02 后端：Auth + Settings 集成测试（MockMvc）
+- [ ] Q-01 后端：核心 Service 单元测试（applyQuizResult、appendGroups）— appendGroups 部分完成（GroupServiceTest）
+- [x] Q-02 后端：Auth + Settings 集成测试（MockMvc）— `.\mvnw.cmd test` 7 tests 通过（JDK 21）
 - [ ] Q-03 Android：ViewModel 单测（可选高价值路径）
 - [ ] Q-04 手工测试清单：对照 requirements 附录 B 逐页勾选
 - [ ] Q-05 性能：分组 500 词 append < 3s（本地基准）
@@ -469,6 +472,9 @@ flowchart TD
 | 2026-07-05 | v1.5 | 学习页打乱动画升级：参考 pukepai.html 散开 → 收拢 → 发牌；打乱后回顶部；视觉-数据解耦 |
 | 2026-07-06 | v1.6 | P3 Android Mock：卡拍/图片编辑器/多类型污渍；MockWordMediaStore 跨页共享；分组污渍模式 |
 | 2026-07-06 | v1.7 | 学习页详情抽屉污渍/照片紧凑 UX + 迷你预览；图片编辑返回拦截；分组卡拍/污渍导航打通 |
+| 2026-07-07 | v2.1 | Docker/Flyway/spring-boot 本地验证；JPA 实体对齐 MySQL ENUM；P0-T01/Q-02 冒烟打勾；非法 JSON 返回 400 |
+| 2026-07-07 | v2.0 | 后端 P0 Auth/Settings/Books：JWT+Redis、Auth/Settings/Books API、GroupService 增量 append；测试代码就绪 |
+| 2026-07-07 | v1.9 | P0 Android：CustomGroup 子页、词书导入 preview→confirm、注册页 UI；core-model Mock 层扩展 |
 | 2026-07-06 | v1.8 | P2 测验巩固流程：答错练习 gate、三段布局、盖住换中文、TTS/元音动画；FlowingSyllableWord 迁至 core-ui；污渍离屏渲染修复 |
 
 ---

@@ -4,13 +4,16 @@ import com.wordflip.core.model.group.GroupDetail
 import com.wordflip.core.model.group.GroupSource
 import com.wordflip.core.model.group.GroupStats
 import com.wordflip.core.model.group.GroupStatus
+import java.time.Instant
 
 /**
- * 分组页 Mock 数据；第 3 组与 FakeTodayData / FakeStudyData 对齐（20 词）。
+ * 分组页 Mock 数据；支持 createCustomGroup 追加自定义分组（REQ-CG-5）。
  */
 object FakeGroupsData {
 
-    private val groups = listOf(
+    private var nextId = 7
+
+    private val groups = mutableListOf(
         GroupDetail(
             id = 1,
             name = "第1组",
@@ -67,7 +70,29 @@ object FakeGroupsData {
         ),
     )
 
-    fun list(): List<GroupDetail> = groups
+    fun list(): List<GroupDetail> = groups.toList()
 
     fun findById(groupId: Int): GroupDetail? = groups.find { it.id == groupId }
+
+    /**
+     * 创建自定义分组（Mock 等价 POST /groups/custom）；组内词默认未学习。
+     */
+    fun createCustomGroup(wordKeys: List<String>, name: String? = null): GroupDetail {
+        require(wordKeys.isNotEmpty()) { "wordKeys must not be empty" }
+        FakeUnassignedWordsData.markAssigned(wordKeys)
+        val customIndex = groups.count { it.source == GroupSource.CUSTOM } + 1
+        val groupName = name?.takeIf { it.isNotBlank() } ?: "自定义分组 $customIndex"
+        val total = wordKeys.size
+        val detail = GroupDetail(
+            id = nextId++,
+            name = groupName,
+            source = GroupSource.CUSTOM,
+            status = GroupStatus.NOT_STARTED,
+            createdAt = Instant.now().toString(),
+            stats = GroupStats(unlearned = total, fuzzy = 0, unknown = 0, total = total),
+            progress = 0f,
+        )
+        groups.add(detail)
+        return detail
+    }
 }
