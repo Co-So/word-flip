@@ -14,9 +14,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -34,22 +31,20 @@ import com.wordflip.core.ui.component.WordFlipToastHost
 import com.wordflip.core.ui.component.rememberWordFlipToast
 
 /**
- * 注册页（P0-A04）：TopBar 返回 + 紧凑品牌 + 单卡片（账号/验证码/密码 + 主 CTA）。
+ * 找回密码（规划项 REQ-AUTH；模拟验证码 gate，后端 reset API 待 B-07）。
+ * 布局与注册页一致：TopBar 返回 + 紧凑品牌 + 单卡片（验证/新密码 + 主 CTA）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RegisterScreen(
-    onRegisterSuccess: () -> Unit,
-    onNavigateToLogin: () -> Unit,
+fun ForgotPasswordScreen(
+    onNavigateBack: () -> Unit,
+    onResetSuccess: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
-    var mode by remember { mutableStateOf(AuthFormValidation.RegisterMode.EMAIL) }
-    var email by remember { mutableStateOf("") }
-    var dialCode by remember { mutableStateOf("+86") }
-    var localPhone by remember { mutableStateOf("") }
+    var account by remember { mutableStateOf("") }
     var verificationCode by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmVisible by remember { mutableStateOf(false) }
@@ -65,19 +60,18 @@ fun RegisterScreen(
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
-                AuthUiEvent.Success -> onRegisterSuccess()
-                AuthUiEvent.NavigateToLogin -> onNavigateToLogin()
+                AuthUiEvent.NavigateToLogin -> onResetSuccess()
                 is AuthUiEvent.Error -> toast.show(event.message)
                 is AuthUiEvent.Info -> toast.show(event.message)
+                AuthUiEvent.Success -> Unit
             }
         }
     }
 
-    val accountError = when {
-        !accountTouched -> null
-        mode == AuthFormValidation.RegisterMode.EMAIL ->
-            AuthFormValidation.validateRegisterEmail(email)
-        else -> AuthFormValidation.validateLocalPhoneNumber(dialCode, localPhone)
+    val accountError = if (accountTouched) {
+        AuthFormValidation.validateLoginAccount(account)
+    } else {
+        null
     }
     val codeError = if (codeTouched) {
         AuthFormValidation.validateVerificationCode(verificationCode)
@@ -85,12 +79,12 @@ fun RegisterScreen(
         null
     }
     val passwordError = if (passwordTouched) {
-        AuthFormValidation.validatePassword(password, forRegister = true)
+        AuthFormValidation.validatePassword(newPassword, forRegister = true)
     } else {
         null
     }
     val confirmError = if (confirmTouched) {
-        AuthFormValidation.validateConfirmPassword(password, confirmPassword)
+        AuthFormValidation.validateConfirmPassword(newPassword, confirmPassword)
     } else {
         null
     }
@@ -102,11 +96,8 @@ fun RegisterScreen(
             TopAppBar(
                 title = { },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateToLogin, enabled = !isLoading) {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "返回",
-                        )
+                    IconButton(onClick = onNavigateBack, enabled = !isLoading) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
                     }
                 },
             )
@@ -116,88 +107,53 @@ fun RegisterScreen(
         AuthScreenContainer(
             modifier = Modifier.padding(innerPadding),
         ) {
-            AuthBrandHeader(style = AuthBrandStyle.RegisterCompact)
+            AuthBrandHeader(
+                style = AuthBrandStyle.RegisterCompact,
+                pageTitle = "找回密码",
+            )
 
             AuthFormCard(
                 footer = {
                     AuthPrimaryButton(
-                        text = "注册",
+                        text = "重置密码",
                         onClick = {
                             accountTouched = true
                             codeTouched = true
                             passwordTouched = true
                             confirmTouched = true
-                            val accountErr = when (mode) {
-                                AuthFormValidation.RegisterMode.EMAIL ->
-                                    AuthFormValidation.validateRegisterEmail(email)
-                                AuthFormValidation.RegisterMode.PHONE ->
-                                    AuthFormValidation.validateLocalPhoneNumber(dialCode, localPhone)
-                            }
+                            val accountErr = AuthFormValidation.validateLoginAccount(account)
                             val codeErr = AuthFormValidation.validateVerificationCode(verificationCode)
-                            val passErr = AuthFormValidation.validatePassword(password, forRegister = true)
-                            val confirmErr = AuthFormValidation.validateConfirmPassword(password, confirmPassword)
+                            val passErr = AuthFormValidation.validatePassword(newPassword, forRegister = true)
+                            val confirmErr = AuthFormValidation.validateConfirmPassword(newPassword, confirmPassword)
                             if (accountErr != null || codeErr != null || passErr != null || confirmErr != null) {
                                 return@AuthPrimaryButton
                             }
-                            viewModel.register(mode, email, dialCode, localPhone, password, verificationCode)
+                            viewModel.resetPassword(account, verificationCode, newPassword)
                         },
                         enabled = !isLoading,
                         isLoading = isLoading,
                     )
                 },
             ) {
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    SegmentedButton(
-                        selected = mode == AuthFormValidation.RegisterMode.EMAIL,
-                        onClick = { mode = AuthFormValidation.RegisterMode.EMAIL },
-                        enabled = !isLoading,
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    ) {
-                        Text("邮箱")
-                    }
-                    SegmentedButton(
-                        selected = mode == AuthFormValidation.RegisterMode.PHONE,
-                        onClick = { mode = AuthFormValidation.RegisterMode.PHONE },
-                        enabled = !isLoading,
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    ) {
-                        Text("手机")
-                    }
-                }
-
-                if (mode == AuthFormValidation.RegisterMode.EMAIL) {
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = { email = it },
-                        label = { Text("邮箱") },
-                        isError = accountError != null,
-                        supportingText = accountError?.let { { Text(it) } },
-                        singleLine = true,
-                        enabled = !isLoading,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .authScrollOnFocus { accountTouched = true },
-                    )
-                } else {
-                    PhoneNumberInput(
-                        localNumber = localPhone,
-                        onLocalNumberChange = { localPhone = it },
-                        selectedDialCode = dialCode,
-                        onDialCodeChange = { dialCode = it },
-                        enabled = !isLoading,
-                        isError = accountError != null,
-                        supportingText = accountError,
-                        onBlur = { accountTouched = true },
-                    )
-                }
+                OutlinedTextField(
+                    value = account,
+                    onValueChange = { account = it },
+                    label = { Text("邮箱或手机号") },
+                    placeholder = { Text("邮箱或 11 位手机号") },
+                    isError = accountError != null,
+                    supportingText = accountError?.let { { Text(it) } },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .authScrollOnFocus { accountTouched = true },
+                )
                 VerificationCodeInput(
                     code = verificationCode,
                     onCodeChange = { verificationCode = it },
                     countdownSeconds = codeCountdown,
-                    onSendClick = {
-                        viewModel.sendRegisterCode(mode, email, dialCode, localPhone)
-                    },
+                    onSendClick = { viewModel.sendResetPasswordCode(account) },
                     enabled = !isLoading,
                     isError = codeError != null,
                     supportingText = codeError ?: "开发模式验证码见 Toast",
@@ -207,14 +163,14 @@ fun RegisterScreen(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "设置密码",
+                    text = "设置新密码",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 AuthPasswordField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = "密码",
+                    value = newPassword,
+                    onValueChange = { newPassword = it },
+                    label = "新密码",
                     visible = passwordVisible,
                     onVisibilityToggle = { passwordVisible = !passwordVisible },
                     enabled = !isLoading,
@@ -225,7 +181,7 @@ fun RegisterScreen(
                 AuthPasswordField(
                     value = confirmPassword,
                     onValueChange = { confirmPassword = it },
-                    label = "确认密码",
+                    label = "确认新密码",
                     visible = confirmVisible,
                     onVisibilityToggle = { confirmVisible = !confirmVisible },
                     enabled = !isLoading,
@@ -236,9 +192,9 @@ fun RegisterScreen(
             }
 
             AuthFooterLink(
-                prompt = "已有账号？",
-                actionLabel = "登录",
-                onClick = onNavigateToLogin,
+                prompt = "想起密码了？",
+                actionLabel = "返回登录",
+                onClick = onNavigateBack,
                 enabled = !isLoading,
             )
         }

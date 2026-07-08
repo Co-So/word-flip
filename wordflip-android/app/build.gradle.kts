@@ -19,8 +19,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 真机 USB 调试：先执行 adb reverse tcp:8080 tcp:8080，再 installDebug
+            buildConfigField("String", "API_BASE_URL", "\"http://127.0.0.1:8080/api/v1/\"")
+        }
         release {
             isMinifyEnabled = false
+            buildConfigField("String", "API_BASE_URL", "\"http://127.0.0.1:8080/api/v1/\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -59,6 +64,10 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
     // Kotlin 2.2+ 使用 KSP 替代 kapt 处理 Hilt 注解
     ksp(libs.hilt.compiler)
 

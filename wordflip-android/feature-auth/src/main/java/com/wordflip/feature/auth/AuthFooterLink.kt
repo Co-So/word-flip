@@ -1,0 +1,77 @@
+package com.wordflip.feature.auth
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+/**
+ * Auth 页底部次要导航：「没有账号？注册」类 inline 文案。
+ */
+@Composable
+fun AuthFooterLink(
+    prompt: String,
+    actionLabel: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 24.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = prompt,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onClick, enabled = enabled) {
+            Text(actionLabel)
+        }
+    }
+}
+
+/**
+ * Auth 主 CTA：最小高度 48dp，loading 时不撑高按钮。
+ */
+@Composable
+fun AuthPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    isLoading: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled && !isLoading,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp),
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(text)
+    }
+}

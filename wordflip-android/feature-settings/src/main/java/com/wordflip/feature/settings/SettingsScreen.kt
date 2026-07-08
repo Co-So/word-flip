@@ -35,10 +35,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.wordflip.core.model.settings.ThemeMode
 import com.wordflip.core.model.settings.label
 import com.wordflip.core.ui.component.WordFlipToastHost
@@ -56,12 +55,7 @@ fun SettingsScreen(
     preferences: SettingsPreferences,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: SettingsViewModel = viewModel(
-        factory = SettingsViewModel.Factory(
-            preferences = preferences,
-            appContext = LocalContext.current.applicationContext,
-        ),
-    ),
+    viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val (snackbarHostState, toast) = rememberWordFlipToast()

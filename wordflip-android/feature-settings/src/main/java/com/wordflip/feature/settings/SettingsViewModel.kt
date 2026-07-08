@@ -2,10 +2,12 @@ package com.wordflip.feature.settings
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.wordflip.core.model.settings.ThemeMode
 import com.wordflip.core.model.settings.label
+import com.wordflip.core.network.auth.AuthRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -14,13 +16,16 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
- * 设置页 ViewModel（REQ-SETTINGS-1~7）；Toggle/主题写入 DataStore，规划项 Toast 占位。
+ * 设置页 ViewModel（REQ-SETTINGS-1~7、P0-A06）；退出登录调 AuthRepository 清 Token。
  */
-class SettingsViewModel(
+@HiltViewModel
+class SettingsViewModel @Inject constructor(
     private val preferences: SettingsPreferences,
-    private val appContext: Context,
+    @ApplicationContext private val appContext: Context,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SettingsUiState>(SettingsUiState.Loading)
@@ -71,19 +76,11 @@ class SettingsViewModel(
         }
     }
 
+    /** REQ-AUTH-5：POST /auth/logout + 清本地 Token，NavHost 回登录页 */
     fun logout() {
         viewModelScope.launch {
+            authRepository.logout()
             _events.emit(SettingsUiEvent.Logout)
-        }
-    }
-
-    class Factory(
-        private val preferences: SettingsPreferences,
-        private val appContext: Context,
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return SettingsViewModel(preferences, appContext) as T
         }
     }
 }

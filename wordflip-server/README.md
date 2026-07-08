@@ -25,20 +25,37 @@ Spring Boot 3 后端（MVP 脚手架）。
 
 ## 运行
 
+默认 profile 为 `dev`（见 `application.yml`），**PowerShell 直接启动即可**：
+
+```powershell
+cd wordflip-server
+.\mvnw.cmd spring-boot:run
+```
+
+或使用脚本（会检测 8080 是否已占用）：
+
+```powershell
+.\scripts\start-dev.ps1    # 启动
+.\scripts\stop-dev.ps1     # 释放 8080（重启前）
+```
+
+> PowerShell 勿写 `-Dspring-boot.run.profiles=dev`（无引号会被当成 PowerShell 参数）。若必须显式指定：
+> `.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=dev"`
+
 本机已安装 Maven 3.9+ 时：
 
 ```bash
 cd wordflip-server
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
+mvn spring-boot:run
 ```
 
-或使用 Maven Wrapper：
+或使用 Maven Wrapper（bash）：
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+./mvnw spring-boot:run
 ```
 
-Windows PowerShell：
+Windows PowerShell（显式 profile，需引号）：
 
 ```powershell
 .\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=dev"

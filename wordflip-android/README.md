@@ -46,7 +46,22 @@ cd wordflip-android
 .\gradlew.bat :app:assembleDebug
 ```
 
-模拟器访问本机 API：`http://10.0.2.2:8080/api/v1`
+### 真机访问本机后端（USB · adb reverse）
+
+Debug 包 API 地址为 `http://127.0.0.1:8080/api/v1/`。手机通过 USB 连接电脑后执行：
+
+```powershell
+.\scripts\adb-reverse.ps1
+.\gradlew.bat :app:installDebug
+```
+
+等价命令：`adb reverse tcp:8080 tcp:8080`（重插手机或重启 adb 后需再执行一次）。
+
+前置条件：本机已启动 `docker compose` 与 `wordflip-server`（dev profile，端口 8080）。
+
+### 模拟器（可选）
+
+模拟器仍可用 `adb reverse` 配合 `127.0.0.1`；或临时将 `app/build.gradle.kts` 中 debug 的 `API_BASE_URL` 改回 `http://10.0.2.2:8080/api/v1/`。
 
 ## 当前脚手架范围
 
