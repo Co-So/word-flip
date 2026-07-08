@@ -6,10 +6,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.wordflip.core.model.book.BookImportParseException
 import com.wordflip.core.model.book.BookItem
+import com.wordflip.core.model.book.BooksSummary
 import com.wordflip.core.model.fake.FakeBooksData
 import com.wordflip.core.model.fake.MockBookImportParser
+import com.wordflip.core.network.books.BooksSettingsRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -18,11 +21,15 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.ceil
 
 /**
- * 词书页 ViewModel；Mock 阶段本地模拟 PUT /settings、导入与增量 append（REQ-BOOK-5~21）。
+ * 词书页 ViewModel：列表/保存接真 API；导入/删除仍 Mock（P0-B20~24）。
  */
-class BooksViewModel : ViewModel() {
+@HiltViewModel
+class BooksViewModel @Inject constructor(
+    private val booksSettingsRepository: BooksSettingsRepository,
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow<BooksUiState>(BooksUiState.Loading)
     val uiState: StateFlow<BooksUiState> = _uiState.asStateFlow()
@@ -31,20 +38,36 @@ class BooksViewModel : ViewModel() {
     val events: SharedFlow<BooksUiEvent> = _events.asSharedFlow()
 
     private var savedBookIds: Set<Long> = emptySet()
-    private var savedGroupSize: Int = FakeBooksData.defaultGroupSize()
+    private var savedGroupSize: Int = 20
+    private var serverSummary: BooksSummary = BooksSummary(0, 0, 0)
 
-    init {
-        loadBooks()
-    }
-
+    /** 已有内容时静默刷新，避免 Tab 切换闪 Loading */
     fun loadBooks() {
         viewModelScope.launch {
-            _uiState.value = BooksUiState.Loading
-            delay(200)
-            val saved = FakeBooksData.savedSettings()
-            savedBookIds = saved.bookIds.toSet()
-            savedGroupSize = saved.groupSize
-            emitContent(isDirty = false)
+            val showLoading = _uiState.value !is BooksUiState.Content
+            if (showLoading) {
+                _uiState.value = BooksUiState.Loading
+            }
+            booksSettingsRepository.loadBooksPage()
+                .onSuccess { page ->
+                    savedBookIds = page.settings.bookIds.toSet()
+                    savedGroupSize = page.settings.groupSize
+                    serverSummary = page.settings.summary
+                    _uiState.value = BooksUiState.Content(
+                        books = page.books,
+                        groupSize = page.settings.groupSize,
+                        summary = page.settings.summary,
+                        isDirty = false,
+                        isSaving = false,
+                        importSheet = null,
+                        isParsingImport = false,
+                    )
+                }
+                .onFailure { error ->
+                    _uiState.value = BooksUiState.Error(
+                        message = error.message ?: "加载词书失败",
+                    )
+                }
         }
     }
 
@@ -61,24 +84,41 @@ class BooksViewModel : ViewModel() {
         updateContent(content.books, size, importSheet = content.importSheet)
     }
 
-    /** 模拟 PUT /settings；真实环境由服务端 appendGroupsForNewWords 增量追加 */
+    /** PUT /settings；服务端 appendGroupsForNewWords 增量追加 */
     fun saveSettings() {
         val content = currentContent() ?: return
         if (content.isSaving) return
         viewModelScope.launch {
             _uiState.value = content.copy(isSaving = true)
-            delay(300)
-            val selectedIds = content.books.filter { it.selected }.map { it.id }.toSet()
-            val result = FakeBooksData.saveSettings(selectedIds, content.groupSize)
-            savedBookIds = result.settings.bookIds.toSet()
-            savedGroupSize = result.settings.groupSize
-            emitContent(isDirty = false, isSaving = false)
-            val message = if (result.appendedGroupCount > 0) {
-                "设置已保存 · 新增 ${result.appendedGroupCount} 组"
-            } else {
-                "设置已保存"
-            }
-            _events.emit(BooksUiEvent.Toast(message))
+            val selectedIds = content.books.filter { it.selected }.map { it.id }
+            booksSettingsRepository.saveBooksSettings(selectedIds, content.groupSize)
+                .onSuccess { response ->
+                    savedBookIds = response.bookIds.toSet()
+                    savedGroupSize = response.groupSize
+                    serverSummary = response.summary
+                    val updatedBooks = content.books.map { book ->
+                        book.copy(selected = book.id in savedBookIds)
+                    }
+                    _uiState.value = BooksUiState.Content(
+                        books = updatedBooks,
+                        groupSize = response.groupSize,
+                        summary = response.summary,
+                        isDirty = false,
+                        isSaving = false,
+                        importSheet = content.importSheet,
+                        isParsingImport = content.isParsingImport,
+                    )
+                    val message = if (response.appendedGroups.count > 0) {
+                        "设置已保存 · 新增 ${response.appendedGroups.count} 组"
+                    } else {
+                        "设置已保存"
+                    }
+                    _events.emit(BooksUiEvent.Toast(message))
+                }
+                .onFailure { error ->
+                    _uiState.value = content.copy(isSaving = false)
+                    _events.emit(BooksUiEvent.Toast(error.message ?: "保存失败"))
+                }
         }
     }
 
@@ -89,7 +129,7 @@ class BooksViewModel : ViewModel() {
         }
     }
 
-    /** 删除 imported 词书；已入组词保留（REQ-BOOK-20） */
+    /** 删除 imported 词书；仍 Mock，待 DELETE API（P0-B24） */
     fun confirmDeleteBook(bookId: Long) {
         val content = currentContent() ?: return
         if (!FakeBooksData.deleteBook(bookId)) return
@@ -100,7 +140,6 @@ class BooksViewModel : ViewModel() {
         }
     }
 
-    /** 触发系统文件选择器（REQ-BOOK-5） */
     fun onImportClick() {
         viewModelScope.launch {
             _events.emit(BooksUiEvent.LaunchFilePicker)
@@ -113,7 +152,6 @@ class BooksViewModel : ViewModel() {
         }
     }
 
-    /** 用户选择文件后解析并展示 preview Sheet */
     fun onFileSelected(context: Context, uri: Uri) {
         val content = currentContent() ?: return
         if (content.isParsingImport) return
@@ -162,7 +200,7 @@ class BooksViewModel : ViewModel() {
         _uiState.value = content.copy(importSheet = null)
     }
 
-    /** 确认导入词书（REQ-BOOK-8） */
+    /** 确认导入词书；仍 Mock（P0-B23） */
     fun confirmImport() {
         val content = currentContent() ?: return
         val sheet = content.importSheet ?: return
@@ -176,7 +214,6 @@ class BooksViewModel : ViewModel() {
         }
         viewModelScope.launch {
             _uiState.value = content.copy(importSheet = sheet.copy(isConfirming = true))
-            delay(200)
             val result = FakeBooksData.confirmImport(sheet.previewToken, trimmedName)
             if (result == null) {
                 val latest = currentContent() ?: return@launch
@@ -188,15 +225,14 @@ class BooksViewModel : ViewModel() {
                 )
                 return@launch
             }
-            savedBookIds = FakeBooksData.savedSettings().bookIds.toSet()
-            emitContent(isDirty = true, isSaving = false)
+            loadBooks()
             _events.emit(
                 BooksUiEvent.Toast("已导入「${result.book.name}」，共 ${result.book.wordCount} 词"),
             )
         }
     }
 
-    fun buildSummaryText(summary: com.wordflip.core.model.book.BooksSummary, groupSize: Int): String {
+    fun buildSummaryText(summary: BooksSummary, groupSize: Int): String {
         return "已选 ${summary.distinctSelectedCount} 词（去重后）· 每组 $groupSize 词 · 共约 ${summary.estimatedGroupCount} 组"
     }
 
@@ -209,7 +245,7 @@ class BooksViewModel : ViewModel() {
         isParsingImport: Boolean = false,
     ) {
         val selectedIds = books.filter { it.selected }.map { it.id }.toSet()
-        val summary = FakeBooksData.computeSummary(selectedIds, groupSize)
+        val summary = estimateSummary(books, selectedIds, groupSize)
         val isDirty = selectedIds != savedBookIds || groupSize != savedGroupSize
         _uiState.value = BooksUiState.Content(
             books = books,
@@ -222,18 +258,25 @@ class BooksViewModel : ViewModel() {
         )
     }
 
-    private fun emitContent(isDirty: Boolean, isSaving: Boolean = false) {
-        val books = FakeBooksData.books()
-        val selectedIds = books.filter { it.selected }.map { it.id }.toSet()
-        val groupSize = savedGroupSize
-        _uiState.value = BooksUiState.Content(
-            books = books,
-            groupSize = groupSize,
-            summary = FakeBooksData.computeSummary(selectedIds, groupSize),
-            isDirty = isDirty,
-            isSaving = isSaving,
-            importSheet = null,
-            isParsingImport = false,
+    /** 编辑态本地粗算汇总；保存后以服务端 summary 为准 */
+    private fun estimateSummary(
+        books: List<BookItem>,
+        selectedIds: Set<Long>,
+        groupSize: Int,
+    ): BooksSummary {
+        if (selectedIds == savedBookIds && groupSize == savedGroupSize) {
+            return serverSummary
+        }
+        val distinctCount = books.filter { it.id in selectedIds }.sumOf { it.wordCount }
+        val estimatedGroups = if (groupSize > 0 && distinctCount > 0) {
+            ceil(distinctCount.toDouble() / groupSize).toInt()
+        } else {
+            0
+        }
+        return BooksSummary(
+            distinctSelectedCount = distinctCount,
+            estimatedGroupCount = estimatedGroups,
+            unassignedCount = serverSummary.unassignedCount,
         )
     }
 

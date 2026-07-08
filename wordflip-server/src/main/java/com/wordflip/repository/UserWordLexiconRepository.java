@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -20,4 +22,8 @@ public interface UserWordLexiconRepository extends JpaRepository<UserWordLexicon
             WHERE uwl.userId = :userId AND uwl.wordKey IN :wordKeys
             """)
     Set<String> findExistingWordKeys(@Param("userId") Long userId, @Param("wordKeys") Collection<String> wordKeys);
+
+    List<UserWordLexicon> findByUserIdAndWordKeyIn(Long userId, Collection<String> wordKeys);
+
+    Optional<UserWordLexicon> findByUserIdAndWordKey(Long userId, String wordKey);
 }

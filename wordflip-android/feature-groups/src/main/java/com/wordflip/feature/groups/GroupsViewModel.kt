@@ -3,7 +3,6 @@ package com.wordflip.feature.groups
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.wordflip.core.model.fake.FakeGroupsData
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -21,14 +20,13 @@ class GroupsViewModel : ViewModel() {
     private val _events = MutableSharedFlow<GroupsUiEvent>()
     val events: SharedFlow<GroupsUiEvent> = _events.asSharedFlow()
 
-    init {
-        loadGroups()
-    }
-
+    /** 已有内容时静默刷新，避免 Tab 切换闪 Loading */
     fun loadGroups() {
         viewModelScope.launch {
-            _uiState.value = GroupsUiState.Loading
-            delay(200)
+            val showLoading = _uiState.value !is GroupsUiState.Content
+            if (showLoading) {
+                _uiState.value = GroupsUiState.Loading
+            }
             _uiState.value = GroupsUiState.Content(FakeGroupsData.list())
         }
     }

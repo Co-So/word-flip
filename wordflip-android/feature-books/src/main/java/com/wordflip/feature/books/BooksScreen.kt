@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.wordflip.core.ui.component.BookListItem
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.WordFlipToastHost
@@ -62,7 +62,7 @@ private val GROUP_SIZE_OPTIONS = listOf(10, 20, 30, 50)
 fun BooksScreen(
     onNavigateToCustomGroup: () -> Unit = {},
     modifier: Modifier = Modifier,
-    viewModel: BooksViewModel = viewModel(),
+    viewModel: BooksViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val (snackbarHostState, toast) = rememberWordFlipToast()

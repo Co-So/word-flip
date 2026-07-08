@@ -2,9 +2,12 @@ package com.wordflip.di
 
 import android.content.Context
 import com.google.gson.Gson
-import com.google.gson.GsonBuilder
+import com.wordflip.core.network.books.BooksSettingsRepository
+import com.wordflip.core.network.gson.WordFlipGson
 import com.wordflip.core.network.ApiErrorParser
 import com.wordflip.core.network.api.AuthApi
+import com.wordflip.core.network.api.BooksApi
+import com.wordflip.core.network.api.SettingsApi
 import com.wordflip.core.network.auth.AuthRepository
 import com.wordflip.core.network.auth.TokenRefresher
 import com.wordflip.core.network.interceptor.AuthInterceptor
@@ -35,7 +38,7 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideGson(): Gson = GsonBuilder().create()
+    fun provideGson(): Gson = WordFlipGson.create()
 
     @Provides
     @Singleton
@@ -145,6 +148,24 @@ object NetworkModule {
         tokenStore: TokenStore,
         apiErrorParser: ApiErrorParser,
     ): AuthRepository = AuthRepository(authApi, tokenStore, apiErrorParser)
+
+    @Provides
+    @Singleton
+    fun provideBooksApi(retrofit: Retrofit): BooksApi =
+        retrofit.create(BooksApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideSettingsApi(retrofit: Retrofit): SettingsApi =
+        retrofit.create(SettingsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideBooksSettingsRepository(
+        booksApi: BooksApi,
+        settingsApi: SettingsApi,
+        apiErrorParser: ApiErrorParser,
+    ): BooksSettingsRepository = BooksSettingsRepository(booksApi, settingsApi, apiErrorParser)
 }
 
 @Module

@@ -16,7 +16,8 @@ class ApiErrorParser(
         if (throwable is HttpException) {
             parseErrorBody(throwable)?.let { return it }
             return when (throwable.code()) {
-                401 -> "账号或密码错误"
+                401 -> "登录已失效，请重新登录"
+                403 -> "无权访问，请重新登录"
                 409 -> "账号已存在"
                 400 -> "请求参数有误"
                 else -> "请求失败（${throwable.code()}）"

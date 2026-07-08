@@ -7,7 +7,7 @@ import com.wordflip.core.model.book.BookSource
 import com.wordflip.core.model.book.BooksSummary
 import com.wordflip.core.model.book.ParsedBookImport
 import com.wordflip.core.model.book.SaveBooksResult
-import com.wordflip.core.model.book.UserSettingsSnapshot
+import com.wordflip.core.model.book.UserSettingsResponse
 import java.util.UUID
 import kotlin.math.ceil
 
@@ -70,7 +70,7 @@ object FakeBooksData {
 
     fun defaultGroupSize(): Int = DEFAULT_GROUP_SIZE
 
-    fun savedSettings(): UserSettingsSnapshot = buildSettings(savedBookIds, savedGroupSize)
+    fun savedSettings(): UserSettingsResponse = buildSettings(savedBookIds, savedGroupSize)
 
     /**
      * 按勾选词书估算汇总；unassignedCount 来自 FakeUnassignedWordsData 实时池。
@@ -96,8 +96,8 @@ object FakeBooksData {
         )
     }
 
-    fun buildSettings(selectedIds: Set<Long>, groupSize: Int): UserSettingsSnapshot {
-        return UserSettingsSnapshot(
+    fun buildSettings(selectedIds: Set<Long>, groupSize: Int): UserSettingsResponse {
+        return UserSettingsResponse(
             bookIds = selectedIds.toList().sorted(),
             groupSize = groupSize,
             summary = computeSummary(selectedIds, groupSize),

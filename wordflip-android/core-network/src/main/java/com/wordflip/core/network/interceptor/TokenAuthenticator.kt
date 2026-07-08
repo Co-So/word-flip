@@ -18,6 +18,10 @@ class TokenAuthenticator(
     override fun authenticate(route: Route?, response: Response): Request? {
         if (responseCount(response) >= MAX_RETRY) return null
         if (response.request.url.encodedPath.contains(AUTH_SEGMENT)) return null
+        // 无 Token 的 403 不重试；有 Token 的 401/403 尝试 Refresh
+        val hadAuth = response.request.header(AUTHORIZATION)?.startsWith("Bearer ") == true
+        if (!hadAuth && response.code == 403) return null
+        if (response.code != 401 && response.code != 403) return null
 
         val refreshed = tokenRefresher.refreshSync()
         if (!refreshed) {
