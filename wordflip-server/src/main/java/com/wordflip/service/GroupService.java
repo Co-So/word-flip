@@ -3,6 +3,7 @@ package com.wordflip.service;
 import com.wordflip.domain.BookWord;
 import com.wordflip.domain.GroupSource;
 import com.wordflip.domain.GroupStatus;
+import com.wordflip.domain.GroupStrategy;
 import com.wordflip.domain.GroupWord;
 import com.wordflip.domain.MasteryLevel;
 import com.wordflip.domain.StudyGroup;
@@ -26,6 +27,7 @@ import com.wordflip.repository.GroupWordRepository;
 import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserSettingsRepository;
 import com.wordflip.repository.UserWordLexiconRepository;
+import com.wordflip.repository.WordFreqRankRepository;
 import com.wordflip.repository.WordMasteryRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -34,12 +36,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -58,6 +64,7 @@ public class GroupService {
     private final UserSettingsRepository userSettingsRepository;
     private final UserWordLexiconRepository userWordLexiconRepository;
     private final WordMasteryRepository wordMasteryRepository;
+    private final WordFreqRankRepository wordFreqRankRepository;
     private final BookService bookService;
 
     public GroupService(
@@ -68,6 +75,7 @@ public class GroupService {
             UserSettingsRepository userSettingsRepository,
             UserWordLexiconRepository userWordLexiconRepository,
             WordMasteryRepository wordMasteryRepository,
+            WordFreqRankRepository wordFreqRankRepository,
             BookService bookService
     ) {
         this.userBookSelectionRepository = userBookSelectionRepository;
@@ -77,6 +85,7 @@ public class GroupService {
         this.userSettingsRepository = userSettingsRepository;
         this.userWordLexiconRepository = userWordLexiconRepository;
         this.wordMasteryRepository = wordMasteryRepository;
+        this.wordFreqRankRepository = wordFreqRankRepository;
         this.bookService = bookService;
     }
 
@@ -225,41 +234,65 @@ public class GroupService {
     }
 
     /**
-     * 增量追加分组（api-modules §2.1）：
-     * delta = 已勾选词书 wordKey 去重 − 已在 group_words 中的 wordKey。
+     * 增量追加分组（api-modules §2.1、REQ-BOOK-22~25）：
+     * 按 groupStrategy 合并去重 → delta → 先补齐未满 auto 组 → 切分新组。
      */
     @Transactional
     public AppendedGroups appendGroupsForNewWords(Long userId) {
-        List<Long> selectedBookIds = userBookSelectionRepository.findBookIdsByUserId(userId);
+        List<Long> selectedBookIds = userBookSelectionRepository.findBookIdsByUserIdOrderBySelectedAtAsc(userId);
         if (selectedBookIds.isEmpty()) {
             return AppendedGroups.empty();
         }
 
-        Set<String> selectedWordKeys = new HashSet<>(bookWordRepository.findDistinctWordKeysByBookIds(selectedBookIds));
+        UserSettings settings = userSettingsRepository.findById(userId).orElseGet(UserSettings::new);
+        int groupSize = settings.getGroupSize() > 0 ? settings.getGroupSize() : 20;
+        GroupStrategy strategy = settings.getGroupStrategy() != null
+                ? settings.getGroupStrategy()
+                : GroupStrategy.book_order;
+
+        List<String> orderedKeys = buildOrderedWordKeys(userId, selectedBookIds, strategy);
         Set<String> assignedWordKeys = groupWordRepository.findWordKeysByUserId(userId);
 
-        List<String> delta = selectedWordKeys.stream()
+        // delta 保持策略顺序，不再字母排序
+        List<String> delta = orderedKeys.stream()
                 .filter(key -> !assignedWordKeys.contains(key))
-                .sorted()
                 .collect(Collectors.toList());
 
         if (delta.isEmpty()) {
             return AppendedGroups.empty();
         }
 
-        int groupSize = userSettingsRepository.findById(userId)
-                .map(UserSettings::getGroupSize)
-                .orElse(20);
-
         bookService.upsertLexiconForNewWords(userId, delta, selectedBookIds);
 
-        int existingAutoCount = groupRepository.countByUserIdAndSource(userId, GroupSource.auto);
-        int maxSortOrder = groupRepository.findMaxSortOrderByUserId(userId).orElse(0);
-
         List<AppendedGroups.AppendedGroupItem> appendedItems = new ArrayList<>();
-        List<List<String>> chunks = partition(delta, groupSize);
+        List<String> remainingDelta = new ArrayList<>(delta);
 
         try {
+            // REQ-BOOK-25：最后一个 auto 组未满时先补齐
+            Optional<StudyGroup> lastAutoGroup = groupRepository.findTopByUserIdAndSourceOrderBySortOrderDesc(
+                    userId,
+                    GroupSource.auto
+            );
+            if (lastAutoGroup.isPresent()) {
+                StudyGroup lastGroup = lastAutoGroup.get();
+                int currentCount = (int) groupWordRepository.countByGroupId(lastGroup.getId());
+                int slots = groupSize - currentCount;
+                if (slots > 0 && !remainingDelta.isEmpty()) {
+                    int fillCount = Math.min(slots, remainingDelta.size());
+                    List<String> toFill = new ArrayList<>(remainingDelta.subList(0, fillCount));
+                    appendWordsToGroup(userId, lastGroup.getId(), toFill, currentCount);
+                    remainingDelta = new ArrayList<>(remainingDelta.subList(fillCount, remainingDelta.size()));
+                }
+            }
+
+            if (remainingDelta.isEmpty()) {
+                return new AppendedGroups(0, appendedItems);
+            }
+
+            int existingAutoCount = groupRepository.countByUserIdAndSource(userId, GroupSource.auto);
+            int maxSortOrder = groupRepository.findMaxSortOrderByUserId(userId).orElse(0);
+            List<List<String>> chunks = partition(remainingDelta, groupSize);
+
             for (int i = 0; i < chunks.size(); i++) {
                 List<String> chunk = chunks.get(i);
                 StudyGroup group = new StudyGroup();
@@ -270,14 +303,7 @@ public class GroupService {
                 group.setSortOrder(maxSortOrder + i + 1);
                 group = groupRepository.save(group);
 
-                for (int j = 0; j < chunk.size(); j++) {
-                    GroupWord groupWord = new GroupWord();
-                    groupWord.setUserId(userId);
-                    groupWord.setGroupId(group.getId());
-                    groupWord.setWordKey(chunk.get(j));
-                    groupWord.setSortOrder(j);
-                    groupWordRepository.save(groupWord);
-                }
+                appendWordsToGroup(userId, group.getId(), chunk, 0);
 
                 appendedItems.add(new AppendedGroups.AppendedGroupItem(group.getId(), group.getName(), chunk.size()));
             }
@@ -286,6 +312,158 @@ public class GroupService {
         }
 
         return new AppendedGroups(appendedItems.size(), appendedItems);
+    }
+
+    /**
+     * 重新分组（REQ-BOOK-26）：删除全部 auto 组，按当前勾选词书 + 策略重建；
+     * custom 组及其单词保留；掌握度/图片/污渍不删。
+     */
+    @Transactional
+    public AppendedGroups regroupAutoGroups(Long userId) {
+        List<Long> selectedBookIds = userBookSelectionRepository.findBookIdsByUserIdOrderBySelectedAtAsc(userId);
+        if (selectedBookIds.isEmpty()) {
+            throw new WordflipException("VALIDATION_ERROR", "请至少勾选一本词书后再重新分组");
+        }
+
+        UserSettings settings = userSettingsRepository.findById(userId).orElseGet(UserSettings::new);
+        int groupSize = settings.getGroupSize() > 0 ? settings.getGroupSize() : 20;
+        GroupStrategy strategy = settings.getGroupStrategy() != null
+                ? settings.getGroupStrategy()
+                : GroupStrategy.book_order;
+
+        // 保留 custom 组内词，避免违反一词一组
+        Set<String> customWordKeys = groupWordRepository.findWordKeysByUserIdAndGroupSource(
+                userId,
+                GroupSource.custom
+        );
+
+        groupRepository.deleteByUserIdAndSource(userId, GroupSource.auto);
+
+        List<String> orderedKeys = buildOrderedWordKeys(userId, selectedBookIds, strategy);
+        List<String> toAssign = orderedKeys.stream()
+                .filter(key -> !customWordKeys.contains(key))
+                .collect(Collectors.toList());
+
+        if (toAssign.isEmpty()) {
+            return AppendedGroups.empty();
+        }
+
+        bookService.upsertLexiconForNewWords(userId, toAssign, selectedBookIds);
+
+        int maxSortOrder = groupRepository.findMaxSortOrderByUserId(userId).orElse(0);
+        List<AppendedGroups.AppendedGroupItem> items = new ArrayList<>();
+        List<List<String>> chunks = partition(toAssign, groupSize);
+
+        try {
+            for (int i = 0; i < chunks.size(); i++) {
+                List<String> chunk = chunks.get(i);
+                StudyGroup group = new StudyGroup();
+                group.setUserId(userId);
+                group.setName("第" + (i + 1) + "组");
+                group.setSource(GroupSource.auto);
+                group.setStatus(GroupStatus.not_started);
+                group.setSortOrder(maxSortOrder + i + 1);
+                group = groupRepository.save(group);
+                appendWordsToGroup(userId, group.getId(), chunk, 0);
+                items.add(new AppendedGroups.AppendedGroupItem(group.getId(), group.getName(), chunk.size()));
+            }
+        } catch (DataIntegrityViolationException ex) {
+            throw new WordflipException("CONFLICT", "单词已存在于其他分组");
+        }
+
+        return new AppendedGroups(items.size(), items);
+    }
+
+    /**
+     * 按 groupStrategy 合并已勾选词书词条（REQ-BOOK-22~24）。
+     * book_order：词书勾选顺序 + 书内 sort_order，去重保序；
+     * frequency：按 word_freq_ranks 全局 rank 升序；无 rank 词排末尾并保持 book_order 相对序；
+     * random：稳定随机（seed = userId + bookIds）。
+     */
+    List<String> buildOrderedWordKeys(Long userId, List<Long> bookIdsOrdered, GroupStrategy strategy) {
+        if (bookIdsOrdered.isEmpty()) {
+            return List.of();
+        }
+
+        List<BookWord> words = new ArrayList<>(
+                bookWordRepository.findByBookIdInOrderByBookIdAscSortOrderAsc(bookIdsOrdered)
+        );
+        Map<Long, Integer> bookRank = new HashMap<>();
+        for (int i = 0; i < bookIdsOrdered.size(); i++) {
+            bookRank.put(bookIdsOrdered.get(i), i);
+        }
+        words.sort(Comparator
+                .comparingInt((BookWord w) -> bookRank.getOrDefault(w.getBookId(), Integer.MAX_VALUE))
+                .thenComparingInt(BookWord::getSortOrder));
+
+        List<String> ordered = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (BookWord word : words) {
+            if (seen.add(word.getWordKey())) {
+                ordered.add(word.getWordKey());
+            }
+        }
+
+        if (strategy == GroupStrategy.random) {
+            Collections.shuffle(ordered, new Random(stableRandomSeed(userId, bookIdsOrdered)));
+        } else if (strategy == GroupStrategy.frequency) {
+            ordered = sortByFrequencyRank(ordered);
+        }
+
+        return ordered;
+    }
+
+    /** 有 rank 的按 freq_rank ASC；无 rank 词保持 book_order 相对顺序排在末尾 */
+    private List<String> sortByFrequencyRank(List<String> bookOrderKeys) {
+        if (bookOrderKeys.isEmpty()) {
+            return bookOrderKeys;
+        }
+        Map<String, Integer> rankByKey = wordFreqRankRepository.findByWordKeyIn(bookOrderKeys).stream()
+                .collect(Collectors.toMap(
+                        w -> w.getWordKey(),
+                        w -> w.getFreqRank(),
+                        (a, b) -> Math.min(a, b)
+                ));
+        Map<String, Integer> bookOrderIndex = new HashMap<>();
+        for (int i = 0; i < bookOrderKeys.size(); i++) {
+            bookOrderIndex.put(bookOrderKeys.get(i), i);
+        }
+        List<String> sorted = new ArrayList<>(bookOrderKeys);
+        sorted.sort((a, b) -> {
+            Integer rankA = rankByKey.get(a);
+            Integer rankB = rankByKey.get(b);
+            if (rankA != null && rankB != null) {
+                return Integer.compare(rankA, rankB);
+            }
+            if (rankA != null) {
+                return -1;
+            }
+            if (rankB != null) {
+                return 1;
+            }
+            return Integer.compare(bookOrderIndex.get(a), bookOrderIndex.get(b));
+        });
+        return sorted;
+    }
+
+    /** 稳定随机种子：相同 userId + bookIds 列表产生相同打乱顺序 */
+    static long stableRandomSeed(Long userId, List<Long> bookIds) {
+        long seed = userId != null ? userId : 0L;
+        for (Long bookId : bookIds) {
+            seed = 31 * seed + (bookId != null ? bookId : 0L);
+        }
+        return seed;
+    }
+
+    private void appendWordsToGroup(Long userId, Long groupId, List<String> wordKeys, int startSortOrder) {
+        for (int i = 0; i < wordKeys.size(); i++) {
+            GroupWord groupWord = new GroupWord();
+            groupWord.setUserId(userId);
+            groupWord.setGroupId(groupId);
+            groupWord.setWordKey(wordKeys.get(i));
+            groupWord.setSortOrder(startSortOrder + i);
+            groupWordRepository.save(groupWord);
+        }
     }
 
     /** 按 groupSize 切分 delta 列表 */

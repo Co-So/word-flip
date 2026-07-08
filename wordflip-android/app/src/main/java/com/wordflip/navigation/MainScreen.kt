@@ -208,7 +208,11 @@ fun MainScreen(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToQuiz = {
                         navController.navigate(
-                            MainRoutes.quizRoute(source = "study", groupId = groupId),
+                            MainRoutes.quizRoute(
+                                source = "study",
+                                groupId = groupId,
+                                wordLimit = wordCount,
+                            ),
                         )
                     },
                 )
@@ -223,6 +227,10 @@ fun MainScreen(
                     navArgument("groupId") {
                         type = NavType.IntType
                         defaultValue = -1
+                    },
+                    navArgument("wordLimit") {
+                        type = NavType.IntType
+                        defaultValue = 10
                     },
                     navArgument("nonce") {
                         type = NavType.StringType

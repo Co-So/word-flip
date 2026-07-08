@@ -47,3 +47,35 @@ data class GroupWordItem(
     val summary: WordSummary,
     val mastery: MasterySnapshot,
 )
+
+/** GET /groups 响应 */
+data class GroupListResponse(
+    val groups: List<GroupDetail> = emptyList(),
+)
+
+/**
+ * openapi `GroupWordsResponse.words[]` 为 WordSummary + mastery 扁平 JSON；
+ * Gson 反序列化后用 [toGroupWordItem] 转为 UI 层 [GroupWordItem]。
+ */
+data class GroupWordItemDto(
+    val wordKey: String,
+    val en: String,
+    val cn: String,
+    val pos: String? = null,
+    val ph: String? = null,
+    val mastery: MasterySnapshot,
+) {
+    fun toGroupWordItem(): GroupWordItem = GroupWordItem(
+        summary = WordSummary(wordKey = wordKey, en = en, cn = cn, pos = pos, ph = ph),
+        mastery = mastery,
+    )
+}
+
+/** GET /groups/{groupId}/words 分页响应 */
+data class GroupWordsResponse(
+    val page: Int = 0,
+    val size: Int = 0,
+    val totalElements: Long = 0,
+    val totalPages: Int = 0,
+    val words: List<GroupWordItemDto> = emptyList(),
+)

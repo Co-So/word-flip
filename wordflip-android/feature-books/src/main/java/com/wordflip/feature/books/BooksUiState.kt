@@ -2,6 +2,20 @@ package com.wordflip.feature.books
 
 import com.wordflip.core.model.book.BookItem
 import com.wordflip.core.model.book.BooksSummary
+import com.wordflip.core.model.book.GroupStrategy
+
+/** 词书向导模式：增量追加 vs 全量重建 auto 组 */
+enum class BooksWizardMode {
+    ADD,
+    REGROUP,
+}
+
+/** 向导步骤：勾选词书 → 策略 → 确认保存 */
+enum class BooksWizardStep {
+    SELECT_BOOKS,
+    STRATEGY,
+    CONFIRM,
+}
 
 /** 词书页 UI 状态 */
 sealed interface BooksUiState {
@@ -10,11 +24,17 @@ sealed interface BooksUiState {
     data class Content(
         val books: List<BookItem>,
         val groupSize: Int,
+        val groupStrategy: GroupStrategy,
         val summary: BooksSummary,
         val isDirty: Boolean,
         val isSaving: Boolean,
         val importSheet: ImportSheetState? = null,
         val isParsingImport: Boolean = false,
+        /** 非 null 时处于向导流程 */
+        val wizardMode: BooksWizardMode? = null,
+        val wizardStep: BooksWizardStep? = null,
+        /** ADD 模式下已保存词书 id，Checkbox 锁定不可取消 */
+        val lockedBookIds: Set<Long> = emptySet(),
     ) : BooksUiState
 
     data class Error(val message: String) : BooksUiState

@@ -75,6 +75,7 @@ public class GlobalExceptionHandler {
             case "FORBIDDEN" -> HttpStatus.FORBIDDEN;
             case "TOO_MANY_REQUESTS" -> HttpStatus.TOO_MANY_REQUESTS;
             case "GONE" -> HttpStatus.GONE;
+            case "EMPTY_POOL" -> HttpStatus.UNPROCESSABLE_ENTITY;
             default -> HttpStatus.BAD_REQUEST;
         };
     }

@@ -27,10 +27,10 @@ object MockWordMediaStore {
     private val _revision = MutableStateFlow(0)
     val revision: StateFlow<Int> = _revision.asStateFlow()
 
-    /** 将 Mock 媒体叠加到 WordCard（不改变 mastery 等字段） */
+    /** 将 Mock 媒体叠加到 WordCard（不改变 mastery 等字段）；API 未返回 image/stain 时 Gson 可能为 null */
     fun applyToWordCard(card: WordCard): WordCard {
         val storedImage = images[card.wordKey]
-        val stain = stainOverrides[card.wordKey] ?: card.stain
+        val stain = stainOverrides[card.wordKey] ?: (card.stain ?: WordStainPayload())
         val image = if (storedImage != null) {
             WordImagePayload(
                 hasImage = true,
@@ -40,7 +40,7 @@ object MockWordMediaStore {
                 filters = storedImage.filters,
             )
         } else {
-            card.image
+            card.image ?: WordImagePayload()
         }
         return card.copy(image = image, stain = stain)
     }

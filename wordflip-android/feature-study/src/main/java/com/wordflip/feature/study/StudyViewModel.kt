@@ -1,16 +1,19 @@
 package com.wordflip.feature.study
 
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.wordflip.core.model.fake.FakeStudyData
 import com.wordflip.core.model.media.ImageFilters
 import com.wordflip.core.model.media.ImageTransform
 import com.wordflip.core.model.media.StainMode
 import com.wordflip.core.model.media.StainType
 import com.wordflip.core.model.fake.MockWordMediaStore
 import com.wordflip.core.model.study.WordCard
+import com.wordflip.core.network.study.StudyRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,13 +24,22 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 学习页 ViewModel：Mock 加载、翻转/打乱/全翻状态机（REQ-STUDY-7~13）。
+ * 学习页 ViewModel：GET /study/groups/{id}；退出时 POST /study/sessions（P1-A16）。
  */
-class StudyViewModel(
-    private val groupId: Int,
-    private val guidePreferences: StudyGuidePreferences,
-    private val appContext: Context,
+@HiltViewModel
+class StudyViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    @ApplicationContext appContext: Context,
+    private val studyRepository: StudyRepository,
 ) : ViewModel() {
+
+    private val groupId: Int = checkNotNull(savedStateHandle["groupId"])
+    private val guidePreferences = StudyGuidePreferences(appContext)
+    private val appContext = appContext
+
+    private val sessionStartedAtMs = System.currentTimeMillis()
+    private val viewedWordKeys = mutableSetOf<String>()
+    private var sessionReported = false
 
     private val _uiState = MutableStateFlow<StudyUiState>(StudyUiState.Loading)
     val uiState: StateFlow<StudyUiState> = _uiState.asStateFlow()
@@ -62,30 +74,60 @@ class StudyViewModel(
     private fun loadGroup() {
         viewModelScope.launch {
             _uiState.value = StudyUiState.Loading
-            delay(200)
-            val payload = FakeStudyData.forGroup(groupId)
-            if (payload == null) {
-                _uiState.value = StudyUiState.Error("未找到分组数据")
-                return@launch
-            }
-            val guideDismissed = guidePreferences.isGuideDismissed()
-            baseWords = payload.words
-            _uiState.value = StudyUiState.Content(
-                payload = payload,
-                orderedWords = MockWordMediaStore.applyToWords(baseWords),
-                flipStates = payload.words.associate { it.wordKey to false },
-                isShuffling = false,
-                detailWordKey = null,
-                showGuide = !guideDismissed,
-                allFlippedToBack = false,
-            )
+            studyRepository.loadStudyGroup(groupId)
+                .onSuccess { payload ->
+                    val guideDismissed = guidePreferences.isGuideDismissed()
+                    baseWords = payload.words
+                    _uiState.value = StudyUiState.Content(
+                        payload = payload,
+                        orderedWords = MockWordMediaStore.applyToWords(baseWords),
+                        flipStates = payload.words.associate { it.wordKey to false },
+                        isShuffling = false,
+                        detailWordKey = null,
+                        showGuide = !guideDismissed,
+                        allFlippedToBack = false,
+                    )
+                }
+                .onFailure { error ->
+                    _uiState.value = StudyUiState.Error(error.message ?: "加载学习数据失败")
+                }
         }
+    }
+
+    fun reload() {
+        loadGroup()
+    }
+
+    /** 离开学习页时上报 session（REQ-STUDY-24：翻转不改掌握度，仅记 study_logs） */
+    fun leaveStudy(onDone: () -> Unit) {
+        viewModelScope.launch {
+            reportSessionInternal()
+            onDone()
+        }
+    }
+
+    fun reportSessionOnLeave() {
+        viewModelScope.launch {
+            reportSessionInternal()
+        }
+    }
+
+    private suspend fun reportSessionInternal() {
+        if (sessionReported) return
+        sessionReported = true
+        val durationSec = ((System.currentTimeMillis() - sessionStartedAtMs) / 1000).toInt()
+        studyRepository.reportSession(
+            groupId = groupId,
+            durationSec = durationSec.coerceAtLeast(0),
+            wordsViewed = viewedWordKeys.size,
+        )
     }
 
     /**
      * REQ-STUDY-7：点击切换正反面；发音由 StudyScreen 根据设置开关直接触发 TTS。
      */
     fun toggleFlip(wordKey: String) {
+        viewedWordKeys.add(wordKey)
         updateContent { content ->
             if (content.detailWordKey != null) return@updateContent content
             val nextFlipped = !(content.flipStates[wordKey] ?: false)
@@ -348,21 +390,6 @@ class StudyViewModel(
         val current = _uiState.value
         if (current is StudyUiState.Content) {
             _uiState.value = block(current)
-        }
-    }
-
-    class Factory(
-        private val context: Context,
-        private val groupId: Int,
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            val appContext = context.applicationContext
-            return StudyViewModel(
-                groupId = groupId,
-                guidePreferences = StudyGuidePreferences(appContext),
-                appContext = appContext,
-            ) as T
         }
     }
 }

@@ -27,7 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.wordflip.core.ui.component.EmptyStateView
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.WordFlipToastHost
@@ -43,7 +43,7 @@ fun CustomGroupScreen(
     onNavigateBack: () -> Unit,
     onSaved: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: CustomGroupViewModel = viewModel(),
+    viewModel: CustomGroupViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val (snackbarHostState, toast) = rememberWordFlipToast()

@@ -154,12 +154,13 @@ paths:
                 $ref: '#/components/schemas/UserSettingsResponse'
     put:
       tags: [Settings]
-      summary: 保存词书勾选与分组大小（触发增量追加分组）
+      summary: 保存词书勾选与分组大小（增量追加或重新分组）
       description: |
-        持久化 `bookIds` 与 `groupSize` 后调用 `GroupService.appendGroupsForNewWords`。
-        仅对尚未入组的 wordKey 追加新 groups；已有分组与学习数据不变。
-        变更 `groupSize` 仅影响**后续** append 的新 auto 组，不拆分/合并已有 groups。
-        相同 body 重复调用幂等；delta 为空时 `appendedGroups = { count: 0, groups: [] }`。
+        持久化 `bookIds`、`groupSize` 与 `groupStrategy`。
+        - 默认（`regroup=false`）：调用 `GroupService.appendGroupsForNewWords`，仅对尚未入组的 wordKey 追加新 auto 组。
+        - `regroup=true`（REQ-BOOK-26）：删除全部 **auto** 分组后，按当前勾选词书 + 策略 **全量重建** auto 组；
+          **custom** 手动分组及其单词保留；掌握度/复习计划/图片/污渍不删除。
+        变更 `groupSize` 在增量模式下仅影响后续 append；重新分组时立即按新 groupSize 切分。
       requestBody:
         required: true
         content:
@@ -1001,13 +1002,23 @@ components:
       type: integer
       enum: [10, 20, 30, 50]
 
+    GroupStrategy:
+      type: string
+      enum: [book_order, frequency, random]
+      default: book_order
+      description: |
+        自动分组策略（REQ-BOOK-22~24）：
+        book_order 按词书勾选顺序合并去重；
+        frequency 按 word_freq_ranks 全局词频升序（无 rank 词排末尾，保持 book_order 相对序）；
+        random 基于 userId+bookIds 稳定随机。
+
     ThemeMode:
       type: string
       enum: [system, light, dark]
 
     UserSettingsResponse:
       type: object
-      required: [bookIds, groupSize, autoSpeak, themeMode, summary]
+      required: [bookIds, groupSize, groupStrategy, autoSpeak, themeMode, summary]
       properties:
         bookIds:
           type: array
@@ -1016,6 +1027,8 @@ components:
             format: int64
         groupSize:
           $ref: '#/components/schemas/GroupSize'
+        groupStrategy:
+          $ref: '#/components/schemas/GroupStrategy'
         autoSpeak:
           type: boolean
         themeMode:
@@ -1034,6 +1047,14 @@ components:
             format: int64
         groupSize:
           $ref: '#/components/schemas/GroupSize'
+        groupStrategy:
+          $ref: '#/components/schemas/GroupStrategy'
+        regroup:
+          type: boolean
+          default: false
+          description: |
+            true 时删除全部 auto 组并按当前词书重建（REQ-BOOK-26）。
+            与增量 append 互斥；custom 组保留。
 
     SaveBooksSettingsResponse:
       allOf:

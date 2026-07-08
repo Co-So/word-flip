@@ -3,6 +3,27 @@ package com.wordflip.core.model.book
 import com.wordflip.core.model.settings.ThemeMode
 
 /**
+ * 自动分组策略，对齐 openapi `GroupStrategy`（REQ-BOOK-22~24）。
+ */
+enum class GroupStrategy {
+    BOOK_ORDER,
+    FREQUENCY,
+    RANDOM,
+}
+
+fun GroupStrategy.storageValue(): String = when (this) {
+    GroupStrategy.BOOK_ORDER -> "book_order"
+    GroupStrategy.FREQUENCY -> "frequency"
+    GroupStrategy.RANDOM -> "random"
+}
+
+fun parseGroupStrategy(value: String): GroupStrategy = when (value.lowercase()) {
+    "frequency" -> GroupStrategy.FREQUENCY
+    "random" -> GroupStrategy.RANDOM
+    else -> GroupStrategy.BOOK_ORDER
+}
+
+/**
  * 词书项，对齐 openapi `BookItem`。
  */
 data class BookItem(
@@ -42,6 +63,7 @@ data class BookListResponse(
 data class UserSettingsResponse(
     val bookIds: List<Long>,
     val groupSize: Int,
+    val groupStrategy: GroupStrategy = GroupStrategy.BOOK_ORDER,
     val autoSpeak: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val summary: BooksSummary,
@@ -53,6 +75,9 @@ data class UserSettingsResponse(
 data class SaveBooksSettingsRequest(
     val bookIds: List<Long>,
     val groupSize: Int,
+    val groupStrategy: GroupStrategy = GroupStrategy.BOOK_ORDER,
+    /** true 时重建 auto 分组（REQ-BOOK-26） */
+    val regroup: Boolean = false,
 )
 
 /**
@@ -75,6 +100,7 @@ data class AppendedGroupItem(
 data class SaveBooksSettingsResponse(
     val bookIds: List<Long>,
     val groupSize: Int,
+    val groupStrategy: GroupStrategy = GroupStrategy.BOOK_ORDER,
     val autoSpeak: Boolean,
     val themeMode: ThemeMode,
     val summary: BooksSummary,

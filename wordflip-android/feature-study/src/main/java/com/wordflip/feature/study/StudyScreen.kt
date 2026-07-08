@@ -38,7 +38,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.wordflip.core.image.ImageEditorScreen
 import com.wordflip.core.image.rememberImagePickerLaunchers
 import com.wordflip.core.model.media.ImageFilters
@@ -68,10 +68,7 @@ fun StudyScreen(
 ) {
     val context = LocalContext.current
     val reduceMotion = remember(context) { ShuffleMotion.isReduceMotionEnabled(context) }
-    val viewModel: StudyViewModel = viewModel(
-        key = "study-$groupId",
-        factory = StudyViewModel.Factory(context, groupId),
-    )
+    val viewModel: StudyViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
     // 与 MainActivity 同一 DataStore 实例，Compose 层实时读开关
     val autoSpeak by settingsPreferences.autoSpeakFlow.collectAsState(initial = true)
@@ -106,7 +103,7 @@ fun StudyScreen(
             contentState?.imagePickSheetWordKey != null -> viewModel.closeImagePickSheet()
             isEditorOpen -> viewModel.closeImageEditor()
             contentState?.detailWordKey != null -> viewModel.closeDetail()
-            else -> onNavigateBack()
+            else -> viewModel.leaveStudy(onNavigateBack)
         }
     }
 
@@ -157,7 +154,7 @@ fun StudyScreen(
                     is StudyUiState.Error -> {
                         NetworkErrorView(
                             message = state.message,
-                            onRetry = { /* reload via new ViewModel instance not trivial; ignore for mock */ },
+                            onRetry = viewModel::reload,
                             modifier = Modifier.align(Alignment.Center),
                         )
                     }

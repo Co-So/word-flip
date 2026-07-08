@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.wordflip.core.model.book.BookImportParseException
 import com.wordflip.core.model.book.BookItem
 import com.wordflip.core.model.book.BooksSummary
+import com.wordflip.core.model.book.GroupStrategy
 import com.wordflip.core.model.fake.FakeBooksData
 import com.wordflip.core.model.fake.MockBookImportParser
 import com.wordflip.core.network.books.BooksSettingsRepository
@@ -24,7 +25,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 
 /**
- * 词书页 ViewModel：列表/保存接真 API；导入/删除仍 Mock（P0-B20~24）。
+ * 词书页 ViewModel：Hub 概览 + 增加书籍/重新分组向导（REQ-BOOK-17~26）。
  */
 @HiltViewModel
 class BooksViewModel @Inject constructor(
@@ -39,12 +40,15 @@ class BooksViewModel @Inject constructor(
 
     private var savedBookIds: Set<Long> = emptySet()
     private var savedGroupSize: Int = 20
+    private var savedGroupStrategy: GroupStrategy = GroupStrategy.BOOK_ORDER
     private var serverSummary: BooksSummary = BooksSummary(0, 0, 0)
 
     /** 已有内容时静默刷新，避免 Tab 切换闪 Loading */
     fun loadBooks() {
         viewModelScope.launch {
-            val showLoading = _uiState.value !is BooksUiState.Content
+            val current = _uiState.value as? BooksUiState.Content
+            val inWizard = current?.wizardMode != null
+            val showLoading = current == null
             if (showLoading) {
                 _uiState.value = BooksUiState.Loading
             }
@@ -52,15 +56,22 @@ class BooksViewModel @Inject constructor(
                 .onSuccess { page ->
                     savedBookIds = page.settings.bookIds.toSet()
                     savedGroupSize = page.settings.groupSize
+                    savedGroupStrategy = page.settings.groupStrategy
                     serverSummary = page.settings.summary
                     _uiState.value = BooksUiState.Content(
-                        books = page.books,
+                        books = page.books.map { book ->
+                            book.copy(selected = book.id in savedBookIds)
+                        },
                         groupSize = page.settings.groupSize,
+                        groupStrategy = page.settings.groupStrategy,
                         summary = page.settings.summary,
                         isDirty = false,
                         isSaving = false,
-                        importSheet = null,
+                        importSheet = if (inWizard) current?.importSheet else null,
                         isParsingImport = false,
+                        wizardMode = if (inWizard) current?.wizardMode else null,
+                        wizardStep = if (inWizard) current?.wizardStep else null,
+                        lockedBookIds = if (inWizard) current?.lockedBookIds.orEmpty() else emptySet(),
                     )
                 }
                 .onFailure { error ->
@@ -71,30 +82,161 @@ class BooksViewModel @Inject constructor(
         }
     }
 
+    /** 启动向导：增加书籍（锁定已选）或重新分组（全可选） */
+    fun startWizard(mode: BooksWizardMode) {
+        val content = currentContent() ?: return
+        val books = content.books.map { book ->
+            book.copy(selected = book.id in savedBookIds)
+        }
+        publishContent(
+            books = books,
+            groupSize = savedGroupSize,
+            groupStrategy = savedGroupStrategy,
+            importSheet = content.importSheet,
+            isParsingImport = content.isParsingImport,
+            isSaving = false,
+            wizardMode = mode,
+            wizardStep = BooksWizardStep.SELECT_BOOKS,
+            lockedBookIds = if (mode == BooksWizardMode.ADD) savedBookIds else emptySet(),
+        )
+    }
+
+    fun cancelWizard() {
+        val content = currentContent() ?: return
+        publishContent(
+            books = content.books.map { book -> book.copy(selected = book.id in savedBookIds) },
+            groupSize = savedGroupSize,
+            groupStrategy = savedGroupStrategy,
+            importSheet = content.importSheet,
+            isParsingImport = content.isParsingImport,
+            isSaving = false,
+            wizardMode = null,
+            wizardStep = null,
+            lockedBookIds = emptySet(),
+        )
+    }
+
+    fun wizardBack() {
+        val content = currentContent() ?: return
+        val step = content.wizardStep ?: return
+        val previous = when (step) {
+            BooksWizardStep.SELECT_BOOKS -> {
+                cancelWizard()
+                return
+            }
+            BooksWizardStep.STRATEGY -> BooksWizardStep.SELECT_BOOKS
+            BooksWizardStep.CONFIRM -> BooksWizardStep.STRATEGY
+        }
+        _uiState.value = content.copy(wizardStep = previous)
+    }
+
+    fun wizardNext() {
+        val content = currentContent() ?: return
+        val mode = content.wizardMode ?: return
+        when (content.wizardStep) {
+            BooksWizardStep.SELECT_BOOKS -> {
+                val selectedIds = content.books.filter { it.selected }.map { it.id }.toSet()
+                if (mode == BooksWizardMode.ADD) {
+                    val newIds = selectedIds - savedBookIds
+                    if (newIds.isEmpty()) {
+                        emitToast("请至少勾选一本新词书")
+                        return
+                    }
+                } else if (selectedIds.isEmpty()) {
+                    emitToast("请至少勾选一本词书")
+                    return
+                }
+                _uiState.value = content.copy(wizardStep = BooksWizardStep.STRATEGY)
+            }
+            BooksWizardStep.STRATEGY -> {
+                _uiState.value = content.copy(wizardStep = BooksWizardStep.CONFIRM)
+            }
+            BooksWizardStep.CONFIRM -> Unit
+            null -> Unit
+        }
+    }
+
+    /** 向导最后一步保存 */
+    fun wizardSave() {
+        val content = currentContent() ?: return
+        val mode = content.wizardMode ?: return
+        saveSettings(regroup = mode == BooksWizardMode.REGROUP)
+    }
+
     fun toggleBookSelection(bookId: Long) {
         val content = currentContent() ?: return
+        if (content.wizardMode == BooksWizardMode.ADD && bookId in content.lockedBookIds) {
+            return
+        }
         val updated = content.books.map { book ->
             if (book.id == bookId) book.copy(selected = !book.selected) else book
         }
-        updateContent(updated, content.groupSize, importSheet = content.importSheet)
+        publishContent(
+            books = updated,
+            groupSize = content.groupSize,
+            groupStrategy = content.groupStrategy,
+            importSheet = content.importSheet,
+            isParsingImport = content.isParsingImport,
+            isSaving = content.isSaving,
+            wizardMode = content.wizardMode,
+            wizardStep = content.wizardStep,
+            lockedBookIds = content.lockedBookIds,
+        )
     }
 
     fun setGroupSize(size: Int) {
         val content = currentContent() ?: return
-        updateContent(content.books, size, importSheet = content.importSheet)
+        publishContent(
+            books = content.books,
+            groupSize = size,
+            groupStrategy = content.groupStrategy,
+            importSheet = content.importSheet,
+            isParsingImport = content.isParsingImport,
+            isSaving = content.isSaving,
+            wizardMode = content.wizardMode,
+            wizardStep = content.wizardStep,
+            lockedBookIds = content.lockedBookIds,
+        )
     }
 
-    /** PUT /settings；服务端 appendGroupsForNewWords 增量追加 */
-    fun saveSettings() {
+    /** 切换自动分组策略（REQ-BOOK-22） */
+    fun setGroupStrategy(strategy: GroupStrategy) {
+        val content = currentContent() ?: return
+        publishContent(
+            books = content.books,
+            groupSize = content.groupSize,
+            groupStrategy = strategy,
+            importSheet = content.importSheet,
+            isParsingImport = content.isParsingImport,
+            isSaving = content.isSaving,
+            wizardMode = content.wizardMode,
+            wizardStep = content.wizardStep,
+            lockedBookIds = content.lockedBookIds,
+        )
+    }
+
+    /** PUT /settings；regroup=false 增量追加，true 重建 auto 组（REQ-BOOK-26） */
+    fun saveSettings(regroup: Boolean = false) {
         val content = currentContent() ?: return
         if (content.isSaving) return
+        val selectedIds = content.books.filter { it.selected }.map { it.id }
+        if (regroup && selectedIds.isEmpty()) {
+            emitToast("请至少勾选一本词书")
+            return
+        }
+        if (!regroup && content.wizardMode == null && !content.isDirty) return
         viewModelScope.launch {
             _uiState.value = content.copy(isSaving = true)
-            val selectedIds = content.books.filter { it.selected }.map { it.id }
-            booksSettingsRepository.saveBooksSettings(selectedIds, content.groupSize)
+            booksSettingsRepository.saveBooksSettings(
+                selectedIds,
+                content.groupSize,
+                content.groupStrategy,
+                regroup = regroup,
+            )
                 .onSuccess { response ->
                     savedBookIds = response.bookIds.toSet()
                     savedGroupSize = response.groupSize
+                    savedGroupStrategy = response.groupStrategy
                     serverSummary = response.summary
                     val updatedBooks = content.books.map { book ->
                         book.copy(selected = book.id in savedBookIds)
@@ -102,16 +244,23 @@ class BooksViewModel @Inject constructor(
                     _uiState.value = BooksUiState.Content(
                         books = updatedBooks,
                         groupSize = response.groupSize,
+                        groupStrategy = response.groupStrategy,
                         summary = response.summary,
                         isDirty = false,
                         isSaving = false,
-                        importSheet = content.importSheet,
-                        isParsingImport = content.isParsingImport,
+                        importSheet = null,
+                        isParsingImport = false,
+                        wizardMode = null,
+                        wizardStep = null,
+                        lockedBookIds = emptySet(),
                     )
-                    val message = if (response.appendedGroups.count > 0) {
-                        "设置已保存 · 新增 ${response.appendedGroups.count} 组"
-                    } else {
-                        "设置已保存"
+                    val message = when {
+                        regroup && response.appendedGroups.count > 0 ->
+                            "已重新分组 · 共 ${response.appendedGroups.count} 组"
+                        regroup -> "已重新分组"
+                        response.appendedGroups.count > 0 ->
+                            "设置已保存 · 新增 ${response.appendedGroups.count} 组"
+                        else -> "设置已保存"
                     }
                     _events.emit(BooksUiEvent.Toast(message))
                 }
@@ -134,10 +283,18 @@ class BooksViewModel @Inject constructor(
         val content = currentContent() ?: return
         if (!FakeBooksData.deleteBook(bookId)) return
         val updated = content.books.filterNot { it.id == bookId }
-        updateContent(updated, content.groupSize, importSheet = content.importSheet)
-        viewModelScope.launch {
-            _events.emit(BooksUiEvent.Toast("词书已删除"))
-        }
+        publishContent(
+            books = updated,
+            groupSize = content.groupSize,
+            groupStrategy = content.groupStrategy,
+            importSheet = content.importSheet,
+            isParsingImport = content.isParsingImport,
+            isSaving = content.isSaving,
+            wizardMode = content.wizardMode,
+            wizardStep = content.wizardStep,
+            lockedBookIds = content.lockedBookIds,
+        )
+        emitToast("词书已删除")
     }
 
     fun onImportClick() {
@@ -236,25 +393,49 @@ class BooksViewModel @Inject constructor(
         return "已选 ${summary.distinctSelectedCount} 词（去重后）· 每组 $groupSize 词 · 共约 ${summary.estimatedGroupCount} 组"
     }
 
+    fun wizardStepLabel(step: BooksWizardStep?): String = when (step) {
+        BooksWizardStep.SELECT_BOOKS -> "1/3 选择词书"
+        BooksWizardStep.STRATEGY -> "2/3 分组策略"
+        BooksWizardStep.CONFIRM -> "3/3 确认保存"
+        null -> ""
+    }
+
+    fun wizardTitle(mode: BooksWizardMode?): String = when (mode) {
+        BooksWizardMode.ADD -> "增加书籍"
+        BooksWizardMode.REGROUP -> "重新分组"
+        null -> "词书"
+    }
+
     private fun currentContent(): BooksUiState.Content? = _uiState.value as? BooksUiState.Content
 
-    private fun updateContent(
+    private fun publishContent(
         books: List<BookItem>,
         groupSize: Int,
+        groupStrategy: GroupStrategy,
         importSheet: ImportSheetState?,
-        isParsingImport: Boolean = false,
+        isParsingImport: Boolean,
+        isSaving: Boolean,
+        wizardMode: BooksWizardMode?,
+        wizardStep: BooksWizardStep?,
+        lockedBookIds: Set<Long>,
     ) {
         val selectedIds = books.filter { it.selected }.map { it.id }.toSet()
         val summary = estimateSummary(books, selectedIds, groupSize)
-        val isDirty = selectedIds != savedBookIds || groupSize != savedGroupSize
+        val isDirty = selectedIds != savedBookIds
+            || groupSize != savedGroupSize
+            || groupStrategy != savedGroupStrategy
         _uiState.value = BooksUiState.Content(
             books = books,
             groupSize = groupSize,
+            groupStrategy = groupStrategy,
             summary = summary,
             isDirty = isDirty,
-            isSaving = false,
+            isSaving = isSaving,
             importSheet = importSheet,
             isParsingImport = isParsingImport,
+            wizardMode = wizardMode,
+            wizardStep = wizardStep,
+            lockedBookIds = lockedBookIds,
         )
     }
 
@@ -278,6 +459,12 @@ class BooksViewModel @Inject constructor(
             estimatedGroupCount = estimatedGroups,
             unassignedCount = serverSummary.unassignedCount,
         )
+    }
+
+    private fun emitToast(message: String) {
+        viewModelScope.launch {
+            _events.emit(BooksUiEvent.Toast(message))
+        }
     }
 
     private fun readTextFromUri(context: Context, uri: Uri): Pair<String, String> {

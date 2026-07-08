@@ -30,6 +30,13 @@ public interface BookWordRepository extends JpaRepository<BookWord, Long> {
     );
 
     @Query("""
+            SELECT bw FROM BookWord bw
+            WHERE bw.bookId IN :bookIds
+            ORDER BY bw.bookId ASC, bw.sortOrder ASC
+            """)
+    List<BookWord> findByBookIdInOrderByBookIdAscSortOrderAsc(@Param("bookIds") Collection<Long> bookIds);
+
+    @Query("""
             SELECT COUNT(DISTINCT bw.wordKey) FROM BookWord bw
             JOIN UserBookSelection ubs ON ubs.id.bookId = bw.bookId
             WHERE ubs.id.userId = :userId

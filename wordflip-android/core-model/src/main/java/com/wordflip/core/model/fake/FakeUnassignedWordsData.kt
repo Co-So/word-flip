@@ -25,7 +25,7 @@ object FakeUnassignedWordsData {
     /** 拉取未入组词列表（Mock 等价 GET /words/unassigned?all=true） */
     fun unassigned(): UnassignedWordsResponse {
         val words = allWords.filter { it.wordKey !in assignedKeys }
-        return UnassignedWordsResponse(words = words, total = words.size)
+        return UnassignedWordsResponse(words = words, totalElements = words.size.toLong())
     }
 
     fun unassignedCount(): Int = allWords.count { it.wordKey !in assignedKeys }

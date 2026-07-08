@@ -1,7 +1,7 @@
 # WordFlip 任务清单（TASK）
 
-> 版本：v2.5  
-> 日期：2026-07-08  
+> 版本：v2.8  
+> 日期：2026-07-09  
 > 用法：完成一项将 `[ ]` 改为 `[x]`。任务按依赖顺序排列，建议自上而下打勾。  
 > 关联：[requirements.md](docs/wordflip/requirements.md) · [architecture.md](docs/wordflip/architecture.md) · [STRUCTURE.md](STRUCTURE.md)
 
@@ -15,30 +15,31 @@
 | **I** | 基础设施 Docker | 8 / 8 |
 | **S** | 后端脚手架 + 公共层 | 21 / 21 |
 | **A** | Android 脚手架 + 公共层 | 14 / 14 |
-| **P0** | 登录 + 词书 + 分组 | 53 / 66 |
-| **P1** | 今日 + 学习 + SRS 读 | 15 / 28 |
-| **P2** | 默写测验 + 掌握度写 | 9 / 24 |
+| **P0** | 登录 + 词书 + 分组 | 62 / 70 |
+| **P1** | 今日 + 学习 + SRS 读 | 28 / 28 |
+| **P2** | 默写测验 + 掌握度写 | 22 / 24 |
 | **P3** | 卡拍 + 图片 + 污渍 | 13 / 22 |
 | **P4** | 统计 + 设置完善 | 8 / 14 |
-| **Q** | 联调、测试、发布准备 | 1 / 12 |
+| **Q** | 联调、测试、发布准备 | 3 / 12 |
 | **B** | 二期 Backlog | — |
 
-### 当前焦点（2026-07-08）
+### 当前焦点（2026-07-09）
 
-**P0 真联调 Phase 2 已完成**；下一波：**P0-A25~27** 分组 Tab 接真 API → **P0-T04** 全流程。
+**P2 核心已打通**（Quiz API + applyQuizResult + Android 真 API）；待 **P2-T03/T04 真机端到端验收** 与 **P3 媒体后端**。
 
 | 轨道 | 任务 ID | 状态 |
 |------|---------|------|
-| 后端 Phase 2 | P0-B31~35、P0-B08 | ✅ Groups API + JWT 401 修复 |
-| Android Phase 2 | P0-A18~1D | ✅ 词书真 API + Auth/Tab UX |
-| 下一波 | P0-A25~27 | 分组列表/详情/CustomGroup 接真 API |
+| P1 | P1-B01~B12、A16、T01~T03 | ✅ Today/Study 后端 + Android 真 API |
+| P2 | P2-B01~B10、A07、T01~T02 | ✅ Quiz session + applyQuizResult + Android 接 API |
+| 下一波 | P2-T03~T04、P3-B01~ | 真机测验验收；卡拍/图片 MinIO |
 
 | 区域 | 状态 |
 |------|------|
-| 词书 | 列表/保存 **真 API**；Tab 切换静默刷新；导入仍 Mock |
-| 认证 | 真 API；无效/过期 Token **401** + 自动 Refresh；TokenStore 内存缓存 |
-| 分组 | 后端 Groups API ✅；Android UI 仍 Mock（待 P0-A25~27） |
-| 联调 | P0-T02 ✅；P0-T04a ✅；P0-T04 待分组 Android 接真 |
+| 今日 | GET /today **真 API**；Tab 静默刷新 |
+| 学习 | GET /study/groups/{id} + POST /study/sessions **真 API** |
+| 分组 | 列表/详情/CustomGroup 真 API；详情 RESUMED 刷新 |
+| 测验 | POST /quiz/sessions + answer + result **真 API**；study 按组词数出题 |
+| 联调 | P1-T01~T03 ✅；P2-T01~T02 单测 ✅；P2-T03~T04 待真机 |
 
 **已打通导航：** 今日 ↔ 学习 / 测验；词书 → CustomGroup / 导入；词书保存；分组详情 → 学习 / 测验；登录 ↔ 注册 ↔ **找回密码**。
 
@@ -125,6 +126,7 @@
 - [x] S-16 编写 V1 续：achievement_definitions、user_achievements
 - [x] S-17 编写 `V2__seed_builtin_books.sql`（三本内置词书占位数据）
 - [x] S-18 本地启动验证 Flyway 迁移成功
+- [x] S-19 内置词书真实词库：KyleBing ETL + `V3/V3_1~3` Flyway（共 14842 条）
 
 ### S.3 横切能力
 
@@ -191,6 +193,10 @@
 - [x] P0-B15 `PUT /settings` 后调用 `GroupService.appendGroupsForNewWords`
 - [x] P0-B16 增量 append：delta 计算、按 groupSize 切分、INSERT groups + group_words
 - [x] P0-B17 验证 UNIQUE(user_id, word_key) 冲突返回 409
+- [x] P0-B36 openapi `GroupStrategy` + Flyway `user_settings.group_strategy` + Settings 读写
+- [x] P0-B37 `appendGroupsForNewWords`：book_order / random 稳定打乱 / frequency 回退 + 补齐未满 auto 组
+- [x] P0-B38 `GroupServiceTest`：补齐末组、book_order 合并、random 稳定性
+- [x] P0-B39 `regroup=true` 重新分组：删 auto 组全量重建 + Android 确认对话框（REQ-BOOK-26）
 
 ### P0-B 后端 · 词书导入
 
@@ -247,9 +253,11 @@
 - [x] P0-A22 分组列表页：组名、状态、四维统计、进度条
 - [x] P0-A23 分组详情列表模式（只读掌握度 Chip，无手动改态按钮）
 - [x] P0-A24 分组卡片快捷入口：卡拍 / 污渍 — 导航至 Snapshot / 分组详情污渍模式
-- [ ] P0-A25 `GroupsApi` + DTO + `GroupsRepository`（依赖 P0-B31~35）
-- [ ] P0-A26 `GroupsViewModel` / `GroupDetailViewModel` 接 `GET /groups`、`GET /groups/{id}`、`GET /groups/{id}/words`
-- [ ] P0-A27 `CustomGroupViewModel` 接 `GET /words/unassigned` + `POST /groups/custom`
+- [x] P0-A25 `GroupsApi` + DTO + `GroupsRepository`（依赖 P0-B31~35）
+- [x] P0-A26 `GroupsViewModel` / `GroupDetailViewModel` 接 `GET /groups`、`GET /groups/{id}`、`GET /groups/{id}/words`
+- [x] P0-A27 `CustomGroupViewModel` 接 `GET /words/unassigned` + `POST /groups/custom`
+- [x] P0-A28 词书页分组策略 UI（词书顺序/词频/随机）+ `PUT /settings` 传 `groupStrategy`
+- [x] P0-A29 词书页「重新分组」入口 + 二次确认（REQ-BOOK-26）
 
 ### P0 联调验收
 
@@ -257,7 +265,7 @@
 - [x] P0-T02 勾选两本词书 → PUT /settings → 验证 `appendedGroups.count` 与 DB `groups` 行（curl 或 Android 真机）
 - [ ] P0-T03 导入 CSV 小词书 → 保存设置 → 新词入组
 - [x] P0-T04a Auth 真机走查（注册/登录/找回密码/退出）
-- [ ] P0-T04 Android 真机走通 P0 全流程（词书保存→分组可见→分组详情）— 依赖 Phase 2 双轨 + P0-A25~27
+- [x] P0-T04 Android 真机走通 P0 全流程（词书保存→分组可见→分组详情）
 
 ---
 
@@ -267,19 +275,19 @@
 
 ### P1-B 后端 · Review & Today
 
-- [ ] P1-B01 实体 `WordMastery`、`ReviewPlan` + Repository
-- [ ] P1-B02 `ReviewService`：组装 `MasterySnapshot`（含 hasQuizHistory 默认 false）
-- [ ] P1-B03 `GET /today`：stats（masteredCount、dueReviewCount、completionPercent）
-- [ ] P1-B04 `GET /today`：tasks.newWords / dueReview / quiz 计数（REQ-TODAY-9~11）
-- [ ] P1-B05 `GET /today`：recommendedStudy + streakDays
-- [ ] P1-B06 时区：`X-Timezone` header 解析用户「当日」
-- [ ] P1-B07 Redis 缓存 `today:{userId}:{yyyyMMdd}` + 写后失效钩子（占位）
+- [x] P1-B01 实体 `WordMastery`、`ReviewPlan` + Repository
+- [x] P1-B02 `ReviewService`：组装 `MasterySnapshot`（含 hasQuizHistory 默认 false）
+- [x] P1-B03 `GET /today`：stats（masteredCount、dueReviewCount、completionPercent）
+- [x] P1-B04 `GET /today`：tasks.newWords / dueReview / quiz 计数（REQ-TODAY-9~11）
+- [x] P1-B05 `GET /today`：recommendedStudy + streakDays
+- [x] P1-B06 时区：`X-Timezone` header 解析用户「当日」
+- [x] P1-B07 Redis 缓存 `today:{userId}:{yyyyMMdd}` + 写后失效钩子（占位）
 
 ### P1-B 后端 · Study
 
-- [ ] P1-B10 `GET /study/groups/{groupId}` 聚合 WordCard（lexicon + mastery + image/stain 占位）
-- [ ] P1-B11 `POST /study/sessions` upsert `study_logs`
-- [ ] P1-B12 实体 `StudyLog` + 连续打卡 streak 计算
+- [x] P1-B10 `GET /study/groups/{groupId}` 聚合 WordCard（lexicon + mastery + image/stain 占位）
+- [x] P1-B11 `POST /study/sessions` upsert `study_logs`
+- [x] P1-B12 实体 `StudyLog` + 连续打卡 streak 计算
 
 ### P1-A Android · 今日
 
@@ -297,19 +305,19 @@
 - [x] P1-A13 长按 BottomSheet 详情（词义、例句、词根）
 - [x] P1-A14 首次引导浮层「长按查看详情」（REQ-STUDY-23）
 - [x] P1-A15 自动发音 Toggle 联动（TTS）— 对齐 v5：每次翻转朗读；默认开启；TTS 异步就绪队列；详情页语速独立
-- [ ] P1-A16 学习结束上报 POST /study/sessions
+- [x] P1-A16 学习结束上报 POST /study/sessions
 - [x] P1-A17 顶栏入口 → 测验页 — Mock 导航已打通
 
 ### P1-A Android · 分组详情增强
 
 - [x] P1-A20 分组详情掌握度 Chip：未学习 / 模糊 / 不认识（只读）
-- [x] P1-A21 分组 progress 进度条绑定 API — Mock 数据绑定，待接 GET /groups
+- [x] P1-A21 分组 progress 进度条绑定 API — GroupDetailViewModel 已接 GET /groups
 
 ### P1 联调验收
 
-- [ ] P1-T01 新用户：新词 count = 已入组且无 quiz 记录词数
-- [ ] P1-T02 学习页加载真实组内单词与释义
-- [ ] P1-T03 学习 session 上报后 streak / study_logs 有记录
+- [x] P1-T01 新用户：新词 count = 已入组且无 quiz 记录词数（curl 冒烟 + TodayServiceTest）
+- [x] P1-T02 学习页加载真实组内单词与释义（GET /study/groups/{id} curl）
+- [x] P1-T03 学习 session 上报后 streak / study_logs 有记录（POST /study/sessions curl）
 
 ---
 
@@ -319,16 +327,16 @@
 
 ### P2-B 后端 · Quiz & applyQuizResult
 
-- [ ] P2-B01 实体 `QuizSession`、`QuizQuestion`、`QuizAnswer`
-- [ ] P2-B02 `POST /quiz/sessions` 抽题池（已入组 ∩ 到期 ∪ fuzzy/unknown）
-- [ ] P2-B03 写入 `quiz_questions` 快照；同 session wordKey 不重复
-- [ ] P2-B04 `POST /quiz/sessions/{id}/answer` 判题 trim + equalsIgnoreCase
-- [ ] P2-B05 实现 `ReviewService.applyQuizResult` 状态机（三档 + stage + next_review_at）
-- [ ] P2-B06 连续错题：查最近 quiz_answers → unknown
-- [ ] P2-B07 首次答题 has_quiz_history = 1
-- [ ] P2-B08 session 完成更新 score/status；upsert study_logs
-- [ ] P2-B09 `GET /quiz/sessions/{id}/result` wrongWords 列表
-- [ ] P2-B10 答题后删除 Redis today 缓存
+- [x] P2-B01 实体 `QuizSession`、`QuizQuestion`、`QuizAnswer`（session_id 对齐 DB `CHAR(36)`）
+- [x] P2-B02 `POST /quiz/sessions` 抽题池（today/retry：到期∪fuzzy/unknown；study：组内全词）
+- [x] P2-B03 写入 `quiz_questions` 快照；同 session wordKey 不重复
+- [x] P2-B04 `POST /quiz/sessions/{id}/answer` 判题 trim + equalsIgnoreCase
+- [x] P2-B05 实现 `ReviewService.applyQuizResult` 状态机（三档 + stage + next_review_at）
+- [x] P2-B06 连续错题：查最近 quiz_answers → unknown
+- [x] P2-B07 首次答题 has_quiz_history = 1
+- [x] P2-B08 session 完成更新 score/status；upsert study_logs
+- [x] P2-B09 `GET /quiz/sessions/{id}/result` wrongWords 列表
+- [x] P2-B10 答题后删除 Redis today 缓存
 
 ### P2-A Android · 测验
 
@@ -341,14 +349,14 @@
 - [x] P2-A08 答错巩固：首次判题计分/错题；练习通过后方可下一题（Mock 本地）
 - [x] P2-A09 巩固页：盖住单词同位换中文；TTS 朗读 + 元音流动动画 + 语速 ±
 - [x] P2-A10 测验导航 `quiz/{source}` + `adjustResize` 键盘适配
-- [ ] P2-A07 测验后刷新分组详情 / 今日页掌握度展示 — 待接 API
+- [x] P2-A07 测验接真 API + 分组详情 RESUMED 刷新；study 入口按组词数出题（非固定 10 题）
 
 ### P2 联调验收
 
-- [ ] P2-T01 答对 → level=unlearned, stage+1, next_review_at 正确
-- [ ] P2-T02 连续两次答错 → unknown
-- [ ] P2-T03 分组详情掌握度仅随测验变化（学习翻转不改态）
-- [ ] P2-T04 Android 完整测验 10 题流程 — Mock 可手工走通，待接 API 验证掌握度写入
+- [x] P2-T01 答对 → level=unlearned, stage+1, next_review_at 正确 — `ReviewServiceTest`
+- [x] P2-T02 连续两次答错 → unknown — `ReviewServiceTest`
+- [ ] P2-T03 分组详情掌握度仅随测验变化（学习翻转不改态）— 待真机验收
+- [ ] P2-T04 Android 完整测验流程（study 组内全词数 + 掌握度写入）— 待真机验收
 
 ---
 
@@ -420,7 +428,7 @@
 
 ## §Q 联调、测试、发布准备
 
-- [ ] Q-01 后端：核心 Service 单元测试（applyQuizResult、appendGroups）— appendGroups 部分完成（GroupServiceTest）
+- [x] Q-01 后端：核心 Service 单元测试（applyQuizResult、appendGroups）— `ReviewServiceTest` + `GroupServiceTest` + `SettingsServiceTest`
 - [x] Q-02 后端：Auth + Settings 集成测试（MockMvc）— `.\mvnw.cmd test` 7 tests 通过（JDK 21）
 - [ ] Q-03 Android：ViewModel 单测（可选高价值路径）
 - [ ] Q-04 手工测试清单：对照 requirements 附录 B 逐页勾选
@@ -477,6 +485,9 @@ flowchart TD
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
+| 2026-07-09 | v2.8 | P2 全栈：B01~B10 Quiz API + applyQuizResult；Android QuizRepository + 组内全词数测验；Q-01 applyQuizResult 单测 |
+| 2026-07-08 | v2.7 | P1 全栈：B01~B12 Today/Study API、Android Today/Study 真 API + A16、P1-T01~T03 curl 冒烟 |
+| 2026-07-08 | v2.6 | P0-T04 真机全流程验收通过；P0 主链路里程碑达成；焦点转 P1 Today/Study |
 | 2026-07-08 | v2.5 | P0 Phase 2 完成：B31~35 Groups API、A18~1A 词书真 API、P0-T02；B08/A1C Auth 401 修复、A1D Tab 闪烁修复 |
 | 2026-07-08 | v2.4 | Auth 真机验收完成；启动 P0 Phase 2 双轨（B31~35 Groups API + A18~1A 词书真 API）；拆分 P0-T04a；预留 A25~27 |
 | 2026-07-08 | v2.3 | Android Auth 真联调 Phase 1 完善：三页布局重设计、找回密码、真机 adb reverse、表单 UX（键盘/Toast/校验） |

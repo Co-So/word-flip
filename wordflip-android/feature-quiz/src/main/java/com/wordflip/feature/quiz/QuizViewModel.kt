@@ -1,14 +1,19 @@
 package com.wordflip.feature.quiz
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.wordflip.core.model.fake.FakeQuizData
 import com.wordflip.core.model.quiz.QuizAnswerFeedback
 import com.wordflip.core.model.quiz.QuizFeedbackType
 import com.wordflip.core.model.quiz.QuizQuestionItem
 import com.wordflip.core.model.quiz.QuizSource
 import com.wordflip.core.model.quiz.QuizWrongWord
+import com.wordflip.core.model.quiz.toQuestionItem
+import com.wordflip.core.model.quiz.toResultData
+import com.wordflip.core.model.study.MasteryLevel
+import com.wordflip.core.network.quiz.QuizRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,24 +22,31 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 默写测验 ViewModel；Mock 本地判题，掌握度变更仅模拟（真实环境走 applyQuizResult）。
+ * 默写测验 ViewModel；走 POST /quiz/sessions 与 answer（掌握度唯一写入口）。
  */
-class QuizViewModel(
-    private val source: QuizSource,
-    private val groupId: Int?,
+@HiltViewModel
+class QuizViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    private val quizRepository: QuizRepository,
 ) : ViewModel() {
+
+    private val source: QuizSource = parseQuizSource(savedStateHandle.get<String>("source").orEmpty())
+    private val groupId: Int? = savedStateHandle.get<Int>("groupId")?.takeIf { it >= 0 }
+    /** study 入口：按组内词数出题（10/20/30/50），不再固定 10 题 */
+    private val wordLimit: Int = savedStateHandle.get<Int>("wordLimit")?.coerceIn(1, 50) ?: DEFAULT_QUESTION_LIMIT
 
     private val _uiState = MutableStateFlow<QuizUiState>(QuizUiState.Loading)
     val uiState: StateFlow<QuizUiState> = _uiState.asStateFlow()
 
-    private var questions: List<QuizQuestionItem> = emptyList()
     private var sessionId: String = ""
+    private var currentQuestion: QuizQuestionItem? = null
     private var currentIndex: Int = 0
+    private var totalQuestions: Int = 0
     private var score: Int = 0
+    /** 答错巩固完成后待展示的下一题（服务端已在首次判题时写入掌握度） */
+    private var pendingNextQuestion: QuizQuestionItem? = null
+    private var pendingCompleted: Boolean = false
     private val wrongWords = mutableListOf<QuizWrongWord>()
-    /** 本会话连续答错计数，用于 Mock 连续 2 错 → unknown（REQ-QUIZ-6） */
-    private val consecutiveWrongByWord = mutableMapOf<String, Int>()
-    /** 答对后自动下一题的协程，手动点「下一题」时取消 */
     private var autoAdvanceJob: Job? = null
 
     init {
@@ -45,24 +57,34 @@ class QuizViewModel(
     fun startSession() {
         viewModelScope.launch {
             _uiState.value = QuizUiState.Loading
-            delay(200)
-            val payload = FakeQuizData.createSession(
+            val limit = resolveQuestionLimit()
+            quizRepository.createSession(
                 source = source,
                 groupId = groupId,
-                questionLimit = 10,
+                questionLimit = limit,
+            ).fold(
+                onSuccess = { created ->
+                    sessionId = created.sessionId
+                    totalQuestions = created.totalQuestions
+                    currentIndex = created.currentIndex
+                    score = created.score
+                    wrongWords.clear()
+                    pendingNextQuestion = null
+                    pendingCompleted = false
+                    currentQuestion = created.question.toQuestionItem()
+                    emitQuestion(userAnswer = "", inputEnabled = true, feedback = null)
+                },
+                onFailure = { error ->
+                    _uiState.value = QuizUiState.Error(error.message ?: "创建测验失败")
+                },
             )
-            if (payload.questions.isEmpty()) {
-                _uiState.value = QuizUiState.Error("暂无测验题目")
-                return@launch
-            }
-            questions = payload.questions
-            sessionId = payload.sessionId
-            currentIndex = 0
-            score = 0
-            wrongWords.clear()
-            consecutiveWrongByWord.clear()
-            emitQuestion(userAnswer = "", inputEnabled = true, feedback = null)
         }
+    }
+
+    /** study 用组内词数；today/retry 默认 10 */
+    private fun resolveQuestionLimit(): Int = when (source) {
+        QuizSource.STUDY -> wordLimit
+        QuizSource.TODAY, QuizSource.RETRY -> DEFAULT_QUESTION_LIMIT
     }
 
     fun onAnswerChange(value: String) {
@@ -76,7 +98,6 @@ class QuizViewModel(
         )
     }
 
-    /** 提交：正式测验或巩固练习（由 consolidationActive 区分） */
     fun submitAnswer() {
         val state = _uiState.value as? QuizUiState.Question ?: return
         if (!state.inputEnabled || state.userAnswer.isBlank()) return
@@ -87,14 +108,12 @@ class QuizViewModel(
         submitOfficial(state)
     }
 
-    /** 切换「盖住单词」：盖住后原位置改显中文 */
     fun toggleHintCovered() {
         val state = _uiState.value as? QuizUiState.Question ?: return
         if (!state.consolidationActive) return
         _uiState.value = state.copy(hintPanelCovered = !state.hintPanelCovered)
     }
 
-    /** 进入下一题：巩固练习通过后，或答对反馈期间手动跳过等待 */
     fun goToNextQuestion() {
         val state = _uiState.value as? QuizUiState.Question ?: return
         when {
@@ -113,70 +132,68 @@ class QuizViewModel(
     private fun submitOfficial(state: QuizUiState.Question) {
         val question = state.question
         val trimmed = state.userAnswer.trim()
-        val correct = trimmed.equals(question.expectedEn, ignoreCase = true)
-        val wrongStreakBefore = if (correct) 0 else consecutiveWrongByWord[question.wordKey].orElse(0)
+        viewModelScope.launch {
+            _uiState.value = state.copy(inputEnabled = false)
+            quizRepository.submitAnswer(
+                sessionId = sessionId,
+                questionIndex = question.questionIndex,
+                answer = trimmed,
+            ).fold(
+                onSuccess = { result ->
+                    score = result.session.score
+                    currentIndex = result.session.currentIndex
+                    totalQuestions = result.session.totalQuestions
+                    pendingNextQuestion = result.session.nextQuestion?.toQuestionItem()
+                    pendingCompleted = result.session.status == "completed"
 
-        val (before, after) = FakeQuizData.mockMasteryAfterAnswer(
-            wordKey = question.wordKey,
-            correct = correct,
-            consecutiveWrongBefore = wrongStreakBefore,
-        )
+                    val feedback = result.toFeedback()
+                    val revealedEn = result.expectedEn.orEmpty()
+                    val questionWithAnswer = question.copy(expectedEn = revealedEn.ifBlank { question.expectedEn })
 
-        val feedback = if (correct) {
-            consecutiveWrongByWord.remove(question.wordKey)
-            score += 1
-            QuizAnswerFeedback(
-                type = QuizFeedbackType.CORRECT,
-                message = "✓ 正确！",
-                masteryBefore = before,
-                masteryAfter = after,
-            )
-        } else {
-            val newStreak = wrongStreakBefore + 1
-            consecutiveWrongByWord[question.wordKey] = newStreak
-            wrongWords += QuizWrongWord(
-                wordKey = question.wordKey,
-                en = question.expectedEn,
-                cn = question.prompt.cn,
-                userAnswer = trimmed,
-            )
-            QuizAnswerFeedback(
-                type = QuizFeedbackType.WRONG,
-                message = if (newStreak >= 2) "✗ 错误 · 已标记不认识" else "✗ 错误 · 已标记模糊",
-                expectedEn = question.expectedEn,
-                masteryBefore = before,
-                masteryAfter = after,
-            )
-        }
-
-        if (correct) {
-            _uiState.value = state.copy(
-                inputEnabled = false,
-                feedback = feedback,
-                consolidationActive = false,
-            )
-            autoAdvanceJob?.cancel()
-            autoAdvanceJob = viewModelScope.launch {
-                delay(FEEDBACK_DELAY_MS)
-                advanceAfterFeedback()
-                autoAdvanceJob = null
-            }
-        } else {
-            // 答错：下方展示提示区，原输入框清空继续练习；须手动点「下一题」
-            _uiState.value = state.copy(
-                inputEnabled = true,
-                userAnswer = "",
-                feedback = feedback,
-                consolidationActive = true,
-                wrongAttemptAnswer = trimmed,
-                practiceHint = null,
-                practicePassed = false,
-                hintPanelCovered = false,
+                    if (result.correct) {
+                        _uiState.value = state.copy(
+                            question = questionWithAnswer,
+                            inputEnabled = false,
+                            feedback = feedback,
+                            consolidationActive = false,
+                        )
+                        autoAdvanceJob?.cancel()
+                        autoAdvanceJob = viewModelScope.launch {
+                            delay(FEEDBACK_DELAY_MS)
+                            advanceAfterFeedback()
+                            autoAdvanceJob = null
+                        }
+                    } else {
+                        wrongWords += QuizWrongWord(
+                            wordKey = question.wordKey,
+                            en = revealedEn,
+                            cn = question.prompt.cn,
+                            userAnswer = trimmed,
+                        )
+                        _uiState.value = state.copy(
+                            question = questionWithAnswer,
+                            inputEnabled = true,
+                            userAnswer = "",
+                            feedback = feedback,
+                            consolidationActive = true,
+                            wrongAttemptAnswer = trimmed,
+                            practiceHint = null,
+                            practicePassed = false,
+                            hintPanelCovered = false,
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.value = state.copy(
+                        inputEnabled = true,
+                        feedback = null,
+                    )
+                    _uiState.value = QuizUiState.Error(error.message ?: "提交答案失败")
+                },
             )
         }
     }
 
-    /** 巩固练习判题：不修改得分/掌握度/错题记录 */
     private fun submitPractice() {
         val state = _uiState.value as? QuizUiState.Question ?: return
         val trimmed = state.userAnswer.trim()
@@ -192,19 +209,29 @@ class QuizViewModel(
     private fun advanceAfterFeedback() {
         autoAdvanceJob?.cancel()
         autoAdvanceJob = null
-        currentIndex += 1
-        if (currentIndex >= questions.size) {
-            _uiState.value = QuizUiState.Result(
-                FakeQuizData.buildResult(
-                    sessionId = sessionId,
-                    score = score,
-                    total = questions.size,
-                    wrongWords = wrongWords.toList(),
-                ),
-            )
-        } else {
-            emitQuestion(userAnswer = "", inputEnabled = true, feedback = null)
+
+        if (pendingCompleted) {
+            viewModelScope.launch {
+                quizRepository.loadResult(sessionId).fold(
+                    onSuccess = { payload ->
+                        _uiState.value = QuizUiState.Result(payload.toResultData())
+                    },
+                    onFailure = { error ->
+                        _uiState.value = QuizUiState.Error(error.message ?: "加载测验结果失败")
+                    },
+                )
+            }
+            return
         }
+
+        val next = pendingNextQuestion
+        if (next == null) {
+            _uiState.value = QuizUiState.Error("下一题加载失败")
+            return
+        }
+        currentQuestion = next
+        pendingNextQuestion = null
+        emitQuestion(userAnswer = "", inputEnabled = true, feedback = null)
     }
 
     private fun emitQuestion(
@@ -212,11 +239,11 @@ class QuizViewModel(
         inputEnabled: Boolean,
         feedback: QuizAnswerFeedback?,
     ) {
-        val question = questions.getOrNull(currentIndex) ?: return
+        val question = currentQuestion ?: return
         _uiState.value = QuizUiState.Question(
             sessionId = sessionId,
-            currentIndex = currentIndex,
-            totalQuestions = questions.size,
+            currentIndex = question.questionIndex,
+            totalQuestions = totalQuestions,
             score = score,
             question = question,
             userAnswer = userAnswer,
@@ -230,20 +257,29 @@ class QuizViewModel(
         )
     }
 
-    private fun Int?.orElse(default: Int): Int = this ?: default
+    companion object {
+        const val FEEDBACK_DELAY_MS = 600L
+        private const val DEFAULT_QUESTION_LIMIT = 10
+    }
+}
 
-    class Factory(
-        private val source: QuizSource,
-        private val groupId: Int?,
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return QuizViewModel(source, groupId) as T
+private fun com.wordflip.core.model.quiz.AnswerResult.toFeedback(): QuizAnswerFeedback {
+    val type = if (correct) QuizFeedbackType.CORRECT else QuizFeedbackType.WRONG
+    val message = if (correct) {
+        "✓ 正确！"
+    } else {
+        val afterLevel = masteryUpdate?.after?.level
+        if (afterLevel == MasteryLevel.UNKNOWN) {
+            "✗ 错误 · 已标记不认识"
+        } else {
+            "✗ 错误 · 已标记模糊"
         }
     }
-
-    companion object {
-        /** REQ-QUIZ-7：答对短暂展示反馈后自动下一题，可手动跳过 */
-        const val FEEDBACK_DELAY_MS = 600L
-    }
+    return QuizAnswerFeedback(
+        type = type,
+        message = message,
+        expectedEn = expectedEn,
+        masteryBefore = masteryUpdate?.before,
+        masteryAfter = masteryUpdate?.after,
+    )
 }

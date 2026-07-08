@@ -1,6 +1,7 @@
 package com.wordflip.core.network.books
 
 import com.wordflip.core.model.book.BooksPageData
+import com.wordflip.core.model.book.GroupStrategy
 import com.wordflip.core.model.book.SaveBooksSettingsRequest
 import com.wordflip.core.model.book.SaveBooksSettingsResponse
 import com.wordflip.core.network.ApiErrorParser
@@ -29,12 +30,19 @@ class BooksSettingsRepository(
         }
     }
 
-    suspend fun saveBooksSettings(bookIds: List<Long>, groupSize: Int): Result<SaveBooksSettingsResponse> =
+    suspend fun saveBooksSettings(
+        bookIds: List<Long>,
+        groupSize: Int,
+        groupStrategy: GroupStrategy,
+        regroup: Boolean = false,
+    ): Result<SaveBooksSettingsResponse> =
         apiCall {
             settingsApi.saveSettings(
                 SaveBooksSettingsRequest(
                     bookIds = bookIds,
                     groupSize = groupSize,
+                    groupStrategy = groupStrategy,
+                    regroup = regroup,
                 ),
             )
         }

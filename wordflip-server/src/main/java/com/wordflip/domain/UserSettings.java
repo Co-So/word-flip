@@ -28,6 +28,11 @@ public class UserSettings {
     @Column(name = "group_size", nullable = false, columnDefinition = "TINYINT UNSIGNED")
     private int groupSize = 20;
 
+    /** 对齐 Flyway user_settings.group_strategy ENUM（REQ-BOOK-22~24） */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "group_strategy", nullable = false, columnDefinition = "ENUM('book_order', 'frequency', 'random')")
+    private GroupStrategy groupStrategy = GroupStrategy.book_order;
+
     @Column(name = "auto_speak", nullable = false, columnDefinition = "TINYINT(1)")
     private boolean autoSpeak = true;
 

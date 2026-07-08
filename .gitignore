@@ -41,3 +41,8 @@ application-local.properties
 
 # Docker volumes (if mapped locally)
 docker/data/
+
+# Vocabulary ETL 原始下载（生成 SQL 后不必提交）
+wordflip-server/scripts/vocabulary/raw/
+wordflip-server/scripts/vocabulary/processed/book_*.json
+wordflip-server/scripts/vocabulary/raw/wordfreq-en-25000-log.json

@@ -1,0 +1,49 @@
+{
+  "books": [
+    {
+      "book_id": 1,
+      "name": "雅思核心词汇 3000",
+      "loaded": 7002,
+      "kept": 5254,
+      "skipped_dup": 1727,
+      "skipped_invalid": 21,
+      "sample_words": [
+        "abandon",
+        "abbreviation",
+        "abnormal",
+        "abolish",
+        "aboriginal"
+      ]
+    },
+    {
+      "book_id": 2,
+      "name": "四级高频词汇",
+      "loaded": 7508,
+      "kept": 4544,
+      "skipped_dup": 2964,
+      "skipped_invalid": 0,
+      "sample_words": [
+        "abruptly",
+        "absorb",
+        "abuse",
+        "academic",
+        "access"
+      ]
+    },
+    {
+      "book_id": 3,
+      "name": "考研英语核心词",
+      "loaded": 9602,
+      "kept": 5044,
+      "skipped_dup": 4555,
+      "skipped_invalid": 3,
+      "sample_words": [
+        "act",
+        "action",
+        "activate",
+        "active",
+        "actress"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+# 内置词书 ETL 配置 — 数据源 KyleBing/english-vocabulary
+base_url: "https://raw.githubusercontent.com/KyleBing/english-vocabulary/master"
+
+books:
+  - id: 1
+    name: "雅思核心词汇 3000"
+    declared_count: 3000
+    sources:
+      - "json_original/json-sentence/IELTS_2.json"
+      - "json_original/json-sentence/IELTS_3.json"
+    migration: "V3_1__seed_book_words_ielts.sql"
+
+  - id: 2
+    name: "四级高频词汇"
+    declared_count: 4500
+    sources:
+      - "json/3-CET4-顺序.json"
+    enrich_from:
+      - "json_original/json-sentence/CET4_1.json"
+      - "json_original/json-sentence/CET4_2.json"
+      - "json_original/json-sentence/CET4_3.json"
+    migration: "V3_2__seed_book_words_cet4.sql"
+
+  - id: 3
+    name: "考研英语核心词"
+    declared_count: 5500
+    sources:
+      - "json/5-考研-顺序.json"
+    enrich_from:
+      - "json_original/json-sentence/KaoYan_1.json"
+      - "json_original/json-sentence/KaoYan_2.json"
+      - "json_original/json-sentence/KaoYan_3.json"
+    migration: "V3_3__seed_book_words_kaoyan.sql"
+
+meta_migration: "V3__refresh_builtin_books_meta.sql"
+batch_size: 500

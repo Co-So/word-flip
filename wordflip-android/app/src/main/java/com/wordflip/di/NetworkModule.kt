@@ -3,11 +3,19 @@ package com.wordflip.di
 import android.content.Context
 import com.google.gson.Gson
 import com.wordflip.core.network.books.BooksSettingsRepository
+import com.wordflip.core.network.groups.GroupsRepository
+import com.wordflip.core.network.quiz.QuizRepository
+import com.wordflip.core.network.study.StudyRepository
+import com.wordflip.core.network.today.TodayRepository
 import com.wordflip.core.network.gson.WordFlipGson
 import com.wordflip.core.network.ApiErrorParser
 import com.wordflip.core.network.api.AuthApi
 import com.wordflip.core.network.api.BooksApi
+import com.wordflip.core.network.api.GroupsApi
+import com.wordflip.core.network.api.QuizApi
 import com.wordflip.core.network.api.SettingsApi
+import com.wordflip.core.network.api.StudyApi
+import com.wordflip.core.network.api.TodayApi
 import com.wordflip.core.network.auth.AuthRepository
 import com.wordflip.core.network.auth.TokenRefresher
 import com.wordflip.core.network.interceptor.AuthInterceptor
@@ -166,6 +174,54 @@ object NetworkModule {
         settingsApi: SettingsApi,
         apiErrorParser: ApiErrorParser,
     ): BooksSettingsRepository = BooksSettingsRepository(booksApi, settingsApi, apiErrorParser)
+
+    @Provides
+    @Singleton
+    fun provideGroupsApi(retrofit: Retrofit): GroupsApi =
+        retrofit.create(GroupsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideGroupsRepository(
+        groupsApi: GroupsApi,
+        apiErrorParser: ApiErrorParser,
+    ): GroupsRepository = GroupsRepository(groupsApi, apiErrorParser)
+
+    @Provides
+    @Singleton
+    fun provideTodayApi(retrofit: Retrofit): TodayApi =
+        retrofit.create(TodayApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideStudyApi(retrofit: Retrofit): StudyApi =
+        retrofit.create(StudyApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideTodayRepository(
+        todayApi: TodayApi,
+        apiErrorParser: ApiErrorParser,
+    ): TodayRepository = TodayRepository(todayApi, apiErrorParser)
+
+    @Provides
+    @Singleton
+    fun provideStudyRepository(
+        studyApi: StudyApi,
+        apiErrorParser: ApiErrorParser,
+    ): StudyRepository = StudyRepository(studyApi, apiErrorParser)
+
+    @Provides
+    @Singleton
+    fun provideQuizApi(retrofit: Retrofit): QuizApi =
+        retrofit.create(QuizApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideQuizRepository(
+        quizApi: QuizApi,
+        apiErrorParser: ApiErrorParser,
+    ): QuizRepository = QuizRepository(quizApi, apiErrorParser)
 }
 
 @Module

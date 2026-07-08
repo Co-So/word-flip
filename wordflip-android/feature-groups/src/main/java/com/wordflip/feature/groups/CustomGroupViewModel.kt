@@ -2,9 +2,9 @@ package com.wordflip.feature.groups
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.wordflip.core.model.fake.FakeGroupsData
-import com.wordflip.core.model.fake.FakeUnassignedWordsData
-import kotlinx.coroutines.delay
+import com.wordflip.core.network.groups.GroupsRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -15,9 +15,12 @@ import kotlinx.coroutines.launch
 
 /**
  * 手动添加分组 ViewModel（REQ-CG-1~5）。
- * Mock 拉取未入组词池；保存时调用 FakeGroupsData.createCustomGroup。
+ * GET /words/unassigned?all=true + POST /groups/custom。
  */
-class CustomGroupViewModel : ViewModel() {
+@HiltViewModel
+class CustomGroupViewModel @Inject constructor(
+    private val groupsRepository: GroupsRepository,
+) : ViewModel() {
 
     private val _uiState = MutableStateFlow<CustomGroupUiState>(CustomGroupUiState.Loading)
     val uiState: StateFlow<CustomGroupUiState> = _uiState.asStateFlow()
@@ -34,13 +37,19 @@ class CustomGroupViewModel : ViewModel() {
     fun loadUnassigned() {
         viewModelScope.launch {
             _uiState.value = CustomGroupUiState.Loading
-            delay(200)
-            val response = FakeUnassignedWordsData.unassigned()
-            selectedKeys = mutableSetOf()
-            _uiState.value = CustomGroupUiState.Content(
-                words = response.words,
-                selectedKeys = selectedKeys.toSet(),
-            )
+            groupsRepository.loadUnassignedAll()
+                .onSuccess { response ->
+                    selectedKeys = mutableSetOf()
+                    _uiState.value = CustomGroupUiState.Content(
+                        words = response.words,
+                        selectedKeys = selectedKeys.toSet(),
+                    )
+                }
+                .onFailure { error ->
+                    _uiState.value = CustomGroupUiState.Error(
+                        message = error.message ?: "加载未入组单词失败",
+                    )
+                }
         }
     }
 
@@ -64,10 +73,14 @@ class CustomGroupViewModel : ViewModel() {
             return
         }
         viewModelScope.launch {
-            delay(150)
-            val detail = FakeGroupsData.createCustomGroup(content.selectedKeys.toList())
-            _events.emit(CustomGroupUiEvent.Toast("已保存 ${detail.stats.total} 个单词"))
-            _events.emit(CustomGroupUiEvent.Saved)
+            groupsRepository.createCustomGroup(content.selectedKeys.toList())
+                .onSuccess { detail ->
+                    _events.emit(CustomGroupUiEvent.Toast("已保存 ${detail.stats.total} 个单词"))
+                    _events.emit(CustomGroupUiEvent.Saved)
+                }
+                .onFailure { error ->
+                    _events.emit(CustomGroupUiEvent.Toast(error.message ?: "保存分组失败"))
+                }
         }
     }
 }

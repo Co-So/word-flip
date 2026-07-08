@@ -34,15 +34,38 @@
 ### 2.1 词书保存 → 增量分组
 
 ```
-PUT /settings { bookIds, groupSize }
-  → SettingsService 持久化
+PUT /settings { bookIds, groupSize, groupStrategy? }
+  → SettingsService 持久化（bookIds 顺序写入 user_book_selection.selected_at 递增）
   → GroupService.appendGroupsForNewWords(userId)
-       delta = 已勾选词书 wordKey 去重 − 已在 group_words 中的 wordKey
-       若 delta 非空 → 按 groupSize 切分 → INSERT groups(source=auto) + group_words
+       按 groupStrategy 合并已勾选词书 wordKey（去重保序）：
+         book_order — 词书勾选顺序 + 书内 sort_order
+         frequency  — 暂回退 book_order（无词频数据）
+         random     — 稳定随机（seed = userId + bookIds）
+       delta = 有序词表 − 已在 group_words 中的 wordKey
+       若 delta 非空：
+         若最后一个 auto 组未满 groupSize → 先补齐该组
+         剩余 delta 按 groupSize 切分 → INSERT 新 groups(source=auto) + group_words
   → 响应 appendedGroups
+  → TodayCacheService.invalidateAllForUser(userId)
 ```
 
-**不变量：** 不 DELETE/重建已有 groups；`UNIQUE(user_id, word_key)`。
+**不变量（增量模式）：** 不 DELETE/重建已有 auto groups；`UNIQUE(user_id, word_key)`。
+
+### 2.1.1 重新分组（REQ-BOOK-26）
+
+```
+PUT /settings { bookIds, groupSize, groupStrategy?, regroup: true }
+  → SettingsService 持久化
+  → GroupService.regroupAutoGroups(userId)
+       DELETE 全部 groups(source=auto)（group_words CASCADE）
+       custom 组内 wordKey 保留，不参与重建
+       按 groupStrategy 对当前勾选词书全量排序去重
+       减去 custom 已占 wordKey → 按 groupSize 切分新建 auto 组
+  → 响应 appendedGroups（新建组列表）
+  → TodayCacheService.invalidateAllForUser(userId)  // regroup 后 groupId 变更，须清 Today 缓存
+```
+
+**保留：** custom 分组、`word_mastery`、`review_plans`、图片、污渍。
 
 ### 2.2 掌握度与 SRS（仅测验写入）
 

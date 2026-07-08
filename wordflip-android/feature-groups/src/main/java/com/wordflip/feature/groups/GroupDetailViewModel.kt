@@ -1,16 +1,19 @@
 package com.wordflip.feature.groups
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.wordflip.core.model.fake.FakeGroupsData
-import com.wordflip.core.model.fake.FakeStudyData
 import com.wordflip.core.model.fake.MockWordMediaStore
+import com.wordflip.core.model.group.GroupWordItem
 import com.wordflip.core.model.media.StainMode
 import com.wordflip.core.model.media.StainType
 import com.wordflip.core.model.navigation.StudyNavigation
 import com.wordflip.core.model.study.WordCard
-import kotlinx.coroutines.delay
+import com.wordflip.core.network.groups.GroupsRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -20,12 +23,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 分组详情 ViewModel；掌握度 Chip 只读展示；污渍模式 P3-A10 Mock。
+ * 分组详情 ViewModel；GET /groups/{id} + 词表分页；掌握度 Chip 只读；污渍模式仍 Mock（P3）。
  */
-class GroupDetailViewModel(
-    private val groupId: Int,
-    initialStainMode: Boolean,
+@HiltViewModel
+class GroupDetailViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    private val groupsRepository: GroupsRepository,
 ) : ViewModel() {
+
+    private val groupId: Int = checkNotNull(savedStateHandle["groupId"])
+    private val initialStainMode: Boolean = savedStateHandle.get<Boolean>("stainMode") ?: false
 
     private val _uiState = MutableStateFlow<GroupDetailUiState>(GroupDetailUiState.Loading)
     val uiState: StateFlow<GroupDetailUiState> = _uiState.asStateFlow()
@@ -47,21 +54,23 @@ class GroupDetailViewModel(
     fun loadDetail(stainMode: Boolean = (_uiState.value as? GroupDetailUiState.Content)?.stainMode ?: false) {
         viewModelScope.launch {
             _uiState.value = GroupDetailUiState.Loading
-            delay(200)
-            val group = FakeGroupsData.findById(groupId)
-            if (group == null) {
-                _uiState.value = GroupDetailUiState.Error("未找到分组")
-                return@launch
+            try {
+                val (group, words) = coroutineScope {
+                    val groupDeferred = async { groupsRepository.loadGroupDetail(groupId) }
+                    val wordsDeferred = async { groupsRepository.loadGroupWordsAll(groupId) }
+                    groupDeferred.await().getOrThrow() to wordsDeferred.await().getOrThrow()
+                }
+                baseStainCards = words.map { it.toWordCard() }
+                _uiState.value = GroupDetailUiState.Content(
+                    group = group,
+                    words = words,
+                    stainMode = stainMode,
+                    stainCards = mergeStainCards(),
+                    selectedStainTypes = StainType.entries.toSet(),
+                )
+            } catch (error: Exception) {
+                _uiState.value = GroupDetailUiState.Error(error.message ?: "加载分组详情失败")
             }
-            val payload = FakeStudyData.forGroup(groupId)
-            baseStainCards = payload?.words.orEmpty()
-            _uiState.value = GroupDetailUiState.Content(
-                group = group,
-                words = FakeStudyData.wordsForGroupDetail(groupId),
-                stainMode = stainMode,
-                stainCards = mergeStainCards(),
-                selectedStainTypes = StainType.entries.toSet(),
-            )
         }
     }
 
@@ -82,7 +91,7 @@ class GroupDetailViewModel(
         }
     }
 
-    /** 一键生成组内污渍 */
+    /** 一键生成组内污渍（Mock，P3-A10） */
     fun batchGenerateStains() {
         val content = _uiState.value as? GroupDetailUiState.Content ?: return
         val keys = baseStainCards.map { it.wordKey }
@@ -127,6 +136,15 @@ class GroupDetailViewModel(
         )
     }
 
+    private fun GroupWordItem.toWordCard(): WordCard = WordCard(
+        wordKey = summary.wordKey,
+        en = summary.en,
+        cn = summary.cn,
+        pos = summary.pos,
+        ph = summary.ph,
+        mastery = mastery,
+    )
+
     private fun mergeStainCards(): List<WordCard> =
         MockWordMediaStore.applyToWords(baseStainCards)
 
@@ -138,16 +156,6 @@ class GroupDetailViewModel(
         val current = _uiState.value
         if (current is GroupDetailUiState.Content) {
             _uiState.value = block(current)
-        }
-    }
-
-    class Factory(
-        private val groupId: Int,
-        private val initialStainMode: Boolean,
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return GroupDetailViewModel(groupId, initialStainMode) as T
         }
     }
 }

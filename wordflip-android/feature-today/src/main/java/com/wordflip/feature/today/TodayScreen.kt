@@ -25,13 +25,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.wordflip.core.model.navigation.StudyNavigation
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.StatTripleRow
@@ -54,10 +58,25 @@ fun TodayScreen(
     onNavigateToStudy: (StudyNavigation) -> Unit,
     onNavigateToQuiz: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: TodayViewModel = viewModel(),
+    viewModel: TodayViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val (snackbarHostState, toast) = rememberWordFlipToast()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.loadDashboard()
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is TodayUiEvent.Toast -> toast.show(event.message)
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier,

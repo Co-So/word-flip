@@ -62,7 +62,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.wordflip.core.model.fake.FakeQuizData
 import com.wordflip.core.model.quiz.QuizFeedbackType
 import com.wordflip.core.model.quiz.QuizSource
@@ -84,10 +84,7 @@ fun QuizScreen(
     viewModelKey: String,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: QuizViewModel = viewModel(
-        key = viewModelKey,
-        factory = QuizViewModel.Factory(source, groupId),
-    ),
+    viewModel: QuizViewModel = hiltViewModel(key = viewModelKey),
 ) {
     val uiState by viewModel.uiState.collectAsState()
 

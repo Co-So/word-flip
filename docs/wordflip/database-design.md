@@ -158,6 +158,7 @@ erDiagram
 |----|------|------|------|------|
 | `user_id` | BIGINT UNSIGNED | NO | — | PK，FK → users |
 | `group_size` | TINYINT UNSIGNED | NO | 20 | 10/20/30/50 |
+| `group_strategy` | ENUM('book_order','frequency','random') | NO | book_order | REQ-BOOK-22~24 |
 | `auto_speak` | TINYINT(1) | NO | 1 | REQ-SETTINGS-1 |
 | `theme_mode` | ENUM('system','light','dark') | NO | system | REQ-SETTINGS-7 |
 | `study_guide_completed` | TINYINT(1) | NO | 0 | REQ-STUDY-23 |
@@ -210,6 +211,20 @@ erDiagram
 **索引：** `UNIQUE uk_book_words_book_key (book_id, word_key)` · `idx_book_words_word_key (word_key)`
 
 **FK：** `book_id → books(id) ON DELETE CASCADE`
+
+### 6.2.1 `word_freq_ranks`
+
+全局英文词频序（`GroupStrategy.frequency`）；与词书无关，按 `word_key` 查 rank。
+
+| 列 | 类型 | NULL | 默认 | 说明 |
+|----|------|------|------|------|
+| `word_key` | VARCHAR(128) | NO | — | PK；normalize(en) |
+| `freq_rank` | INT UNSIGNED | NO | — | 1=最高频（wordfreq/COCA） |
+| `source` | VARCHAR(32) | NO | wordfreq | 语料标识 |
+
+**索引：** `PRIMARY KEY (word_key)` · `idx_word_freq_ranks_rank (freq_rank)`
+
+**分组逻辑：** 合并去重后按 `freq_rank ASC` 排序；无 rank 的词排末尾，保持 book_order 相对序（REQ-BOOK-24）。
 
 ### 6.3 `user_book_selection`
 

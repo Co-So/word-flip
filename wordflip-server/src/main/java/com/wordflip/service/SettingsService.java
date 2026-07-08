@@ -1,5 +1,6 @@
 package com.wordflip.service;
 
+import com.wordflip.domain.GroupStrategy;
 import com.wordflip.domain.UserBookSelection;
 import com.wordflip.domain.UserSettings;
 import com.wordflip.dto.settings.AppendedGroups;
@@ -26,17 +27,20 @@ public class SettingsService {
     private final UserBookSelectionRepository userBookSelectionRepository;
     private final BookService bookService;
     private final GroupService groupService;
+    private final TodayCacheService todayCacheService;
 
     public SettingsService(
             UserSettingsRepository userSettingsRepository,
             UserBookSelectionRepository userBookSelectionRepository,
             BookService bookService,
-            GroupService groupService
+            GroupService groupService,
+            TodayCacheService todayCacheService
     ) {
         this.userSettingsRepository = userSettingsRepository;
         this.userBookSelectionRepository = userBookSelectionRepository;
         this.bookService = bookService;
         this.groupService = groupService;
+        this.todayCacheService = todayCacheService;
     }
 
     @Transactional(readOnly = true)
@@ -57,20 +61,33 @@ public class SettingsService {
         }
 
         List<Long> bookIds = request.getBookIds() == null ? List.of() : request.getBookIds();
+        if (Boolean.TRUE.equals(request.getRegroup()) && bookIds.isEmpty()) {
+            throw new WordflipException("VALIDATION_ERROR", "重新分组需至少勾选一本词书");
+        }
         bookService.validateBookSelection(userId, bookIds);
 
         UserSettings settings = requireSettings(userId);
         settings.setGroupSize(request.getGroupSize());
+        if (request.getGroupStrategy() != null) {
+            settings.setGroupStrategy(request.getGroupStrategy());
+        }
         settings.setUpdatedAt(Instant.now());
         userSettingsRepository.save(settings);
 
-        // 全量替换勾选列表
+        // 全量替换勾选列表；selected_at 递增以保留 PUT body 中的词书顺序（REQ-BOOK-23）
         userBookSelectionRepository.deleteAllByUserId(userId);
-        for (Long bookId : bookIds) {
-            userBookSelectionRepository.save(new UserBookSelection(userId, bookId));
+        Instant selectionBase = Instant.now();
+        for (int i = 0; i < bookIds.size(); i++) {
+            UserBookSelection selection = new UserBookSelection(userId, bookIds.get(i));
+            selection.setSelectedAt(selectionBase.plusMillis(i));
+            userBookSelectionRepository.save(selection);
         }
 
-        AppendedGroups appended = groupService.appendGroupsForNewWords(userId);
+        AppendedGroups appended = Boolean.TRUE.equals(request.getRegroup())
+                ? groupService.regroupAutoGroups(userId)
+                : groupService.appendGroupsForNewWords(userId);
+        // regroup 会重建 auto 组（groupId 变化），须清 Today 缓存避免 stale recommendedStudy
+        todayCacheService.invalidateAllForUser(userId);
         UserSettingsResponse response = getSettings(userId);
         return new SaveBooksSettingsResponse(response, appended);
     }

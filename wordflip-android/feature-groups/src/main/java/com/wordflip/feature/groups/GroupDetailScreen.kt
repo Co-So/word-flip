@@ -34,7 +34,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.wordflip.core.model.media.StainType
 import com.wordflip.core.model.navigation.StudyNavigation
 import com.wordflip.core.ui.component.FlipCard
@@ -59,12 +62,17 @@ fun GroupDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToStudy: (StudyNavigation) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: GroupDetailViewModel = viewModel(
-        factory = GroupDetailViewModel.Factory(groupId, initialStainMode),
-    ),
+    viewModel: GroupDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val (snackbarHostState, toast) = rememberWordFlipToast()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.reload()
+        }
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
