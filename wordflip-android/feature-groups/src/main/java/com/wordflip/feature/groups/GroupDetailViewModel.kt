@@ -3,13 +3,14 @@ package com.wordflip.feature.groups
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.wordflip.core.model.fake.MockWordMediaStore
 import com.wordflip.core.model.group.GroupWordItem
-import com.wordflip.core.model.media.StainMode
 import com.wordflip.core.model.media.StainType
 import com.wordflip.core.model.navigation.StudyNavigation
 import com.wordflip.core.model.study.WordCard
+import com.wordflip.core.model.study.WordStainPayload
 import com.wordflip.core.network.groups.GroupsRepository
+import com.wordflip.core.network.media.WordMediaRepository
+import com.wordflip.core.network.study.StudyRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.async
@@ -23,12 +24,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 分组详情 ViewModel；GET /groups/{id} + 词表分页；掌握度 Chip 只读；污渍模式仍 Mock（P3）。
+ * 分组详情 ViewModel；掌握度 Chip 只读；污渍模式走 Stains API（P3）。
  */
 @HiltViewModel
 class GroupDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val groupsRepository: GroupsRepository,
+    private val studyRepository: StudyRepository,
+    private val wordMediaRepository: WordMediaRepository,
 ) : ViewModel() {
 
     private val groupId: Int = checkNotNull(savedStateHandle["groupId"])
@@ -40,15 +43,8 @@ class GroupDetailViewModel @Inject constructor(
     private val _events = MutableSharedFlow<GroupDetailUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<GroupDetailUiEvent> = _events.asSharedFlow()
 
-    private var baseStainCards: List<WordCard> = emptyList()
-
     init {
         loadDetail(initialStainMode)
-        viewModelScope.launch {
-            MockWordMediaStore.revision.collect {
-                refreshStainCards()
-            }
-        }
     }
 
     fun loadDetail(stainMode: Boolean = (_uiState.value as? GroupDetailUiState.Content)?.stainMode ?: false) {
@@ -60,13 +56,20 @@ class GroupDetailViewModel @Inject constructor(
                     val wordsDeferred = async { groupsRepository.loadGroupWordsAll(groupId) }
                     groupDeferred.await().getOrThrow() to wordsDeferred.await().getOrThrow()
                 }
-                baseStainCards = words.map { it.toWordCard() }
+                // 污渍预览优先用 Study 聚合（含默认 seed / 已落库 config）
+                val stainCards = if (stainMode) {
+                    studyRepository.loadStudyGroup(groupId).getOrNull()?.words
+                        ?: words.map { it.toWordCard() }
+                } else {
+                    words.map { it.toWordCard() }
+                }
                 _uiState.value = GroupDetailUiState.Content(
                     group = group,
                     words = words,
                     stainMode = stainMode,
-                    stainCards = mergeStainCards(),
+                    stainCards = stainCards,
                     selectedStainTypes = StainType.entries.toSet(),
+                    stainsHidden = stainCards.all { it.stain.hidden } && stainCards.isNotEmpty(),
                 )
             } catch (error: Exception) {
                 _uiState.value = GroupDetailUiState.Error(error.message ?: "加载分组详情失败")
@@ -77,7 +80,28 @@ class GroupDetailViewModel @Inject constructor(
     fun reload() = loadDetail()
 
     fun toggleStainMode() {
-        updateContent { it.copy(stainMode = !it.stainMode, stainCards = mergeStainCards()) }
+        val content = _uiState.value as? GroupDetailUiState.Content ?: return
+        val next = !content.stainMode
+        if (next) {
+            viewModelScope.launch {
+                studyRepository.loadStudyGroup(groupId)
+                    .onSuccess { payload ->
+                        updateContent {
+                            it.copy(
+                                stainMode = true,
+                                stainCards = payload.words,
+                                stainsHidden = payload.words.all { w -> w.stain.hidden } && payload.words.isNotEmpty(),
+                            )
+                        }
+                    }
+                    .onFailure {
+                        updateContent { it.copy(stainMode = true) }
+                        _events.emit(GroupDetailUiEvent.Toast(it.message ?: "加载污渍失败"))
+                    }
+            }
+        } else {
+            updateContent { it.copy(stainMode = false) }
+        }
     }
 
     fun toggleStainType(type: StainType) {
@@ -91,38 +115,63 @@ class GroupDetailViewModel @Inject constructor(
         }
     }
 
-    /** 一键生成组内污渍（Mock，P3-A10） */
+    /** 一键为全组 regenerate（POST /groups/{id}/stains/batch） */
     fun batchGenerateStains() {
         val content = _uiState.value as? GroupDetailUiState.Content ?: return
-        val keys = baseStainCards.map { it.wordKey }
         val types = content.selectedStainTypes.toList()
-        MockWordMediaStore.batchRegenerateStains(keys, StainMode.MULTI, types)
         viewModelScope.launch {
-            _events.emit(GroupDetailUiEvent.Toast("已为全组生成污渍"))
+            wordMediaRepository.batchRegenerateStains(groupId, types)
+                .onSuccess {
+                    studyRepository.loadStudyGroup(groupId)
+                        .onSuccess { payload ->
+                            updateContent { state ->
+                                state.copy(
+                                    stainCards = payload.words,
+                                    stainsHidden = false,
+                                )
+                            }
+                            _events.emit(GroupDetailUiEvent.Toast("已为全组生成污渍"))
+                        }
+                        .onFailure {
+                            _events.emit(GroupDetailUiEvent.Toast("已生成，刷新失败：${it.message}"))
+                        }
+                }
+                .onFailure { _events.emit(GroupDetailUiEvent.Toast(it.message ?: "批量生成失败")) }
         }
     }
 
     fun regenerateStain(wordKey: String) {
         val content = _uiState.value as? GroupDetailUiState.Content ?: return
-        MockWordMediaStore.regenerateStain(
-            wordKey,
-            StainMode.RANDOM,
-            content.selectedStainTypes.toList(),
-        )
         viewModelScope.launch {
-            _events.emit(GroupDetailUiEvent.Toast("已更换污渍"))
+            wordMediaRepository.regenerateStain(wordKey, content.selectedStainTypes.toList())
+                .onSuccess { stain ->
+                    applyStainToCard(wordKey, stain)
+                    _events.emit(GroupDetailUiEvent.Toast("已更换污渍"))
+                }
+                .onFailure { _events.emit(GroupDetailUiEvent.Toast(it.message ?: "更换失败")) }
         }
     }
 
     fun toggleStainsHidden() {
         val content = _uiState.value as? GroupDetailUiState.Content ?: return
-        val keys = baseStainCards.map { it.wordKey }
         val nextHidden = !content.stainsHidden
-        MockWordMediaStore.batchSetStainHidden(keys, nextHidden)
-        updateContent { it.copy(stainsHidden = nextHidden) }
+        val keys = content.stainCards.map { it.wordKey }
         viewModelScope.launch {
+            var failed = 0
+            keys.forEach { key ->
+                wordMediaRepository.setStainHidden(key, nextHidden)
+                    .onSuccess { applyStainToCard(key, it) }
+                    .onFailure { failed++ }
+            }
+            updateContent { it.copy(stainsHidden = nextHidden) }
             _events.emit(
-                GroupDetailUiEvent.Toast(if (nextHidden) "已隐藏全组污渍" else "已显示全组污渍"),
+                GroupDetailUiEvent.Toast(
+                    when {
+                        failed > 0 -> "部分更新失败（$failed）"
+                        nextHidden -> "已隐藏全组污渍"
+                        else -> "已显示全组污渍"
+                    },
+                ),
             )
         }
     }
@@ -136,6 +185,16 @@ class GroupDetailViewModel @Inject constructor(
         )
     }
 
+    private fun applyStainToCard(wordKey: String, stain: WordStainPayload) {
+        updateContent { content ->
+            content.copy(
+                stainCards = content.stainCards.map { card ->
+                    if (card.wordKey == wordKey) card.copy(stain = stain) else card
+                },
+            )
+        }
+    }
+
     private fun GroupWordItem.toWordCard(): WordCard = WordCard(
         wordKey = summary.wordKey,
         en = summary.en,
@@ -144,13 +203,6 @@ class GroupDetailViewModel @Inject constructor(
         ph = summary.ph,
         mastery = mastery,
     )
-
-    private fun mergeStainCards(): List<WordCard> =
-        MockWordMediaStore.applyToWords(baseStainCards)
-
-    private fun refreshStainCards() {
-        updateContent { it.copy(stainCards = mergeStainCards()) }
-    }
 
     private inline fun updateContent(block: (GroupDetailUiState.Content) -> GroupDetailUiState.Content) {
         val current = _uiState.value

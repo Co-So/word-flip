@@ -5,11 +5,10 @@ import com.wordflip.domain.GroupSource;
 import com.wordflip.domain.GroupStatus;
 import com.wordflip.domain.GroupStrategy;
 import com.wordflip.domain.GroupWord;
-import com.wordflip.domain.MasteryLevel;
+import com.wordflip.domain.HeatDisplayMode;
 import com.wordflip.domain.StudyGroup;
 import com.wordflip.domain.UserSettings;
 import com.wordflip.domain.UserWordLexicon;
-import com.wordflip.domain.WordMastery;
 import com.wordflip.dto.common.PageMeta;
 import com.wordflip.dto.group.CreateCustomGroupRequest;
 import com.wordflip.dto.group.GroupDetail;
@@ -17,8 +16,8 @@ import com.wordflip.dto.group.GroupListResponse;
 import com.wordflip.dto.group.GroupStats;
 import com.wordflip.dto.group.GroupWordsResponse;
 import com.wordflip.dto.settings.AppendedGroups;
-import com.wordflip.dto.word.MasterySnapshot;
 import com.wordflip.dto.word.UnassignedWordsResponse;
+import com.wordflip.dto.word.WordProgressSnapshot;
 import com.wordflip.dto.word.WordSummary;
 import com.wordflip.exception.WordflipException;
 import com.wordflip.repository.BookWordRepository;
@@ -28,7 +27,6 @@ import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserSettingsRepository;
 import com.wordflip.repository.UserWordLexiconRepository;
 import com.wordflip.repository.WordFreqRankRepository;
-import com.wordflip.repository.WordMasteryRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -63,9 +61,9 @@ public class GroupService {
     private final GroupRepository groupRepository;
     private final UserSettingsRepository userSettingsRepository;
     private final UserWordLexiconRepository userWordLexiconRepository;
-    private final WordMasteryRepository wordMasteryRepository;
     private final WordFreqRankRepository wordFreqRankRepository;
     private final BookService bookService;
+    private final ReviewService reviewService;
 
     public GroupService(
             UserBookSelectionRepository userBookSelectionRepository,
@@ -74,9 +72,9 @@ public class GroupService {
             GroupRepository groupRepository,
             UserSettingsRepository userSettingsRepository,
             UserWordLexiconRepository userWordLexiconRepository,
-            WordMasteryRepository wordMasteryRepository,
             WordFreqRankRepository wordFreqRankRepository,
-            BookService bookService
+            BookService bookService,
+            ReviewService reviewService
     ) {
         this.userBookSelectionRepository = userBookSelectionRepository;
         this.bookWordRepository = bookWordRepository;
@@ -84,9 +82,9 @@ public class GroupService {
         this.groupRepository = groupRepository;
         this.userSettingsRepository = userSettingsRepository;
         this.userWordLexiconRepository = userWordLexiconRepository;
-        this.wordMasteryRepository = wordMasteryRepository;
         this.wordFreqRankRepository = wordFreqRankRepository;
         this.bookService = bookService;
+        this.reviewService = reviewService;
     }
 
     /** GET /groups：按 source 过滤、createdAt/name 排序 */
@@ -106,7 +104,7 @@ public class GroupService {
         return toGroupDetail(userId, group);
     }
 
-    /** GET /groups/{groupId}/words：分页 + 只读掌握度占位 */
+    /** GET /groups/{groupId}/words：分页 + 双 skill 进度（按 heatDisplayMode） */
     @Transactional(readOnly = true)
     public GroupWordsResponse listGroupWords(Long userId, Long groupId, int page, int size) {
         requireOwnedGroup(userId, groupId);
@@ -118,7 +116,9 @@ public class GroupService {
         );
         List<String> wordKeys = wordPage.getContent().stream().map(GroupWord::getWordKey).toList();
         Map<String, WordSummary> summaries = resolveWordSummaries(userId, wordKeys);
-        Map<String, WordMastery> masteryByKey = loadMasteryMap(userId, wordKeys);
+        HeatDisplayMode heatMode = resolveHeatDisplayMode(userId);
+        Map<String, WordProgressSnapshot> progressByKey =
+                reviewService.buildWordProgressMap(userId, wordKeys, heatMode);
 
         List<GroupWordsResponse.GroupWordItem> items = wordKeys.stream()
                 .map(key -> {
@@ -126,10 +126,11 @@ public class GroupService {
                     if (summary == null) {
                         summary = new WordSummary(key, key, "", null, null);
                     }
-                    MasterySnapshot mastery = masteryByKey.containsKey(key)
-                            ? MasterySnapshot.from(masteryByKey.get(key))
-                            : MasterySnapshot.unlearnedDefault();
-                    return GroupWordsResponse.GroupWordItem.from(summary, mastery);
+                    WordProgressSnapshot progress = progressByKey.getOrDefault(
+                            key,
+                            WordProgressSnapshot.empty(heatMode)
+                    );
+                    return GroupWordsResponse.GroupWordItem.from(summary, progress);
                 })
                 .toList();
 
@@ -496,54 +497,67 @@ public class GroupService {
         List<String> wordKeys = groupWordRepository.findByGroupIdOrderBySortOrderAsc(group.getId()).stream()
                 .map(GroupWord::getWordKey)
                 .toList();
-        GroupStats stats = computeStats(userId, wordKeys);
-        float progress = computeProgress(userId, wordKeys);
+        HeatDisplayMode heatMode = resolveHeatDisplayMode(userId);
+        Map<String, WordProgressSnapshot> progressByKey =
+                reviewService.buildWordProgressMap(userId, wordKeys, heatMode);
+        GroupStats stats = computeStats(wordKeys, progressByKey, heatMode);
+        float progress = computeProgress(wordKeys, progressByKey, heatMode);
         return GroupDetail.of(group, stats, progress);
     }
 
-    /** 四维统计：无 mastery 记录计 unlearned */
-    private GroupStats computeStats(Long userId, List<String> wordKeys) {
-        Map<String, WordMastery> masteryByKey = loadMasteryMap(userId, wordKeys);
-        int unlearned = 0;
-        int fuzzy = 0;
-        int unknown = 0;
+    /** 热力分档统计：按用户 heatDisplayMode 的 displayStability（REQ-GROUP-2） */
+    private GroupStats computeStats(
+            List<String> wordKeys,
+            Map<String, WordProgressSnapshot> progressByKey,
+            HeatDisplayMode heatMode
+    ) {
+        int heat0 = 0;
+        int heat1 = 0;
+        int heat2 = 0;
+        int heat3 = 0;
+        int heat4 = 0;
         for (String key : wordKeys) {
-            WordMastery mastery = masteryByKey.get(key);
-            if (mastery == null || mastery.getLevel() == MasteryLevel.unlearned) {
-                unlearned++;
-            } else if (mastery.getLevel() == MasteryLevel.fuzzy) {
-                fuzzy++;
-            } else {
-                unknown++;
+            WordProgressSnapshot progress = progressByKey.getOrDefault(
+                    key,
+                    WordProgressSnapshot.empty(heatMode)
+            );
+            switch (progress.heatBucket()) {
+                case 1 -> heat1++;
+                case 2 -> heat2++;
+                case 3 -> heat3++;
+                case 4 -> heat4++;
+                default -> heat0++;
             }
         }
-        return new GroupStats(unlearned, fuzzy, unknown, wordKeys.size());
+        return new GroupStats(heat0, heat1, heat2, heat3, heat4, wordKeys.size());
     }
 
-    /** progress = count(unlearned ∧ hasQuizHistory) / total（REQ-GROUP-2） */
-    private float computeProgress(Long userId, List<String> wordKeys) {
+    /** progress = count(displayStability >= 80) / total（REQ-GROUP-2） */
+    private float computeProgress(
+            List<String> wordKeys,
+            Map<String, WordProgressSnapshot> progressByKey,
+            HeatDisplayMode heatMode
+    ) {
         if (wordKeys.isEmpty()) {
             return 0f;
         }
-        Map<String, WordMastery> masteryByKey = loadMasteryMap(userId, wordKeys);
         int numerator = 0;
         for (String key : wordKeys) {
-            WordMastery mastery = masteryByKey.get(key);
-            if (mastery != null
-                    && mastery.getLevel() == MasteryLevel.unlearned
-                    && mastery.isHasQuizHistory()) {
+            WordProgressSnapshot progress = progressByKey.getOrDefault(
+                    key,
+                    WordProgressSnapshot.empty(heatMode)
+            );
+            if (progress.displayStability() >= 80.0) {
                 numerator++;
             }
         }
         return (float) numerator / wordKeys.size();
     }
 
-    private Map<String, WordMastery> loadMasteryMap(Long userId, List<String> wordKeys) {
-        if (wordKeys.isEmpty()) {
-            return Map.of();
-        }
-        return wordMasteryRepository.findByUserIdAndWordKeyIn(userId, wordKeys).stream()
-                .collect(Collectors.toMap(WordMastery::getWordKey, m -> m, (a, b) -> a));
+    private HeatDisplayMode resolveHeatDisplayMode(Long userId) {
+        return userSettingsRepository.findById(userId)
+                .map(UserSettings::getHeatDisplayMode)
+                .orElse(HeatDisplayMode.combined);
     }
 
     /** 未入组词 Key 列表（已勾选词书去重 − 已入组） */

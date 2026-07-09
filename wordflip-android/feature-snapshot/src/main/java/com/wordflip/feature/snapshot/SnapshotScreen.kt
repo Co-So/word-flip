@@ -26,7 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.wordflip.core.image.ImageEditorScreen
 import com.wordflip.core.image.rememberImagePickerLaunchers
 import com.wordflip.core.model.media.ImageFilters
@@ -49,7 +49,7 @@ fun SnapshotScreen(
     groupName: String,
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: SnapshotViewModel = viewModel(factory = SnapshotViewModel.Factory(groupId)),
+    viewModel: SnapshotViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val (snackbarHostState, toast) = rememberWordFlipToast()
@@ -91,7 +91,6 @@ fun SnapshotScreen(
     Box(modifier = modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            snackbarHost = { WordFlipToastHost(snackbarHostState) },
             topBar = {
                 if (!isEditorOpen) {
                     WordFlipTopBar(
@@ -197,6 +196,14 @@ fun SnapshotScreen(
                 },
             )
         }
+
+        // Toast 叠在编辑器之上，保存失败时用户才能看到提示
+        WordFlipToastHost(
+            snackbarHostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .zIndex(20f),
+        )
     }
 
     val sheetWord = sheetWordKey?.let { viewModel.word(it) }

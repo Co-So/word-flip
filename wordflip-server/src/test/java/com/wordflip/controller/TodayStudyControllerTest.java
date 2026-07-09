@@ -71,7 +71,8 @@ class TodayStudyControllerTest {
                                 TodayTask.of(0, "到期复习"),
                                 TodayTask.of(0, "默写测验")
                         ),
-                        null
+                        null,
+                        List.of()
                 ));
 
         mockMvc.perform(get("/api/v1/today").header("X-Timezone", "Asia/Shanghai"))

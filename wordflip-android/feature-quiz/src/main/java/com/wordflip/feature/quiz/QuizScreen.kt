@@ -108,6 +108,7 @@ fun QuizScreen(
                 state = state,
                 onAnswerChange = viewModel::onAnswerChange,
                 onSubmit = viewModel::submitAnswer,
+                onSubmitChoice = viewModel::submitChoice,
                 onToggleHintCovered = viewModel::toggleHintCovered,
                 onNextQuestion = viewModel::goToNextQuestion,
                 modifier = Modifier.padding(innerPadding),
@@ -144,6 +145,7 @@ private fun QuizQuestionContent(
     state: QuizUiState.Question,
     onAnswerChange: (String) -> Unit,
     onSubmit: () -> Unit,
+    onSubmitChoice: (String) -> Unit,
     onToggleHintCovered: () -> Unit,
     onNextQuestion: () -> Unit,
     modifier: Modifier = Modifier,
@@ -177,8 +179,11 @@ private fun QuizQuestionContent(
         }
     }
 
-    LaunchedEffect(state.currentIndex, state.inputEnabled) {
-        if (!state.inputEnabled) return@LaunchedEffect
+    LaunchedEffect(state.currentIndex, state.inputEnabled, state.question.isChoice) {
+        // 选择题不抢焦点；默写/巩固才弹出键盘
+        if (!state.inputEnabled || (state.question.isChoice && !state.consolidationActive)) {
+            return@LaunchedEffect
+        }
         delay(120)
         try {
             focusRequester.requestFocus()
@@ -205,7 +210,7 @@ private fun QuizQuestionContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // ① 顶部：单词 + 盖住按钮（正式测验显示中文，巩固阶段显示英文）
+        // ① 顶部：提示区（默写/英选中看中文；中选英可看英文）
         QuizWordHeader(
             state = state,
             isSpeaking = isSpeaking,
@@ -224,16 +229,25 @@ private fun QuizQuestionContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // ② 中部：输入框 + 操作按钮
-        QuizInputSection(
-            state = state,
-            focusRequester = focusRequester,
-            practicePassed = practicePassed,
-            isCorrect = isCorrect,
-            onAnswerChange = onAnswerChange,
-            onSubmit = onSubmit,
-            onNextQuestion = onNextQuestion,
-        )
+        // ② 中部：选择题 4 选项 / 默写输入框
+        if (state.question.isChoice && !state.consolidationActive) {
+            QuizChoiceSection(
+                state = state,
+                isCorrect = isCorrect,
+                onSubmitChoice = onSubmitChoice,
+                onNextQuestion = onNextQuestion,
+            )
+        } else {
+            QuizInputSection(
+                state = state,
+                focusRequester = focusRequester,
+                practicePassed = practicePassed,
+                isCorrect = isCorrect,
+                onAnswerChange = onAnswerChange,
+                onSubmit = onSubmit,
+                onNextQuestion = onNextQuestion,
+            )
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -340,6 +354,14 @@ private fun QuizWordHeader(
                 )
             }
         } else {
+            // choice_cn_en：提示英文；其余题型提示中文
+            val promptText = if (state.question.type == "choice_cn_en") {
+                state.question.prompt.en?.takeIf { it.isNotBlank() }
+                    ?: state.question.expectedEn.takeIf { it.isNotBlank() }
+                    ?: state.question.prompt.cn
+            } else {
+                state.question.prompt.cn
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -348,7 +370,7 @@ private fun QuizWordHeader(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    text = state.question.prompt.cn,
+                    text = promptText,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
@@ -357,6 +379,47 @@ private fun QuizWordHeader(
                     pos = state.question.prompt.pos,
                     ph = state.question.prompt.ph,
                 )
+            }
+        }
+    }
+}
+
+/** 选择题：4 选项按钮；选中后 submit selectedKey */
+@Composable
+private fun QuizChoiceSection(
+    state: QuizUiState.Question,
+    isCorrect: Boolean,
+    onSubmitChoice: (String) -> Unit,
+    onNextQuestion: () -> Unit,
+) {
+    val options = state.question.options.orEmpty()
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (state.inputEnabled) {
+            options.forEach { option ->
+                OutlinedButton(
+                    onClick = { onSubmitChoice(option.key) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = option.label,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Start,
+                    )
+                }
+            }
+        } else if (isCorrect) {
+            Text(
+                text = state.feedback?.message ?: "✓ 正确！",
+                style = MaterialTheme.typography.labelLarge,
+                color = WordFlipColors.extra.success,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+            Button(
+                onClick = onNextQuestion,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("下一题")
             }
         }
     }
@@ -745,6 +808,9 @@ fun parseQuizSource(value: String): QuizSource {
     return when (value.lowercase()) {
         "study" -> QuizSource.STUDY
         "retry" -> QuizSource.RETRY
+        "groups" -> QuizSource.GROUPS
+        "all" -> QuizSource.ALL
+        "recent" -> QuizSource.RECENT
         else -> QuizSource.TODAY
     }
 }

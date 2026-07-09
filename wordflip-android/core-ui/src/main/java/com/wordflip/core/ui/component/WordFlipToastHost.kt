@@ -6,6 +6,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -56,10 +57,11 @@ fun rememberWordFlipToast(): Pair<SnackbarHostState, WordFlipToastController> {
     return snackbarHostState to controller
 }
 
-/** Snackbar 宿主，置于 Scaffold snackbarHost 槽位 */
+/** Snackbar 宿主；可叠在全屏编辑器之上（modifier + zIndex） */
 @Composable
 fun WordFlipToastHost(
     snackbarHostState: SnackbarHostState,
+    modifier: Modifier = Modifier,
 ) {
-    SnackbarHost(hostState = snackbarHostState)
+    SnackbarHost(hostState = snackbarHostState, modifier = modifier)
 }

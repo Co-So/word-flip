@@ -2,6 +2,8 @@ package com.wordflip.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -10,7 +12,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * 会话题面快照，对应 quiz_questions 表；创建 session 时写入标准答案供判题。
+ * 会话题面快照，对应 quiz_questions 表。
  */
 @Entity
 @Table(name = "quiz_questions")
@@ -31,6 +33,11 @@ public class QuizQuestion {
     @Column(name = "word_key", nullable = false, length = 191)
     private String wordKey;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "question_type", nullable = false,
+            columnDefinition = "ENUM('dictation', 'choice_en_cn', 'choice_cn_en')")
+    private QuestionType questionType = QuestionType.dictation;
+
     @Column(name = "expected_en", nullable = false, length = 191)
     private String expectedEn;
 
@@ -42,4 +49,10 @@ public class QuizQuestion {
 
     @Column(name = "prompt_ph", length = 64)
     private String promptPh;
+
+    @Column(name = "options_json", columnDefinition = "JSON")
+    private String optionsJson;
+
+    @Column(name = "correct_key", length = 191)
+    private String correctKey;
 }

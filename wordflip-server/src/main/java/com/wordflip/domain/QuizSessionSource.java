@@ -6,5 +6,8 @@ package com.wordflip.domain;
 public enum QuizSessionSource {
     today,
     study,
-    retry
+    retry,
+    groups,
+    all,
+    recent
 }

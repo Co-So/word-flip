@@ -219,17 +219,19 @@ wordflip-server/
 | `StatsService` | 统计四宫格、热力图、成就 | REQ-STATS |
 | `SettingsService` | 用户设置读写 | REQ-SETTINGS, REQ-DATA |
 
-### 4.4 掌握度与 SRS（服务端实现）
+### 4.4 掌握度、稳定性与 SRS（服务端实现）
 
-**掌握度三态（`word_mastery.level`）：**
+**队列三态（`word_mastery.level`）：** 用于今日排队与薄弱角标。
 
 | 值 | 含义 |
 |----|------|
-| `unlearned` | 未学习 / 测验已通过当前关卡（下次按 SRS 复习） |
+| `unlearned` | 未测验新词 / 测验已通过当前关卡（下次按 SRS 复习） |
 | `fuzzy` | 测验答错（单次） |
 | `unknown` | 同一 wordKey **连续 2 次**测验答错 |
 
-**唯一变更入口：** `ReviewService.applyQuizResult(userId, wordKey, correct)`（由 `QuizService` 调用）。不提供客户端手动 PATCH 掌握度。
+**稳定性 S（`word_mastery.stability`）：** 组详情热力主展示；答对按 `(1−R)` 升权（24h 窗封顶），答错降权。见 api-modules §2.2。
+
+**唯一变更入口：** `ReviewService.applyQuizResult(...)`（由 `QuizService` 调用）。不提供客户端手动 PATCH。
 
 **SRS 间隔序列（天）：** `1 → 2 → 4 → 7 → 15 → 30`（stage 封顶后按 30 天循环）
 
@@ -241,7 +243,7 @@ wordflip-server/
 
 **今日待复习查询：** `next_review_at <= 当日结束` AND `user_id`；排序 `unknown > fuzzy > unlearned`。
 
-**统计「已掌握」：** `stage >= 5` 且 `next_review_at > today + 30d`（derived，非第四档状态）。
+**统计「已掌握」：** `stability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（derived，非用户可选状态）。
 
 ### 4.5 分组增量规则（GroupService）
 

@@ -10,6 +10,15 @@ data class TodayDashboard(
     val stats: TodayStats,
     val tasks: TodayTasks,
     val recommendedStudy: RecommendedStudy?,
+    /** 最近学习/测验的分组（最多 3），点击可进组测 */
+    val recentGroups: List<RecentGroup> = emptyList(),
+)
+
+/** 最近学习分组摘要，对齐 openapi `TodayDashboard.recentGroups[]` */
+data class RecentGroup(
+    val groupId: Int,
+    val name: String,
+    val lastStudiedAt: String,
 )
 
 /** 三格统计：已掌握 / 待复习 / 完成度（REQ-TODAY-3、REQ-TODAY-12） */

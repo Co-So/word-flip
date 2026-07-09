@@ -1,5 +1,7 @@
 package com.wordflip.dto.settings;
 
+import com.wordflip.domain.HeatDisplayMode;
+import com.wordflip.domain.QuizLaunchMode;
 import com.wordflip.domain.ThemeMode;
 
 /**
@@ -9,6 +11,9 @@ public class PreferencesPatchRequest {
 
     private Boolean autoSpeak;
     private ThemeMode themeMode;
+    private HeatDisplayMode heatDisplayMode;
+    private QuizLaunchMode quizLaunchMode;
+    private Integer defaultQuestionLimit;
 
     public Boolean getAutoSpeak() {
         return autoSpeak;
@@ -26,7 +31,35 @@ public class PreferencesPatchRequest {
         this.themeMode = themeMode;
     }
 
+    public HeatDisplayMode getHeatDisplayMode() {
+        return heatDisplayMode;
+    }
+
+    public void setHeatDisplayMode(HeatDisplayMode heatDisplayMode) {
+        this.heatDisplayMode = heatDisplayMode;
+    }
+
+    public QuizLaunchMode getQuizLaunchMode() {
+        return quizLaunchMode;
+    }
+
+    public void setQuizLaunchMode(QuizLaunchMode quizLaunchMode) {
+        this.quizLaunchMode = quizLaunchMode;
+    }
+
+    public Integer getDefaultQuestionLimit() {
+        return defaultQuestionLimit;
+    }
+
+    public void setDefaultQuestionLimit(Integer defaultQuestionLimit) {
+        this.defaultQuestionLimit = defaultQuestionLimit;
+    }
+
     public boolean hasAnyField() {
-        return autoSpeak != null || themeMode != null;
+        return autoSpeak != null
+                || themeMode != null
+                || heatDisplayMode != null
+                || quizLaunchMode != null
+                || defaultQuestionLimit != null;
     }
 }

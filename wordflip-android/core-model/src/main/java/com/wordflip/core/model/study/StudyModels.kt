@@ -5,7 +5,7 @@ import com.wordflip.core.model.media.ImageTransform
 import com.wordflip.core.model.media.StainConfig
 
 /**
- * 掌握度三态，对齐 openapi `MasteryLevel`；仅测验写入，学习页只读展示（分组详情用）。
+ * 掌握度三态，对齐 openapi `MasteryLevel`；队列/薄弱用，组详情主展示为热力。
  */
 enum class MasteryLevel {
     UNLEARNED,
@@ -13,12 +13,28 @@ enum class MasteryLevel {
     UNKNOWN,
 }
 
-/** 掌握度快照，对齐 openapi `MasterySnapshot` */
+/** 掌握度快照，对齐 openapi `MasterySnapshot`（含稳定性热力；按 skill 双轨） */
 data class MasterySnapshot(
     val level: MasteryLevel,
     val hasQuizHistory: Boolean,
     val stage: Int? = null,
     val nextReviewAt: String? = null,
+    val stability: Double = 0.0,
+    val heatLevel: Int = 0,
+    /** 技能轨：dictation / choice；缺省按默写兼容旧响应 */
+    val skill: String? = "dictation",
+)
+
+/**
+ * 双 skill 进度 + 展示热力，对齐 openapi `WordProgressSnapshot`。
+ * 组详情主展示用 [displayHeatLevel]；薄弱角标看各 skill 的 [MasterySnapshot.level]。
+ */
+data class WordProgressSnapshot(
+    val dictation: MasterySnapshot,
+    val choice: MasterySnapshot,
+    val displayHeatLevel: Int,
+    val displayStability: Double,
+    val heatDisplayMode: String = "combined",
 )
 
 /** 单词摘要字段，对齐 openapi `WordSummary` */

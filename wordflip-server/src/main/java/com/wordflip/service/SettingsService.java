@@ -105,6 +105,19 @@ public class SettingsService {
         if (request.getThemeMode() != null) {
             settings.setThemeMode(request.getThemeMode());
         }
+        if (request.getHeatDisplayMode() != null) {
+            settings.setHeatDisplayMode(request.getHeatDisplayMode());
+        }
+        if (request.getQuizLaunchMode() != null) {
+            settings.setQuizLaunchMode(request.getQuizLaunchMode());
+        }
+        if (request.getDefaultQuestionLimit() != null) {
+            int limit = request.getDefaultQuestionLimit();
+            if (limit < 1 || limit > 50) {
+                throw new WordflipException("VALIDATION_ERROR", "defaultQuestionLimit 须在 1–50");
+            }
+            settings.setDefaultQuestionLimit(limit);
+        }
         settings.setUpdatedAt(Instant.now());
         userSettingsRepository.save(settings);
         return getSettings(userId);

@@ -1,7 +1,7 @@
 package com.wordflip.core.model.media
 
 /**
- * 图片变换参数，对齐 openapi `ImageTransform`（REQ-SNAP-5）。
+ * 图片变换参数，对齐 openapi `ImageTransform`（REQ-SNAP-5；含嵌套 filters）。
  */
 data class ImageTransform(
     val rotate: Float = 0f,
@@ -9,6 +9,7 @@ data class ImageTransform(
     val offsetX: Float = 0f,
     val offsetY: Float = 0f,
     val showCn: Boolean = true,
+    val filters: ImageFilters? = null,
 )
 
 /**
@@ -20,7 +21,24 @@ data class ImageFilters(
     val saturate: Float = 100f,
     val grayscale: Float = 0f,
     val sepia: Float = 0f,
-)
+) {
+    companion object {
+        /** 供 Gson 等反射创建后纠正 0 值默认（避免亮度 0 全黑） */
+        fun safe(
+            brightness: Float = 100f,
+            contrast: Float = 100f,
+            saturate: Float = 100f,
+            grayscale: Float = 0f,
+            sepia: Float = 0f,
+        ): ImageFilters = ImageFilters(
+            brightness = if (brightness <= 0f) 100f else brightness,
+            contrast = if (contrast <= 0f) 100f else contrast,
+            saturate = if (saturate <= 0f) 100f else saturate,
+            grayscale = grayscale.coerceIn(0f, 100f),
+            sepia = sepia.coerceIn(0f, 100f),
+        )
+    }
+}
 
 /** 污渍类型，对齐 openapi `StainConfig.stains[].type` */
 enum class StainType {

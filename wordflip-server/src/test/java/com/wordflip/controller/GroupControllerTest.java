@@ -8,8 +8,9 @@ import com.wordflip.dto.group.GroupDetail;
 import com.wordflip.dto.group.GroupListResponse;
 import com.wordflip.dto.group.GroupStats;
 import com.wordflip.dto.group.GroupWordsResponse;
-import com.wordflip.dto.word.MasterySnapshot;
+import com.wordflip.domain.HeatDisplayMode;
 import com.wordflip.dto.word.UnassignedWordsResponse;
+import com.wordflip.dto.word.WordProgressSnapshot;
 import com.wordflip.dto.word.WordSummary;
 import com.wordflip.security.UserPrincipal;
 import com.wordflip.service.GroupService;
@@ -90,13 +91,9 @@ class GroupControllerTest {
                         20,
                         1,
                         1,
-                        List.of(new GroupWordsResponse.GroupWordItem(
-                                "apple",
-                                "apple",
-                                "苹果",
-                                null,
-                                null,
-                                MasterySnapshot.unlearnedDefault()
+                        List.of(GroupWordsResponse.GroupWordItem.from(
+                                new WordSummary("apple", "apple", "苹果", null, null),
+                                WordProgressSnapshot.empty(HeatDisplayMode.combined)
                         ))
                 ));
 
@@ -153,7 +150,7 @@ class GroupControllerTest {
                 GroupSource.auto,
                 GroupStatus.not_started,
                 Instant.parse("2026-07-08T00:00:00Z"),
-                new GroupStats(5, 0, 0, 5),
+                new GroupStats(5, 0, 0, 0, 0, 5),
                 0f
         );
     }

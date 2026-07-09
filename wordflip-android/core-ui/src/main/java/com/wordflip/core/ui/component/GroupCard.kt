@@ -129,7 +129,7 @@ private fun GroupStatusBadge(status: GroupStatus) {
     }
 }
 
-/** 四维统计：未学习 / 模糊 / 不认识 / 总词 */
+/** 热力分档统计：新词 / 初识 / 巩固 / 较熟 / 很熟 / 总词 */
 @Composable
 fun GroupStatsRow(
     stats: GroupStats,
@@ -139,9 +139,11 @@ fun GroupStatsRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        StatCell(label = "未学习", value = stats.unlearned)
-        StatCell(label = "模糊", value = stats.fuzzy)
-        StatCell(label = "不认识", value = stats.unknown)
+        StatCell(label = "新词", value = stats.heat0)
+        StatCell(label = "初识", value = stats.heat1)
+        StatCell(label = "巩固", value = stats.heat2)
+        StatCell(label = "较熟", value = stats.heat3)
+        StatCell(label = "很熟", value = stats.heat4)
         StatCell(label = "总词", value = stats.total)
     }
 }

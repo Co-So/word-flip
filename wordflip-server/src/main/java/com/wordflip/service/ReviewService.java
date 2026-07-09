@@ -1,13 +1,14 @@
 package com.wordflip.service;
 
+import com.wordflip.domain.HeatDisplayMode;
 import com.wordflip.domain.MasteryLevel;
-import com.wordflip.domain.ReviewPlan;
+import com.wordflip.domain.Skill;
 import com.wordflip.domain.StudyLog;
-import com.wordflip.domain.WordMastery;
+import com.wordflip.domain.WordSkillProgress;
 import com.wordflip.dto.word.MasterySnapshot;
-import com.wordflip.repository.ReviewPlanRepository;
+import com.wordflip.dto.word.WordProgressSnapshot;
 import com.wordflip.repository.StudyLogRepository;
-import com.wordflip.repository.WordMasteryRepository;
+import com.wordflip.repository.WordSkillProgressRepository;
 import com.wordflip.util.UserTimeZoneUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,71 +24,80 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 掌握度读路径与 streak 计算（P1）；applyQuizResult 为测验唯一写入口（P2-B05）。
+ * 按 skill 的掌握度读写；applyQuizResult 为测验唯一写入口。
  */
 @Service
 public class ReviewService {
 
-    /** SRS 间隔（天），索引 0..5 对应 stage（api-modules §2.2） */
     private static final int[] INTERVALS = {1, 2, 4, 7, 15, 30};
 
-    private final WordMasteryRepository wordMasteryRepository;
-    private final ReviewPlanRepository reviewPlanRepository;
+    private final WordSkillProgressRepository wordSkillProgressRepository;
     private final StudyLogRepository studyLogRepository;
 
     public ReviewService(
-            WordMasteryRepository wordMasteryRepository,
-            ReviewPlanRepository reviewPlanRepository,
+            WordSkillProgressRepository wordSkillProgressRepository,
             StudyLogRepository studyLogRepository
     ) {
-        this.wordMasteryRepository = wordMasteryRepository;
-        this.reviewPlanRepository = reviewPlanRepository;
+        this.wordSkillProgressRepository = wordSkillProgressRepository;
         this.studyLogRepository = studyLogRepository;
     }
 
-    /** 单词掌握度快照：合并 word_mastery + review_plans */
     @Transactional(readOnly = true)
-    public MasterySnapshot buildMasterySnapshot(Long userId, String wordKey) {
-        WordMastery mastery = wordMasteryRepository.findByUserIdAndWordKeyIn(userId, List.of(wordKey))
-                .stream()
-                .findFirst()
-                .orElse(null);
-        ReviewPlan plan = reviewPlanRepository.findByUserIdAndWordKey(userId, wordKey).orElse(null);
-        if (mastery == null) {
-            return plan != null ? MasterySnapshot.withPlan(plan) : MasterySnapshot.unlearnedDefault();
-        }
-        return MasterySnapshot.from(mastery, plan);
+    public MasterySnapshot buildMasterySnapshot(Long userId, String wordKey, Skill skill) {
+        return wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(userId, wordKey, skill)
+                .map(MasterySnapshot::from)
+                .orElseGet(() -> MasterySnapshot.unlearnedDefault(skill));
     }
 
-    /** 批量掌握度快照，供 Study 页组装 WordCard */
+    /** 兼容旧调用：默认 dictation */
     @Transactional(readOnly = true)
-    public Map<String, MasterySnapshot> buildMasterySnapshots(Long userId, List<String> wordKeys) {
+    public MasterySnapshot buildMasterySnapshot(Long userId, String wordKey) {
+        return buildMasterySnapshot(userId, wordKey, Skill.dictation);
+    }
+
+    @Transactional(readOnly = true)
+    public WordProgressSnapshot buildWordProgress(Long userId, String wordKey, HeatDisplayMode mode) {
+        MasterySnapshot d = buildMasterySnapshot(userId, wordKey, Skill.dictation);
+        MasterySnapshot c = buildMasterySnapshot(userId, wordKey, Skill.choice);
+        return WordProgressSnapshot.of(d, c, mode);
+    }
+
+    /** 批量双 skill 进度，供 Study / Groups */
+    @Transactional(readOnly = true)
+    public Map<String, WordProgressSnapshot> buildWordProgressMap(
+            Long userId,
+            List<String> wordKeys,
+            HeatDisplayMode mode
+    ) {
         if (wordKeys.isEmpty()) {
             return Map.of();
         }
-        Map<String, WordMastery> masteryByKey = wordMasteryRepository.findByUserIdAndWordKeyIn(userId, wordKeys)
-                .stream()
-                .collect(Collectors.toMap(WordMastery::getWordKey, m -> m, (a, b) -> a));
-        Map<String, ReviewPlan> planByKey = reviewPlanRepository.findByUserIdAndWordKeyIn(userId, wordKeys)
-                .stream()
-                .collect(Collectors.toMap(ReviewPlan::getWordKey, p -> p, (a, b) -> a));
-
-        Map<String, MasterySnapshot> result = new HashMap<>();
+        Map<String, Map<Skill, WordSkillProgress>> byKey = new HashMap<>();
+        for (WordSkillProgress p : wordSkillProgressRepository.findByUserIdAndWordKeyIn(userId, wordKeys)) {
+            byKey.computeIfAbsent(p.getWordKey(), k -> new HashMap<>()).put(p.getSkill(), p);
+        }
+        Map<String, WordProgressSnapshot> result = new HashMap<>();
         for (String key : wordKeys) {
-            WordMastery mastery = masteryByKey.get(key);
-            ReviewPlan plan = planByKey.get(key);
-            if (mastery == null) {
-                result.put(key, plan != null ? MasterySnapshot.withPlan(plan) : MasterySnapshot.unlearnedDefault());
-            } else {
-                result.put(key, MasterySnapshot.from(mastery, plan));
-            }
+            Map<Skill, WordSkillProgress> skills = byKey.getOrDefault(key, Map.of());
+            MasterySnapshot d = skills.containsKey(Skill.dictation)
+                    ? MasterySnapshot.from(skills.get(Skill.dictation))
+                    : MasterySnapshot.unlearnedDefault(Skill.dictation);
+            MasterySnapshot c = skills.containsKey(Skill.choice)
+                    ? MasterySnapshot.from(skills.get(Skill.choice))
+                    : MasterySnapshot.unlearnedDefault(Skill.choice);
+            result.put(key, WordProgressSnapshot.of(d, c, mode));
         }
         return result;
     }
 
-    /**
-     * 连续打卡天数：从 today 向前数活跃 log_date（database-design §10.1）。
-     */
+    /** Study 页仍要 Map&lt;wordKey, MasterySnapshot&gt;：用展示热力对应的 dictation 为主快照兼容 */
+    @Transactional(readOnly = true)
+    public Map<String, MasterySnapshot> buildMasterySnapshots(Long userId, List<String> wordKeys) {
+        Map<String, WordProgressSnapshot> progress = buildWordProgressMap(userId, wordKeys, HeatDisplayMode.combined);
+        return progress.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().dictation()));
+    }
+
     @Transactional(readOnly = true)
     public int calculateStreakDays(Long userId, LocalDate today) {
         List<LocalDate> activeDates = studyLogRepository.findActiveLogDates(userId);
@@ -101,16 +111,8 @@ public class ReviewService {
         return streak;
     }
 
-    /**
-     * upsert study_logs 并返回当日 streak（POST /study/sessions）。
-     */
     @Transactional
-    public int recordStudySession(
-            Long userId,
-            LocalDate logDate,
-            int durationSec,
-            int wordsViewed
-    ) {
+    public int recordStudySession(Long userId, LocalDate logDate, int durationSec, int wordsViewed) {
         StudyLog log = studyLogRepository.findByUserIdAndLogDate(userId, logDate)
                 .orElseGet(() -> {
                     StudyLog created = new StudyLog();
@@ -127,10 +129,61 @@ public class ReviewService {
     }
 
     /**
-     * 测验判题后更新 word_mastery + review_plans（掌握度唯一写入口，REQ-QUIZ-6）。
-     *
-     * @param consecutiveWrong 写入本条答案前该 wordKey 最近一条也为错
+     * 测验判题后更新指定 skill 的进度（三态/SRS + 稳定性 S）。
      */
+    @Transactional
+    public MasterySnapshot applyQuizResult(
+            Long userId,
+            String wordKey,
+            Skill skill,
+            boolean correct,
+            boolean consecutiveWrong,
+            ZoneId zoneId
+    ) {
+        LocalDate today = UserTimeZoneUtil.todayInZone(zoneId);
+        Instant now = Instant.now();
+        Skill resolved = skill != null ? skill : Skill.dictation;
+
+        WordSkillProgress progress = wordSkillProgressRepository
+                .findByUserIdAndWordKeyAndSkill(userId, wordKey, resolved)
+                .orElseGet(() -> {
+                    WordSkillProgress created = new WordSkillProgress();
+                    created.setUserId(userId);
+                    created.setWordKey(wordKey);
+                    created.setSkill(resolved);
+                    return created;
+                });
+
+        Instant previousQuizAt = progress.getLastQuizAt();
+        applyStability(progress, previousQuizAt, correct, now);
+
+        if (!progress.isHasQuizHistory()) {
+            progress.setHasQuizHistory(true);
+            progress.setFirstQuizAt(now);
+        }
+        progress.setLastQuizAt(now);
+        progress.setUpdatedAt(now);
+
+        if (correct) {
+            progress.setLevel(MasteryLevel.unlearned);
+            int newStage = Math.min(progress.getStage() + 1, 5);
+            progress.setStage(newStage);
+            progress.setNextReviewAt(today.plusDays(INTERVALS[newStage]));
+        } else if (consecutiveWrong) {
+            progress.setLevel(MasteryLevel.unknown);
+            progress.setStage(0);
+            progress.setNextReviewAt(today);
+        } else {
+            progress.setLevel(MasteryLevel.fuzzy);
+            progress.setStage(Math.max(progress.getStage() - 1, 0));
+            progress.setNextReviewAt(today.plusDays(1));
+        }
+
+        wordSkillProgressRepository.save(progress);
+        return MasterySnapshot.from(progress);
+    }
+
+    /** 兼容旧签名：默认 dictation */
     @Transactional
     public MasterySnapshot applyQuizResult(
             Long userId,
@@ -139,53 +192,32 @@ public class ReviewService {
             boolean consecutiveWrong,
             ZoneId zoneId
     ) {
-        LocalDate today = UserTimeZoneUtil.todayInZone(zoneId);
-        Instant now = Instant.now();
+        return applyQuizResult(userId, wordKey, Skill.dictation, correct, consecutiveWrong, zoneId);
+    }
 
-        WordMastery mastery = wordMasteryRepository.findByUserIdAndWordKey(userId, wordKey)
-                .orElseGet(() -> {
-                    WordMastery created = new WordMastery();
-                    created.setUserId(userId);
-                    created.setWordKey(wordKey);
-                    return created;
-                });
-        ReviewPlan plan = reviewPlanRepository.findByUserIdAndWordKey(userId, wordKey)
-                .orElseGet(() -> {
-                    ReviewPlan created = new ReviewPlan();
-                    created.setUserId(userId);
-                    created.setWordKey(wordKey);
-                    return created;
-                });
-
-        // hasQuizHistory：首次提交测验答案后恒为 true
-        if (!mastery.isHasQuizHistory()) {
-            mastery.setHasQuizHistory(true);
-            mastery.setFirstQuizAt(now);
+    private void applyStability(WordSkillProgress progress, Instant previousQuizAt, boolean correct, Instant now) {
+        if (StabilityCalculator.isWindowExpired(progress.getWindowStartedAt(), now)) {
+            progress.setWindowStartedAt(now);
+            progress.setWindowCorrectGain(StabilityCalculator.toStored(0));
+            progress.setRecentWrongCount(0);
         }
-        mastery.setUpdatedAt(now);
-        plan.setLastQuizAt(now);
-        plan.setUpdatedAt(now);
+
+        double s = StabilityCalculator.fromStored(progress.getStability());
+        double gap = StabilityCalculator.gapDays(previousQuizAt, now);
+        double windowGain = StabilityCalculator.fromStored(progress.getWindowCorrectGain());
 
         if (correct) {
-            // 答对：level 保持 unlearned（SRS 在档），stage 递增
-            mastery.setLevel(MasteryLevel.unlearned);
-            int newStage = Math.min(plan.getStage() + 1, 5);
-            plan.setStage(newStage);
-            plan.setNextReviewAt(today.plusDays(INTERVALS[newStage]));
-        } else if (consecutiveWrong) {
-            // 跨 session 连续第 2 次答错 → unknown，优先复习队列
-            mastery.setLevel(MasteryLevel.unknown);
-            plan.setStage(0);
-            plan.setNextReviewAt(today);
+            double delta = StabilityCalculator.correctDelta(s, gap, windowGain);
+            s = StabilityCalculator.applyDelta(s, delta);
+            progress.setStability(StabilityCalculator.toStored(s));
+            progress.setWindowCorrectGain(StabilityCalculator.toStored(windowGain + delta));
+            progress.setRecentWrongCount(0);
         } else {
-            // 单次答错 → fuzzy，stage 回退
-            mastery.setLevel(MasteryLevel.fuzzy);
-            plan.setStage(Math.max(plan.getStage() - 1, 0));
-            plan.setNextReviewAt(today.plusDays(1));
+            int wrongAfter = progress.getRecentWrongCount() + 1;
+            progress.setRecentWrongCount(wrongAfter);
+            double deltaMinus = StabilityCalculator.wrongDelta(s, gap, wrongAfter);
+            s = StabilityCalculator.applyDelta(s, -deltaMinus);
+            progress.setStability(StabilityCalculator.toStored(s));
         }
-
-        wordMasteryRepository.save(mastery);
-        reviewPlanRepository.save(plan);
-        return MasterySnapshot.from(mastery, plan);
     }
 }

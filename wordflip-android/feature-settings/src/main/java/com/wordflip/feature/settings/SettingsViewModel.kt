@@ -3,9 +3,14 @@ package com.wordflip.feature.settings
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.wordflip.core.model.book.PreferencesPatchRequest
+import com.wordflip.core.model.settings.HeatDisplayMode
+import com.wordflip.core.model.settings.QuizLaunchMode
 import com.wordflip.core.model.settings.ThemeMode
 import com.wordflip.core.model.settings.label
+import com.wordflip.core.model.settings.storageValue
 import com.wordflip.core.network.auth.AuthRepository
+import com.wordflip.core.network.settings.PreferencesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -20,10 +25,12 @@ import javax.inject.Inject
 
 /**
  * 设置页 ViewModel（REQ-SETTINGS-1~7、P0-A06）；退出登录调 AuthRepository 清 Token。
+ * 测验与热力偏好写本地 DataStore，并 PATCH /settings/preferences。
  */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val preferences: SettingsPreferences,
+    private val preferencesRepository: PreferencesRepository,
     @ApplicationContext private val appContext: Context,
     private val authRepository: AuthRepository,
 ) : ViewModel() {
@@ -36,11 +43,24 @@ class SettingsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            combine(
+            // combine 最多 5 路；先合并前两路再与后三路组合
+            val baseFlow = combine(
                 preferences.autoSpeakFlow,
                 preferences.themeModeFlow,
-            ) { autoSpeak, themeMode ->
-                SettingsContent(autoSpeak = autoSpeak, themeMode = themeMode)
+            ) { autoSpeak, themeMode -> autoSpeak to themeMode }
+            combine(
+                baseFlow,
+                preferences.heatDisplayModeFlow,
+                preferences.quizLaunchModeFlow,
+                preferences.defaultQuestionLimitFlow,
+            ) { base, heatDisplayMode, quizLaunchMode, defaultQuestionLimit ->
+                SettingsContent(
+                    autoSpeak = base.first,
+                    themeMode = base.second,
+                    heatDisplayMode = heatDisplayMode,
+                    quizLaunchMode = quizLaunchMode,
+                    defaultQuestionLimit = defaultQuestionLimit,
+                )
             }.collect { content ->
                 _uiState.value = SettingsUiState.Content(content)
             }
@@ -57,6 +77,7 @@ class SettingsViewModel @Inject constructor(
                 )
             }
             preferences.setAutoSpeak(enabled)
+            patchRemote(PreferencesPatchRequest(autoSpeak = enabled))
             _events.emit(
                 SettingsUiEvent.Toast(if (enabled) "已开启自动发音" else "已关闭自动发音"),
             )
@@ -66,7 +87,33 @@ class SettingsViewModel @Inject constructor(
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch {
             preferences.setThemeMode(mode)
+            patchRemote(PreferencesPatchRequest(themeMode = mode.storageValue()))
             _events.emit(SettingsUiEvent.Toast("外观已切换为${mode.label()}"))
+        }
+    }
+
+    fun setHeatDisplayMode(mode: HeatDisplayMode) {
+        viewModelScope.launch {
+            preferences.setHeatDisplayMode(mode)
+            patchRemote(PreferencesPatchRequest(heatDisplayMode = mode.storageValue()))
+            _events.emit(SettingsUiEvent.Toast("热力展示：${mode.label()}"))
+        }
+    }
+
+    fun setQuizLaunchMode(mode: QuizLaunchMode) {
+        viewModelScope.launch {
+            preferences.setQuizLaunchMode(mode)
+            patchRemote(PreferencesPatchRequest(quizLaunchMode = mode.storageValue()))
+            _events.emit(SettingsUiEvent.Toast("开测模式：${mode.label()}"))
+        }
+    }
+
+    fun setDefaultQuestionLimit(limit: Int) {
+        viewModelScope.launch {
+            val coerced = limit.coerceIn(1, 50)
+            preferences.setDefaultQuestionLimit(coerced)
+            patchRemote(PreferencesPatchRequest(defaultQuestionLimit = coerced))
+            _events.emit(SettingsUiEvent.Toast("默认题数：$coerced"))
         }
     }
 
@@ -82,5 +129,10 @@ class SettingsViewModel @Inject constructor(
             authRepository.logout()
             _events.emit(SettingsUiEvent.Logout)
         }
+    }
+
+    /** 远程同步失败不阻断本地偏好；静默忽略网络错误 */
+    private suspend fun patchRemote(request: PreferencesPatchRequest) {
+        preferencesRepository.patchPreferences(request)
     }
 }

@@ -14,7 +14,7 @@
 | 原则 | 说明 |
 |------|------|
 | **语言** | 注释、类/方法 JavaDoc·KDoc、Flyway 脚本内注释 → **简体中文** |
-| **术语** | 与产品文档一致：未学习 / 模糊 / 不认识、增量追加、wordKey、掌握度、艾宾浩斯/SRS |
+| **术语** | 与产品文档一致：稳定性 S / 热力档、队列三态（未学习/模糊/不认识）、增量追加、wordKey、艾宾浩斯/SRS |
 | **适度** | 自解释代码（getter、简单 DTO 字段映射）可省略；**业务规则、分支、算法、副作用** 必须注释 |
 | **同步** | 改逻辑必改注释；禁止误导性或过时的中文注释 |
 | **边界** | 用户可见 UI 文案走 string resources；注释不写进界面 |
@@ -58,7 +58,7 @@
 ```java
 /**
  * 复习调度与掌握度状态机。
- * 掌握度三态的唯一写入口：{@link #applyQuizResult}（REQ-QUIZ-6、REQ-EBBING-2~4）。
+ * 掌握度与稳定性的唯一写入口：{@link #applyQuizResult}（REQ-QUIZ-6、REQ-EBBING-2~4、REQ-EBBING-8）。
  */
 @Service
 public class ReviewService {
@@ -127,10 +127,12 @@ CREATE TABLE group_words (
 
 | 中文（注释/UI） | 代码/API 枚举 |
 |-----------------|---------------|
-| 未学习 | `unlearned` |
+| 未学习 | `unlearned`（队列三态） |
 | 模糊 | `fuzzy` |
 | 不认识 | `unknown` |
-| 已掌握（统计） | 非 level；`stage>=5` 且间隔 ≥30 天 |
+| 稳定性权值 | `stability`（S，0–100） |
+| 热力档 | `heatLevel`（0–4） |
+| 已掌握（统计） | 非 level；`stability>=80` 且间隔 ≥30 天 |
 | 增量追加分组 | `appendGroupsForNewWords`，非 rebuild |
 | 单词键 | `wordKey` = `en.trim().toLowerCase()` |
 

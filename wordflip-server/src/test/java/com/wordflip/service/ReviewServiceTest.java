@@ -1,12 +1,11 @@
 package com.wordflip.service;
 
 import com.wordflip.domain.MasteryLevel;
-import com.wordflip.domain.ReviewPlan;
-import com.wordflip.domain.WordMastery;
+import com.wordflip.domain.Skill;
+import com.wordflip.domain.WordSkillProgress;
 import com.wordflip.dto.word.MasterySnapshot;
-import com.wordflip.repository.ReviewPlanRepository;
 import com.wordflip.repository.StudyLogRepository;
-import com.wordflip.repository.WordMasteryRepository;
+import com.wordflip.repository.WordSkillProgressRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -14,17 +13,19 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * applyQuizResult 状态机单测（Q-01 / P2-B05）。
+ * applyQuizResult 状态机 + 稳定性 S 单测（按 skill）。
  */
 @ExtendWith(MockitoExtension.class)
 class ReviewServiceTest {
@@ -34,9 +35,7 @@ class ReviewServiceTest {
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
     @Mock
-    private WordMasteryRepository wordMasteryRepository;
-    @Mock
-    private ReviewPlanRepository reviewPlanRepository;
+    private WordSkillProgressRepository wordSkillProgressRepository;
     @Mock
     private StudyLogRepository studyLogRepository;
 
@@ -45,57 +44,123 @@ class ReviewServiceTest {
 
     @Test
     void applyQuizResult_correct_incrementsStageAndSetsNextReview() {
-        when(wordMasteryRepository.findByUserIdAndWordKey(USER_ID, WORD_KEY)).thenReturn(Optional.empty());
-        ReviewPlan plan = new ReviewPlan();
-        plan.setUserId(USER_ID);
-        plan.setWordKey(WORD_KEY);
-        plan.setStage(1);
-        when(reviewPlanRepository.findByUserIdAndWordKey(USER_ID, WORD_KEY)).thenReturn(Optional.of(plan));
+        when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.dictation))
+                .thenReturn(Optional.empty());
 
-        MasterySnapshot after = reviewService.applyQuizResult(USER_ID, WORD_KEY, true, false, ZONE);
+        MasterySnapshot after = reviewService.applyQuizResult(
+                USER_ID, WORD_KEY, Skill.dictation, true, false, ZONE);
 
         assertThat(after.level()).isEqualTo(MasteryLevel.unlearned);
         assertThat(after.hasQuizHistory()).isTrue();
-        assertThat(after.stage()).isEqualTo(2);
-        assertThat(after.nextReviewAt()).isEqualTo(LocalDate.now(ZONE).plusDays(4));
+        assertThat(after.stage()).isEqualTo(1);
+        assertThat(after.nextReviewAt()).isEqualTo(LocalDate.now(ZONE).plusDays(2));
+        assertThat(after.stability()).isGreaterThan(0);
+        assertThat(after.heatLevel()).isBetween(0, 4);
+        assertThat(after.skill()).isEqualTo(Skill.dictation);
 
-        ArgumentCaptor<WordMastery> masteryCaptor = ArgumentCaptor.forClass(WordMastery.class);
-        verify(wordMasteryRepository).save(masteryCaptor.capture());
-        assertThat(masteryCaptor.getValue().isHasQuizHistory()).isTrue();
+        ArgumentCaptor<WordSkillProgress> captor = ArgumentCaptor.forClass(WordSkillProgress.class);
+        verify(wordSkillProgressRepository).save(captor.capture());
+        assertThat(captor.getValue().isHasQuizHistory()).isTrue();
+        assertThat(captor.getValue().getSkill()).isEqualTo(Skill.dictation);
     }
 
     @Test
     void applyQuizResult_wrongOnce_setsFuzzyAndStageDown() {
-        WordMastery mastery = new WordMastery();
-        mastery.setUserId(USER_ID);
-        mastery.setWordKey(WORD_KEY);
-        mastery.setLevel(MasteryLevel.unlearned);
-        mastery.setHasQuizHistory(true);
-        when(wordMasteryRepository.findByUserIdAndWordKey(USER_ID, WORD_KEY)).thenReturn(Optional.of(mastery));
+        WordSkillProgress progress = baseProgress(20.0, Skill.dictation);
+        progress.setStage(2);
+        when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.dictation))
+                .thenReturn(Optional.of(progress));
 
-        ReviewPlan plan = new ReviewPlan();
-        plan.setUserId(USER_ID);
-        plan.setWordKey(WORD_KEY);
-        plan.setStage(2);
-        when(reviewPlanRepository.findByUserIdAndWordKey(USER_ID, WORD_KEY)).thenReturn(Optional.of(plan));
-
-        MasterySnapshot after = reviewService.applyQuizResult(USER_ID, WORD_KEY, false, false, ZONE);
+        MasterySnapshot after = reviewService.applyQuizResult(
+                USER_ID, WORD_KEY, Skill.dictation, false, false, ZONE);
 
         assertThat(after.level()).isEqualTo(MasteryLevel.fuzzy);
         assertThat(after.stage()).isEqualTo(1);
         assertThat(after.nextReviewAt()).isEqualTo(LocalDate.now(ZONE).plusDays(1));
+        assertThat(after.stability()).isLessThan(20.0);
     }
 
     @Test
     void applyQuizResult_consecutiveWrong_setsUnknown() {
-        when(wordMasteryRepository.findByUserIdAndWordKey(USER_ID, WORD_KEY)).thenReturn(Optional.empty());
-        when(reviewPlanRepository.findByUserIdAndWordKey(USER_ID, WORD_KEY)).thenReturn(Optional.empty());
+        when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.choice))
+                .thenReturn(Optional.empty());
 
-        MasterySnapshot after = reviewService.applyQuizResult(USER_ID, WORD_KEY, false, true, ZONE);
+        MasterySnapshot after = reviewService.applyQuizResult(
+                USER_ID, WORD_KEY, Skill.choice, false, true, ZONE);
 
         assertThat(after.level()).isEqualTo(MasteryLevel.unknown);
         assertThat(after.stage()).isEqualTo(0);
         assertThat(after.nextReviewAt()).isEqualTo(LocalDate.now(ZONE));
         assertThat(after.hasQuizHistory()).isTrue();
+        assertThat(after.skill()).isEqualTo(Skill.choice);
+    }
+
+    @Test
+    void applyQuizResult_sameDayManyCorrect_capsWindowGainAtOne() {
+        WordSkillProgress progress = baseProgress(10.0, Skill.dictation);
+        progress.setWindowStartedAt(Instant.now().minus(1, ChronoUnit.HOURS));
+        progress.setWindowCorrectGain(BigDecimal.ZERO.setScale(2));
+        when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.dictation))
+                .thenReturn(Optional.of(progress));
+
+        double start = 10.0;
+        for (int i = 0; i < 10; i++) {
+            MasterySnapshot snap = reviewService.applyQuizResult(
+                    USER_ID, WORD_KEY, Skill.dictation, true, false, ZONE);
+            assertThat(snap.stability() - start).isLessThanOrEqualTo(1.01);
+        }
+        assertThat(progress.getWindowCorrectGain().doubleValue()).isLessThanOrEqualTo(1.01);
+        assertThat(progress.getStability().doubleValue() - start).isLessThanOrEqualTo(1.01);
+    }
+
+    @Test
+    void applyQuizResult_longGapCorrect_gainsMoreThanFreshCorrect() {
+        WordSkillProgress fresh = baseProgress(40.0, Skill.dictation);
+        fresh.setLastQuizAt(Instant.now().minus(2, ChronoUnit.HOURS));
+        when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.dictation))
+                .thenReturn(Optional.of(fresh));
+        double freshGain = reviewService.applyQuizResult(
+                USER_ID, WORD_KEY, Skill.dictation, true, false, ZONE).stability() - 40.0;
+
+        WordSkillProgress aged = baseProgress(40.0, Skill.dictation);
+        aged.setLastQuizAt(Instant.now().minus(10, ChronoUnit.DAYS));
+        when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.dictation))
+                .thenReturn(Optional.of(aged));
+        double agedGain = reviewService.applyQuizResult(
+                USER_ID, WORD_KEY, Skill.dictation, true, false, ZONE).stability() - 40.0;
+
+        assertThat(agedGain).isGreaterThan(freshGain);
+    }
+
+    @Test
+    void applyQuizResult_shortWindowConsecutiveWrong_dropsStabilityHard() {
+        WordSkillProgress progress = baseProgress(50.0, Skill.dictation);
+        progress.setWindowStartedAt(Instant.now().minus(1, ChronoUnit.HOURS));
+        progress.setLastQuizAt(Instant.now().minus(1, ChronoUnit.HOURS));
+        when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.dictation))
+                .thenReturn(Optional.of(progress));
+
+        double afterFirst = reviewService.applyQuizResult(
+                USER_ID, WORD_KEY, Skill.dictation, false, false, ZONE).stability();
+        double afterSecond = reviewService.applyQuizResult(
+                USER_ID, WORD_KEY, Skill.dictation, false, true, ZONE).stability();
+
+        assertThat(afterFirst).isLessThan(50.0);
+        assertThat(afterSecond).isLessThan(afterFirst - 1.0);
+    }
+
+    private static WordSkillProgress baseProgress(double stability, Skill skill) {
+        WordSkillProgress progress = new WordSkillProgress();
+        progress.setUserId(USER_ID);
+        progress.setWordKey(WORD_KEY);
+        progress.setSkill(skill);
+        progress.setHasQuizHistory(true);
+        progress.setLevel(MasteryLevel.unlearned);
+        progress.setStage(0);
+        progress.setStability(BigDecimal.valueOf(stability).setScale(2));
+        progress.setWindowCorrectGain(BigDecimal.ZERO.setScale(2));
+        progress.setWindowStartedAt(Instant.now().minus(1, ChronoUnit.HOURS));
+        progress.setRecentWrongCount(0);
+        return progress;
     }
 }

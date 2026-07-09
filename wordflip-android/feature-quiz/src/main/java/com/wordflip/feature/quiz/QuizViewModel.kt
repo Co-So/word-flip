@@ -10,6 +10,8 @@ import com.wordflip.core.model.quiz.QuizSource
 import com.wordflip.core.model.quiz.QuizWrongWord
 import com.wordflip.core.model.quiz.toQuestionItem
 import com.wordflip.core.model.quiz.toResultData
+import com.wordflip.core.model.settings.apiValue
+import com.wordflip.core.model.settings.parseQuestionTypesCsv
 import com.wordflip.core.model.study.MasteryLevel
 import com.wordflip.core.network.quiz.QuizRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,7 +24,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 默写测验 ViewModel；走 POST /quiz/sessions 与 answer（掌握度唯一写入口）。
+ * 测验 ViewModel；走 POST /quiz/sessions 与 answer（掌握度唯一写入口）。
+ * 支持默写与选择题（selectedKey）；题型/开测模式来自导航 query。
  */
 @HiltViewModel
 class QuizViewModel @Inject constructor(
@@ -32,8 +35,13 @@ class QuizViewModel @Inject constructor(
 
     private val source: QuizSource = parseQuizSource(savedStateHandle.get<String>("source").orEmpty())
     private val groupId: Int? = savedStateHandle.get<Int>("groupId")?.takeIf { it >= 0 }
-    /** study 入口：按组内词数出题（10/20/30/50），不再固定 10 题 */
+    /** study/组测入口：按题数出题（1–50） */
     private val wordLimit: Int = savedStateHandle.get<Int>("wordLimit")?.coerceIn(1, 50) ?: DEFAULT_QUESTION_LIMIT
+    private val questionTypes: List<String>? = parseQuestionTypesCsv(
+        savedStateHandle.get<String>("questionTypes"),
+    ).map { it.apiValue() }.ifEmpty { null }
+    private val launchMode: String? = savedStateHandle.get<String>("launchMode")
+        ?.takeIf { it.isNotBlank() }
 
     private val _uiState = MutableStateFlow<QuizUiState>(QuizUiState.Loading)
     val uiState: StateFlow<QuizUiState> = _uiState.asStateFlow()
@@ -62,6 +70,9 @@ class QuizViewModel @Inject constructor(
                 source = source,
                 groupId = groupId,
                 questionLimit = limit,
+                groupIds = groupId?.let { listOf(it) },
+                questionTypes = questionTypes,
+                launchMode = launchMode,
             ).fold(
                 onSuccess = { created ->
                     sessionId = created.sessionId
@@ -81,11 +92,8 @@ class QuizViewModel @Inject constructor(
         }
     }
 
-    /** study 用组内词数；today/retry 默认 10 */
-    private fun resolveQuestionLimit(): Int = when (source) {
-        QuizSource.STUDY -> wordLimit
-        QuizSource.TODAY, QuizSource.RETRY -> DEFAULT_QUESTION_LIMIT
-    }
+    /** 题数来自路由 wordLimit（组测/设置默认题数）；缺省 10 */
+    private fun resolveQuestionLimit(): Int = wordLimit.coerceIn(1, 50)
 
     fun onAnswerChange(value: String) {
         val state = _uiState.value as? QuizUiState.Question ?: return
@@ -105,7 +113,15 @@ class QuizViewModel @Inject constructor(
             submitPractice()
             return
         }
-        submitOfficial(state)
+        submitOfficial(state, answer = state.userAnswer.trim(), selectedKey = null)
+    }
+
+    /** 选择题：选中选项 key 后提交 selectedKey */
+    fun submitChoice(selectedKey: String) {
+        val state = _uiState.value as? QuizUiState.Question ?: return
+        if (!state.inputEnabled || state.consolidationActive) return
+        if (!state.question.isChoice) return
+        submitOfficial(state, answer = null, selectedKey = selectedKey)
     }
 
     fun toggleHintCovered() {
@@ -129,15 +145,20 @@ class QuizViewModel @Inject constructor(
         }
     }
 
-    private fun submitOfficial(state: QuizUiState.Question) {
+    private fun submitOfficial(
+        state: QuizUiState.Question,
+        answer: String?,
+        selectedKey: String?,
+    ) {
         val question = state.question
-        val trimmed = state.userAnswer.trim()
+        val displayAnswer = selectedKey ?: answer.orEmpty()
         viewModelScope.launch {
-            _uiState.value = state.copy(inputEnabled = false)
+            _uiState.value = state.copy(inputEnabled = false, userAnswer = displayAnswer)
             quizRepository.submitAnswer(
                 sessionId = sessionId,
                 questionIndex = question.questionIndex,
-                answer = trimmed,
+                answer = answer,
+                selectedKey = selectedKey,
             ).fold(
                 onSuccess = { result ->
                     score = result.session.score
@@ -153,6 +174,7 @@ class QuizViewModel @Inject constructor(
                     if (result.correct) {
                         _uiState.value = state.copy(
                             question = questionWithAnswer,
+                            userAnswer = displayAnswer,
                             inputEnabled = false,
                             feedback = feedback,
                             consolidationActive = false,
@@ -168,15 +190,16 @@ class QuizViewModel @Inject constructor(
                             wordKey = question.wordKey,
                             en = revealedEn,
                             cn = question.prompt.cn,
-                            userAnswer = trimmed,
+                            userAnswer = displayAnswer,
                         )
+                        // 选择题答错：仍进入巩固（默写正确答案）
                         _uiState.value = state.copy(
                             question = questionWithAnswer,
                             inputEnabled = true,
                             userAnswer = "",
                             feedback = feedback,
                             consolidationActive = true,
-                            wrongAttemptAnswer = trimmed,
+                            wrongAttemptAnswer = displayAnswer,
                             practiceHint = null,
                             practicePassed = false,
                             hintPanelCovered = false,

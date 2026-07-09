@@ -1,46 +1,47 @@
 package com.wordflip.dto.word;
 
 import com.wordflip.domain.MasteryLevel;
-import com.wordflip.domain.ReviewPlan;
-import com.wordflip.domain.WordMastery;
+import com.wordflip.domain.Skill;
+import com.wordflip.domain.WordSkillProgress;
+import com.wordflip.service.StabilityCalculator;
 
 import java.time.LocalDate;
 
 /**
- * 掌握度快照（只读）；无 word_mastery 记录时默认 unlearned + hasQuizHistory=false。
+ * 单 skill 掌握度快照（热力 + 队列三态 + SRS）。
  */
 public record MasterySnapshot(
         MasteryLevel level,
         boolean hasQuizHistory,
         Integer stage,
-        LocalDate nextReviewAt
+        LocalDate nextReviewAt,
+        double stability,
+        int heatLevel,
+        Skill skill
 ) {
 
+    public static MasterySnapshot unlearnedDefault(Skill skill) {
+        return new MasterySnapshot(MasteryLevel.unlearned, false, 0, null, 0.0, 0, skill);
+    }
+
+    /** 兼容旧调用：默认 dictation */
     public static MasterySnapshot unlearnedDefault() {
-        return new MasterySnapshot(MasteryLevel.unlearned, false, 0, null);
+        return unlearnedDefault(Skill.dictation);
     }
 
-    /** Groups 读 API 兼容：无 review_plans 时不填 stage/nextReviewAt */
-    public static MasterySnapshot from(WordMastery mastery) {
-        return new MasterySnapshot(mastery.getLevel(), mastery.isHasQuizHistory(), null, null);
-    }
-
-    /** Study/Today 完整快照：合并 review_plans（REQ-EBBING） */
-    public static MasterySnapshot from(WordMastery mastery, ReviewPlan plan) {
-        Integer stageValue = plan != null ? plan.getStage() : 0;
-        LocalDate nextReview = plan != null ? plan.getNextReviewAt() : null;
-        return new MasterySnapshot(
-                mastery.getLevel(),
-                mastery.isHasQuizHistory(),
-                stageValue,
-                nextReview
-        );
-    }
-
-    public static MasterySnapshot withPlan(ReviewPlan plan) {
-        if (plan == null) {
+    public static MasterySnapshot from(WordSkillProgress progress) {
+        if (progress == null) {
             return unlearnedDefault();
         }
-        return new MasterySnapshot(MasteryLevel.unlearned, false, plan.getStage(), plan.getNextReviewAt());
+        double s = StabilityCalculator.fromStored(progress.getStability());
+        return new MasterySnapshot(
+                progress.getLevel(),
+                progress.isHasQuizHistory(),
+                progress.getStage(),
+                progress.getNextReviewAt(),
+                s,
+                StabilityCalculator.heatLevel(s),
+                progress.getSkill()
+        );
     }
 }

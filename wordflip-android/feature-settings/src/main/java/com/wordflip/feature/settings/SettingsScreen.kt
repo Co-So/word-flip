@@ -3,6 +3,8 @@ package com.wordflip.feature.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.Button
@@ -27,17 +30,23 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.wordflip.core.model.settings.HeatDisplayMode
+import com.wordflip.core.model.settings.QuizLaunchMode
 import com.wordflip.core.model.settings.ThemeMode
 import com.wordflip.core.model.settings.label
 import com.wordflip.core.ui.component.WordFlipToastHost
@@ -45,11 +54,13 @@ import com.wordflip.core.ui.component.WordFlipTopBar
 import com.wordflip.core.ui.component.rememberWordFlipToast
 
 private val THEME_OPTIONS = listOf(ThemeMode.SYSTEM, ThemeMode.LIGHT, ThemeMode.DARK)
+private val HEAT_OPTIONS = HeatDisplayMode.entries
+private val LAUNCH_OPTIONS = QuizLaunchMode.entries
 
 /**
  * 设置页（REQ-SETTINGS-1~7）；规划项 Toast 占位，退出登录 REQ-AUTH-5。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     preferences: SettingsPreferences,
@@ -147,6 +158,75 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
+                            }
+                        }
+                    }
+                    item {
+                        SettingsSectionTitle("测验与热力")
+                        SettingsCard {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    Icon(Icons.Outlined.Quiz, contentDescription = null)
+                                    Text(
+                                        text = "热力展示",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    HEAT_OPTIONS.forEach { mode ->
+                                        FilterChip(
+                                            selected = state.content.heatDisplayMode == mode,
+                                            onClick = { viewModel.setHeatDisplayMode(mode) },
+                                            label = { Text(mode.label()) },
+                                        )
+                                    }
+                                }
+                                HorizontalDivider()
+                                Text(
+                                    text = "开测模式",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    LAUNCH_OPTIONS.forEach { mode ->
+                                        FilterChip(
+                                            selected = state.content.quizLaunchMode == mode,
+                                            onClick = { viewModel.setQuizLaunchMode(mode) },
+                                            label = { Text(mode.label()) },
+                                        )
+                                    }
+                                }
+                                HorizontalDivider()
+                                Text(
+                                    text = "默认题数：${state.content.defaultQuestionLimit}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                var pendingLimit by remember {
+                                    mutableFloatStateOf(state.content.defaultQuestionLimit.toFloat())
+                                }
+                                LaunchedEffect(state.content.defaultQuestionLimit) {
+                                    pendingLimit = state.content.defaultQuestionLimit.toFloat()
+                                }
+                                Slider(
+                                    value = pendingLimit,
+                                    onValueChange = { pendingLimit = it },
+                                    onValueChangeFinished = {
+                                        viewModel.setDefaultQuestionLimit(pendingLimit.toInt())
+                                    },
+                                    valueRange = 5f..50f,
+                                    steps = 8,
+                                )
                             }
                         }
                     }

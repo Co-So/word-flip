@@ -1,5 +1,6 @@
 package com.wordflip.feature.today
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,10 +11,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Spellcheck
 import androidx.compose.material3.Button
@@ -21,6 +25,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,6 +42,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.wordflip.core.model.navigation.StudyNavigation
+import com.wordflip.core.model.today.RecentGroup
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.StatTripleRow
 import com.wordflip.core.ui.component.TaskRow
@@ -57,6 +63,8 @@ import java.util.Locale
 fun TodayScreen(
     onNavigateToStudy: (StudyNavigation) -> Unit,
     onNavigateToQuiz: () -> Unit,
+    /** 最近学习组进测验：source=recent + groupId */
+    onNavigateToRecentQuiz: (groupId: Int, groupName: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
     viewModel: TodayViewModel = hiltViewModel(),
 ) {
@@ -133,6 +141,7 @@ fun TodayScreen(
                         toast = toast,
                         onNavigateToStudy = onNavigateToStudy,
                         onNavigateToQuiz = onNavigateToQuiz,
+                        onNavigateToRecentQuiz = onNavigateToRecentQuiz,
                     )
                 }
             }
@@ -173,11 +182,13 @@ private fun TodayContent(
     toast: WordFlipToastController,
     onNavigateToStudy: (StudyNavigation) -> Unit,
     onNavigateToQuiz: () -> Unit,
+    onNavigateToRecentQuiz: (groupId: Int, groupName: String) -> Unit,
 ) {
     val dashboard = state.dashboard
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -231,7 +242,68 @@ private fun TodayContent(
                 contentDescription = "默写测验，${dashboard.tasks.quiz.count} 题",
             )
         }
-        Spacer(modifier = Modifier.weight(1f))
+        // 最近学习组（最多 3）：点击进组测 source=recent
+        if (dashboard.recentGroups.isNotEmpty()) {
+            Text(
+                text = "最近学习",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                dashboard.recentGroups.take(3).forEach { group ->
+                    RecentGroupCard(
+                        group = group,
+                        onClick = { onNavigateToRecentQuiz(group.groupId, group.name) },
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun RecentGroupCard(
+    group: RecentGroup,
+    onClick: () -> Unit,
+) {
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Quiz,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = group.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "点击开始测验",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = "测验",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 

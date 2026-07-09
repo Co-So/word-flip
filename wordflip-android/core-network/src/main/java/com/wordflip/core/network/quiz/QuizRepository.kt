@@ -12,6 +12,7 @@ import java.util.TimeZone
 
 /**
  * 测验页数据编排：创建 session、提交答案、拉取结果（P2-A12）。
+ * createSession 透传 groupIds / questionTypes / launchMode；选择题用 selectedKey。
  */
 class QuizRepository(
     private val quizApi: QuizApi,
@@ -22,13 +23,19 @@ class QuizRepository(
         source: QuizSource,
         groupId: Int?,
         questionLimit: Int,
+        groupIds: List<Int>? = null,
+        questionTypes: List<String>? = null,
+        launchMode: String? = null,
     ): Result<QuizSessionCreated> = apiCall {
         quizApi.createSession(
             timezone = TimeZone.getDefault().id,
             request = CreateQuizSessionRequest(
                 source = source.name.lowercase(),
                 groupId = groupId,
+                groupIds = groupIds,
                 questionLimit = questionLimit.coerceIn(1, 50),
+                questionTypes = questionTypes,
+                launchMode = launchMode,
             ),
         )
     }
@@ -36,7 +43,8 @@ class QuizRepository(
     suspend fun submitAnswer(
         sessionId: String,
         questionIndex: Int,
-        answer: String,
+        answer: String? = null,
+        selectedKey: String? = null,
     ): Result<AnswerResult> = apiCall {
         quizApi.submitAnswer(
             sessionId = sessionId,
@@ -44,6 +52,7 @@ class QuizRepository(
             request = SubmitAnswerRequest(
                 questionIndex = questionIndex,
                 answer = answer,
+                selectedKey = selectedKey,
             ),
         )
     }

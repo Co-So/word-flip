@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Quiz
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,11 +27,18 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -40,18 +49,26 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.wordflip.core.model.media.StainType
 import com.wordflip.core.model.navigation.StudyNavigation
+import com.wordflip.core.model.settings.QuestionType
+import com.wordflip.core.model.settings.QuizLaunchMode
+import com.wordflip.core.model.settings.apiValue
+import com.wordflip.core.model.settings.label
+import com.wordflip.core.model.settings.storageValue
 import com.wordflip.core.ui.component.FlipCard
 import com.wordflip.core.ui.component.GroupStatsRow
-import com.wordflip.core.ui.component.MasteryChip
+import com.wordflip.core.ui.component.StabilityHeatChip
+import com.wordflip.core.ui.component.StabilityHeatRowBackground
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.WordFlipToastHost
 import com.wordflip.core.ui.component.WordFlipTopBar
 import com.wordflip.core.ui.component.WordFlipTopBarAction
 import com.wordflip.core.ui.component.rememberWordFlipToast
-import com.wordflip.core.ui.component.toChipLevel
+import com.wordflip.feature.settings.SettingsPreferences
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
- * 分组详情列表模式（REQ-GDETAIL）；污渍模式 P3-A10。
+ * 分组详情列表模式（REQ-GDETAIL）；顶栏测验入口按 quizLaunchMode 直开或选题型。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -59,14 +76,18 @@ fun GroupDetailScreen(
     groupId: Int,
     groupName: String,
     initialStainMode: Boolean = false,
+    settingsPreferences: SettingsPreferences,
     onNavigateBack: () -> Unit,
     onNavigateToStudy: (StudyNavigation) -> Unit,
+    onNavigateToQuiz: (source: String, groupId: Int, wordLimit: Int, questionTypes: String, launchMode: String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: GroupDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val (snackbarHostState, toast) = rememberWordFlipToast()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+    var showQuizDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -90,6 +111,27 @@ fun GroupDetailScreen(
                 title = groupName.ifBlank { "分组详情" },
                 onNavigateBack = onNavigateBack,
                 actions = {
+                    WordFlipTopBarAction(
+                        icon = Icons.Outlined.Quiz,
+                        contentDescription = "测验",
+                        onClick = {
+                            // 读 quizLaunchMode：mixed 直开；free_select 弹选题型 Dialog
+                            scope.launch {
+                                val launchMode = settingsPreferences.quizLaunchModeFlow.first()
+                                val limit = settingsPreferences.defaultQuestionLimitFlow.first()
+                                when (launchMode) {
+                                    QuizLaunchMode.MIXED -> onNavigateToQuiz(
+                                        "study",
+                                        groupId,
+                                        limit,
+                                        "",
+                                        QuizLaunchMode.MIXED.storageValue(),
+                                    )
+                                    QuizLaunchMode.FREE_SELECT -> showQuizDialog = true
+                                }
+                            }
+                        },
+                    )
                     WordFlipTopBarAction(
                         icon = Icons.Outlined.Palette,
                         contentDescription = "污渍模式",
@@ -165,6 +207,97 @@ fun GroupDetailScreen(
             }
         }
     }
+
+    if (showQuizDialog) {
+        FreeSelectQuizDialog(
+            defaultLimit = remember {
+                // Dialog 打开时用当前默认题数；异步读取在下方 LaunchedEffect 同步
+                10
+            },
+            settingsPreferences = settingsPreferences,
+            onDismiss = { showQuizDialog = false },
+            onConfirm = { types, limit ->
+                showQuizDialog = false
+                onNavigateToQuiz(
+                    "study",
+                    groupId,
+                    limit,
+                    types.joinToString(",") { it.apiValue() },
+                    QuizLaunchMode.FREE_SELECT.storageValue(),
+                )
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FreeSelectQuizDialog(
+    defaultLimit: Int,
+    settingsPreferences: SettingsPreferences,
+    onDismiss: () -> Unit,
+    onConfirm: (types: Set<QuestionType>, limit: Int) -> Unit,
+) {
+    var selectedTypes by remember {
+        mutableStateOf(setOf(QuestionType.DICTATION, QuestionType.CHOICE_EN_CN, QuestionType.CHOICE_CN_EN))
+    }
+    var limit by remember { mutableFloatStateOf(defaultLimit.toFloat()) }
+
+    LaunchedEffect(settingsPreferences) {
+        limit = settingsPreferences.defaultQuestionLimitFlow.first().toFloat()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择测验题型") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "题型（可多选）",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    QuestionType.entries.forEach { type ->
+                        FilterChip(
+                            selected = type in selectedTypes,
+                            onClick = {
+                                selectedTypes = if (type in selectedTypes) {
+                                    (selectedTypes - type).ifEmpty { setOf(type) }
+                                } else {
+                                    selectedTypes + type
+                                }
+                            },
+                            label = { Text(type.label()) },
+                        )
+                    }
+                }
+                Text(
+                    text = "题数：${limit.toInt()}",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Slider(
+                    value = limit,
+                    onValueChange = { limit = it },
+                    valueRange = 5f..50f,
+                    steps = 8,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(selectedTypes, limit.toInt()) },
+                enabled = selectedTypes.isNotEmpty(),
+            ) {
+                Text("开始测验")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -254,29 +387,35 @@ private fun stainTypeLabel(type: StainType): String = when (type) {
 
 @Composable
 private fun GroupWordRow(item: com.wordflip.core.model.group.GroupWordItem) {
-    Row(
+    // 热力优先 progress.displayHeatLevel；薄弱角标由 Chip 按 heatDisplayMode 解析
+    StabilityHeatRowBackground(
+        heatLevel = item.displayHeatLevel,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = item.summary.en,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            val subtitle = buildString {
-                append(item.summary.cn)
-                item.summary.pos?.let { append(" · $it") }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.summary.en,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                val subtitle = buildString {
+                    append(item.summary.cn)
+                    item.summary.pos?.let { append(" · $it") }
+                }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            StabilityHeatChip(mastery = item.mastery, progress = item.progress)
         }
-        MasteryChip(level = item.mastery.level.toChipLevel())
     }
 }

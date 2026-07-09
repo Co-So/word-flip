@@ -1,19 +1,21 @@
 openapi: 3.0.3
 info:
   title: WordFlip API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     WordFlip 单词卡片学习应用 REST API（MVP）。
 
     **业务文档：** [requirements.md](../docs/wordflip/requirements.md) · [api-modules.md](../docs/wordflip/api-modules.md)
 
     **核心规则：**
-    - 掌握度三态（unlearned/fuzzy/unknown）**仅**经测验 `POST /quiz/sessions/{id}/answer` 变更
+    - 队列三态（unlearned/fuzzy/unknown）与稳定性权值 `stability`（S）**仅**经测验 `POST /quiz/sessions/{id}/answer` 变更
+    - **skill 双轨：** `dictation` / `choice` 各一套热力 S 与 SRS；题型 `dictation`→dictation skill，`choice_en_cn`/`choice_cn_en`→choice skill
+    - 组详情主展示按 `heatDisplayMode` 聚合的 `displayHeatLevel`；单 skill 快照含 `heatLevel`；三态用于今日排队与薄弱角标
     - 词书 `PUT /settings` 触发**增量追加分组**，不重建已有分组
     - 单词唯一键 `wordKey` = `en.trim().toLowerCase()`
-    - SRS 间隔（天）：`INTERVALS = [1, 2, 4, 7, 15, 30]`，stage 0..5；答对后 `nextReviewAt = 用户时区当日结束 + INTERVALS[newStage]` 天
+    - SRS 间隔（天）：`INTERVALS = [1, 2, 4, 7, 15, 30]`，stage 0..5；答对后 `nextReviewAt = 用户时区当日结束 + INTERVALS[newStage]` 天（按 skill 独立）
     - **时区：** 服务端存 UTC；「当日」由 `X-Timezone` 请求头（缺省 `Asia/Shanghai`）或用户 profile 决定
-    - **已掌握统计：** `stage >= 5` 且 `DATEDIFF(next_review_at, today) >= 30`（REQ-EBBING-7）
+    - **已掌握统计：** `stability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（REQ-EBBING-7）
     - **学习完成度：** `round(masteredCount / 已入组总词数 × 100)`，已入组总词数为 0 时返回 0
 
 servers:
@@ -36,7 +38,7 @@ tags:
   - name: Today
     description: 今日首页
   - name: Quiz
-    description: 默写测验（掌握度写入口）
+    description: 测验（默写/选择；掌握度按 skill 写入口）
   - name: Images
     description: 卡拍图片
   - name: Stains
@@ -496,7 +498,7 @@ paths:
       summary: 提交单题答案（掌握度唯一写入口）
       description: |
         **判题：** `answer.trim()` 与标准 `en` 比较，`equalsIgnoreCase`。
-        **掌握度唯一写入口** — 调用 `ReviewService.applyQuizResult`：
+        **掌握度唯一写入口** — 调用 `ReviewService.applyQuizResult`（同事务更新三态/SRS 与稳定性 S）：
 
         | 条件 | level | stage | nextReviewAt |
         |------|-------|-------|--------------|
@@ -506,6 +508,7 @@ paths:
 
         *连续判定：写入本条答案**之前**，该 wordKey 最近一条 `quiz_answers` 为 `correct=false`。
         `hasQuizHistory`：首次对该 wordKey 提交测验答案后恒为 true（无论对错）。
+        **稳定性 S：** 答对按 `(1−R)` 升权（24h 窗累计 ≤1.00）；答错按 R 与窗内连错降权；响应 `masteryUpdate.before/after` 含 `stability`/`heatLevel`。
         session `completed` 时服务端自动 upsert `study_logs`。
       parameters:
         - $ref: '#/components/parameters/SessionId'
@@ -784,13 +787,38 @@ components:
       type: string
       enum: [unlearned, fuzzy, unknown]
       description: |
+        队列/薄弱三态（组详情主展示为 stability 热力，非本字段）：
         unlearned — 未测验新词，或测验答对后在 SRS 在档（见 hasQuizHistory）
         fuzzy — 最近一次测验答错（非连续第 2 次）
-        unknown — 同一 wordKey 跨 session 连续 2 次测验答错
+        unknown — 同一 wordKey+skill 跨 session 连续 2 次测验答错
+
+    Skill:
+      type: string
+      enum: [dictation, choice]
+      description: 题型技能；默写与选择各一套热力/SRS
+
+    HeatDisplayMode:
+      type: string
+      enum: [combined, dictation, choice, free]
+      description: |
+        组详情热力展示：combined 取两 skill 较低档；dictation/choice 单轨；
+        free 由客户端切换（服务端默认按 combined 聚合）
+
+    QuizLaunchMode:
+      type: string
+      enum: [mixed, free_select]
+      description: mixed 混合直开；free_select 开测前选题型与题数
+
+    QuestionType:
+      type: string
+      enum: [dictation, choice_en_cn, choice_cn_en]
+      description: |
+        dictation → Skill.dictation；
+        choice_en_cn / choice_cn_en → Skill.choice
 
     MasterySnapshot:
       type: object
-      required: [level, hasQuizHistory]
+      required: [level, hasQuizHistory, stability, heatLevel, skill]
       properties:
         level:
           $ref: '#/components/schemas/MasteryLevel'
@@ -798,7 +826,7 @@ components:
           type: integer
           minimum: 0
           maximum: 5
-          description: 无 review_plans 记录时省略或为 0
+          description: 无该 skill 进度记录时省略或为 0
         nextReviewAt:
           type: string
           format: date
@@ -806,7 +834,43 @@ components:
           description: 无计划时为 null
         hasQuizHistory:
           type: boolean
-          description: 首次对该 wordKey 提交测验答案后为 true；用于区分「新词未测验」与「答对后在 SRS 在档的 unlearned」
+          description: 该 skill 首次提交测验答案后为 true；用于区分「新词未测验」与「答对后在 SRS 在档的 unlearned」
+        stability:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          description: 该 skill 稳定性权值 S（0.00–100.00）；仅测验写入
+        heatLevel:
+          type: integer
+          minimum: 0
+          maximum: 4
+          description: |
+            由 stability 映射：0(0–9.9) 1(10–29.9) 2(30–54.9) 3(55–79.9) 4(80–100)
+        skill:
+          $ref: '#/components/schemas/Skill'
+
+    WordProgressSnapshot:
+      type: object
+      required: [dictation, choice, displayHeatLevel, displayStability, heatDisplayMode]
+      properties:
+        dictation:
+          $ref: '#/components/schemas/MasterySnapshot'
+        choice:
+          $ref: '#/components/schemas/MasterySnapshot'
+        displayHeatLevel:
+          type: integer
+          minimum: 0
+          maximum: 4
+          description: 按 heatDisplayMode 聚合后的展示热力档
+        displayStability:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          description: 按 heatDisplayMode 聚合后的展示 S
+        heatDisplayMode:
+          $ref: '#/components/schemas/HeatDisplayMode'
 
     WordSummary:
       type: object
@@ -1033,6 +1097,15 @@ components:
           type: boolean
         themeMode:
           $ref: '#/components/schemas/ThemeMode'
+        heatDisplayMode:
+          $ref: '#/components/schemas/HeatDisplayMode'
+        quizLaunchMode:
+          $ref: '#/components/schemas/QuizLaunchMode'
+        defaultQuestionLimit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: 默认测验题数
         summary:
           $ref: '#/components/schemas/BooksSummary'
 
@@ -1086,6 +1159,14 @@ components:
           type: boolean
         themeMode:
           $ref: '#/components/schemas/ThemeMode'
+        heatDisplayMode:
+          $ref: '#/components/schemas/HeatDisplayMode'
+        quizLaunchMode:
+          $ref: '#/components/schemas/QuizLaunchMode'
+        defaultQuestionLimit:
+          type: integer
+          minimum: 1
+          maximum: 50
 
     BooksSummary:
       type: object
@@ -1185,13 +1266,21 @@ components:
 
     GroupStats:
       type: object
+      required: [heat0, heat1, heat2, heat3, heat4, total]
+      description: 组内单词按 heatLevel 分档计数（REQ-GROUP-2）
       properties:
-        unlearned:
+        heat0:
           type: integer
-        fuzzy:
+          description: heatLevel=0（新词/未巩固）
+        heat1:
           type: integer
-        unknown:
+        heat2:
           type: integer
+        heat3:
+          type: integer
+        heat4:
+          type: integer
+          description: heatLevel=4（很熟 / 接近已掌握）
         total:
           type: integer
 
@@ -1218,7 +1307,7 @@ components:
         progress:
           type: number
           format: float
-          description: 测验已通过占比 = count(level=unlearned && hasQuizHistory) / total（REQ-GROUP-2）
+          description: 已掌握占比 = count(stability >= 80) / total（REQ-GROUP-2）
 
     GroupListResponse:
       type: object
@@ -1242,6 +1331,10 @@ components:
                     properties:
                       mastery:
                         $ref: '#/components/schemas/MasterySnapshot'
+                        description: 兼容字段；默认 dictation skill 快照
+                      progress:
+                        $ref: '#/components/schemas/WordProgressSnapshot'
+                        description: 双 skill 进度 + 展示热力
 
     CreateCustomGroupRequest:
       type: object
@@ -1292,9 +1385,9 @@ components:
           type: object
           required: [masteredCount, dueReviewCount, completionPercent]
           properties:
-        masteredCount:
-          type: integer
-          description: stage>=5 且 DATEDIFF(next_review_at,today)>=30（REQ-EBBING-7）
+            masteredCount:
+              type: integer
+              description: stability>=80 且最近测验成功且建议间隔≥30 天（REQ-EBBING-7）
             dueReviewCount:
               type: integer
               description: 与 tasks.dueReview.count 一致
@@ -1324,6 +1417,22 @@ components:
             reason:
               type: string
               enum: [new_words, due_review, mixed]
+        recentGroups:
+          type: array
+          maxItems: 3
+          description: 最近学习/测验的分组（最多 3）
+          items:
+            type: object
+            required: [groupId, name, lastStudiedAt]
+            properties:
+              groupId:
+                type: integer
+                format: int64
+              name:
+                type: string
+              lastStudiedAt:
+                type: string
+                format: date-time
 
     StudyGroupPayload:
       type: object
@@ -1370,17 +1479,35 @@ components:
       properties:
         source:
           type: string
-          enum: [today, study, retry]
+          enum: [today, study, retry, groups, all, recent]
           default: today
+          description: |
+            today/study/retry 沿用原入口；
+            groups 按 groupIds（或单 groupId）抽题；
+            all 全已入组词；recent 最近学习组
         groupId:
           type: integer
           format: int64
           nullable: true
+          description: 单组测验；与 groupIds 二选一或并存时以 groupIds 为准
+        groupIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: 多组测验（source=groups）
         questionLimit:
           type: integer
           minimum: 1
           maximum: 50
           default: 10
+        questionTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionType'
+          description: 本场题型；省略时按 quizLaunchMode / 默认 dictation
+        launchMode:
+          $ref: '#/components/schemas/QuizLaunchMode'
 
     QuizQuestion:
       type: object
@@ -1389,6 +1516,8 @@ components:
           type: integer
         wordKey:
           type: string
+        type:
+          $ref: '#/components/schemas/QuestionType'
         prompt:
           type: object
           properties:
@@ -1398,6 +1527,21 @@ components:
               type: string
             ph:
               type: string
+            en:
+              type: string
+              description: choice_cn_en 等题型可返回英文提示
+        options:
+          type: array
+          nullable: true
+          description: 选择题选项；dictation 为 null/省略
+          items:
+            type: object
+            required: [key, label]
+            properties:
+              key:
+                type: string
+              label:
+                type: string
 
     QuizSessionCreated:
       type: object
@@ -1419,12 +1563,16 @@ components:
 
     SubmitAnswerRequest:
       type: object
-      required: [questionIndex, answer]
+      required: [questionIndex]
       properties:
         questionIndex:
           type: integer
         answer:
           type: string
+          description: 默写题用户输入；选择题可省略
+        selectedKey:
+          type: string
+          description: 选择题选中选项 key；默写题可省略
 
     AnswerResult:
       type: object

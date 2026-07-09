@@ -1,6 +1,6 @@
 # WordFlip 任务清单（TASK）
 
-> 版本：v2.8  
+> 版本：v3.0  
 > 日期：2026-07-09  
 > 用法：完成一项将 `[ ]` 改为 `[x]`。任务按依赖顺序排列，建议自上而下打勾。  
 > 关联：[requirements.md](docs/wordflip/requirements.md) · [architecture.md](docs/wordflip/architecture.md) · [STRUCTURE.md](STRUCTURE.md)
@@ -18,30 +18,40 @@
 | **P0** | 登录 + 词书 + 分组 | 62 / 70 |
 | **P1** | 今日 + 学习 + SRS 读 | 28 / 28 |
 | **P2** | 默写测验 + 掌握度写 | 22 / 24 |
-| **P3** | 卡拍 + 图片 + 污渍 | 13 / 22 |
+| **P2.5** | 多题型独立权重 + 组测 | 7 / 8 |
+| **P3** | 卡拍 + 图片 + 污渍 | 19 / 22 |
 | **P4** | 统计 + 设置完善 | 8 / 14 |
 | **Q** | 联调、测试、发布准备 | 3 / 12 |
 | **B** | 二期 Backlog | — |
 
 ### 当前焦点（2026-07-09）
 
-**P2 核心已打通**（Quiz API + applyQuizResult + Android 真 API）；待 **P2-T03/T04 真机端到端验收** 与 **P3 媒体后端**。
+**P2.5 + P3 代码已落地**：稳定性热力 S、dictation/choice 双轨、组测入口、Images/Stains MinIO。待真机勾选 P2-T03/T04、P2.5-T01、P3-T01~T03。
 
 | 轨道 | 任务 ID | 状态 |
 |------|---------|------|
-| P1 | P1-B01~B12、A16、T01~T03 | ✅ Today/Study 后端 + Android 真 API |
-| P2 | P2-B01~B10、A07、T01~T02 | ✅ Quiz session + applyQuizResult + Android 接 API |
-| 下一波 | P2-T03~T04、P3-B01~ | 真机测验验收；卡拍/图片 MinIO |
+| P2 | P2-B01~B10、A07、T01~T02 | ✅ Quiz + applyQuizResult；分组详情热力 Chip |
+| P2.5 | B01~B04、A01~A02 | ✅ `word_skill_progress` 双轨 + 选择题/mixed + 设置偏好 |
+| P3 | P3-B01~B06、A06/A11 | ✅ MinIO 图片 + 污渍 + Study 卡片聚合 |
+| 待你勾选 | P2-T03~T04、P2.5-T01、P3-T01~T03 | 真机验收（见下方清单） |
+
+#### 真机验收清单（本地勾选后把 TASK 项标 `[x]`）
+
+- [ ] **P2-T03** 分组详情记下热力 Chip → 只学习翻卡（不测验）→ 回详情热力**不变** → 完成测验后再回详情 → 热力**已变**
+- [ ] **P2-T04** 打开词数 20/30/50 的分组 → 进入测验 → 题数 = 组词数（非固定 10）→ 答完回详情热力分档统计/进度已更新
+- [ ] **P2.5-T01** 默写/选择分别升权；组测；今日最近组；热力展示模式（combined/dictation/choice/free）
+- [ ] **P3-T01~T03** 图片上传可显示；默认污渍 deterministic；学习/卡拍/分组污渍一致
 
 | 区域 | 状态 |
 |------|------|
-| 今日 | GET /today **真 API**；Tab 静默刷新 |
+| 今日 | GET /today **真 API**；`recentGroups`；Tab 静默刷新 |
 | 学习 | GET /study/groups/{id} + POST /study/sessions **真 API** |
-| 分组 | 列表/详情/CustomGroup 真 API；详情 RESUMED 刷新 |
-| 测验 | POST /quiz/sessions + answer + result **真 API**；study 按组词数出题 |
-| 联调 | P1-T01~T03 ✅；P2-T01~T02 单测 ✅；P2-T03~T04 待真机 |
+| 分组 | 列表/详情热力 heat0~4；组详情测验入口 |
+| 测验 | 多题型 + mixed/free_select；按 skill 写 S/SRS |
+| 联调 | P1/P2 单测 ✅；P2-T / P2.5-T / P3-T 待真机 |
+| 媒体 | Images/Stains **真 API**；Study WordCard 含 image/stain |
 
-**已打通导航：** 今日 ↔ 学习 / 测验；词书 → CustomGroup / 导入；词书保存；分组详情 → 学习 / 测验；登录 ↔ 注册 ↔ **找回密码**。
+**已打通导航：** 今日 ↔ 学习 / 测验 / 最近组；词书 → CustomGroup / 导入；分组详情 → 学习 / 测验；登录 ↔ 注册 ↔ **找回密码**。
 
 ---
 
@@ -355,10 +365,23 @@
 
 - [x] P2-T01 答对 → level=unlearned, stage+1, next_review_at 正确 — `ReviewServiceTest`
 - [x] P2-T02 连续两次答错 → unknown — `ReviewServiceTest`
-- [ ] P2-T03 分组详情掌握度仅随测验变化（学习翻转不改态）— 待真机验收
-- [ ] P2-T04 Android 完整测验流程（study 组内全词数 + 掌握度写入）— 待真机验收
+- [ ] P2-T03 分组详情热力仅随测验变化（学习翻转不改态）— 待真机验收
+- [ ] P2-T04 Android 完整测验流程（study 组内全词数 + 稳定性写入）— 待真机验收
 
 ---
+
+## §P2.5 多题型独立权重 + 组测入口
+
+**里程碑**：dictation/choice 各一套稳定性 S + SRS；组测入口；热力展示与开测偏好可配置。
+
+- [x] P2.5-B00 稳定性 S（0–100）+ Flyway V9；`StabilityCalculator`；分组 heat0~4 / `StabilityHeatChip`
+- [x] P2.5-B01 `word_skill_progress`（dictation/choice 双轨 S+SRS）+ Flyway V10 迁移；JPA `stage` 对齐 `TINYINT UNSIGNED`
+- [x] P2.5-B02 Quiz 题型 dictation / choice_en_cn / choice_cn_en；mixed 保证两 skill；groups/all/recent
+- [x] P2.5-B03 Settings：heatDisplayMode / quizLaunchMode / defaultQuestionLimit
+- [x] P2.5-B04 Today `recentGroups`（最多 3）
+- [x] P2.5-A01 组详情测验入口 + free_select Dialog；选择题 UI
+- [x] P2.5-A02 今日最近学习组直达测验；设置「测验与热力」
+- [ ] P2.5-T01 真机：默写/选择分别升权；组测；最近组；热力展示模式
 
 ## §P3 卡拍 + 图片 + 污渍
 
@@ -366,12 +389,12 @@
 
 ### P3-B 后端 · Images & Stains
 
-- [ ] P3-B01 实体 `WordImage`、`WordStain`
-- [ ] P3-B02 `POST /words/{wordKey}/image` multipart → 压缩 WebP → MinIO
-- [ ] P3-B03 `GET/PATCH/DELETE /words/{wordKey}/image`
-- [ ] P3-B04 `GET/PUT /words/{wordKey}/stain`（regenerate / hidden / replace）
-- [ ] P3-B05 `POST /groups/{groupId}/stains/batch`
-- [ ] P3-B06 默认 stain seed = stableHash(userId + wordKey) 无行时
+- [x] P3-B01 实体 `WordImage`、`WordStain`
+- [x] P3-B02 `POST /words/{wordKey}/image` multipart → 压缩 WebP → MinIO
+- [x] P3-B03 `GET/PATCH/DELETE /words/{wordKey}/image`
+- [x] P3-B04 `GET/PUT /words/{wordKey}/stain`（regenerate / hidden / replace）
+- [x] P3-B05 `POST /groups/{groupId}/stains/batch`
+- [x] P3-B06 默认 stain seed = stableHash(userId + wordKey) 无行时
 
 ### P3-A Android · 媒体
 
@@ -380,21 +403,20 @@
 - [x] P3-A03 卡拍页：组内卡片网格，无图背面可点出 Sheet
 - [x] P3-A04 CameraX 拍照 + 相册选择 — TakePicture + PickVisualMedia
 - [x] P3-A05 图片编辑器：裁剪/旋转/缩放/滤镜/showCn（对齐 v5）
-- [x] P3-A06 保存 → POST image；清除 → DELETE — Mock `MockWordMediaStore`
+- [x] P3-A06 保存 → POST image；清除 → DELETE — `WordMediaRepository` 真 API
 - [x] P3-A07 学习页卡片背面展示用户图片 — Coil + WordImageBack
 - [x] P3-A08 污渍渲染组件（Compose Canvas 多类型）— 咖啡/墨水/荧光/蜡笔/线条
 - [x] P3-A09 详情抽屉污渍/照片：调色板/相机快捷按钮 + 下拉菜单 + 污渍迷你预览 + 显示/隐藏切换
-- [x] P3-A10 分组详情污渍模式：筛选、单卡换、一键生成、显示/隐藏
-- [x] P3-A11 学习页详情抽屉接入拍照/相册/图片编辑 — `StudyScreen` + `MockWordMediaStore`
+- [x] P3-A10 分组详情污渍模式：筛选、单卡换、一键生成、显示/隐藏 — 接 Stains API
+- [x] P3-A11 学习页详情抽屉接入拍照/相册/图片编辑 — `StudyViewModel` + `WordMediaRepository`
 - [x] P3-A12 图片编辑器系统返回拦截 + 全屏 overlay — 学习页/卡拍页 `BackHandler`
 - [x] P3-A13 详情抽屉可滚动布局 — 避免照片/污渍操作被挤出可视区
 
 ### P3 联调验收
 
-- [ ] P3-T01 上传图片后 GET 返回 presigned URL 可显示
-- [ ] P3-T02 同一 wordKey 默认污渍 deterministic
-- [ ] P3-T03 学习 / 卡拍 / 分组详情三处污渍一致
-
+- [ ] P3-T01 上传图片后 GET 返回 presigned URL 可显示 — 待真机/curl
+- [ ] P3-T02 同一 wordKey 默认污渍 deterministic — `StableHashTest` 已覆盖 seed；待 UI 验收
+- [ ] P3-T03 学习 / 卡拍 / 分组详情三处污渍一致 — 待真机
 ---
 
 ## §P4 统计 + 设置完善
@@ -472,11 +494,12 @@ flowchart TD
   P0A --> P1[P1 今日+学习]
   P0B --> P1
   P1 --> P2[P2 测验]
-  P2 --> P4[P4 统计]
+  P2 --> P25[P2.5 多题型热力]
+  P25 --> P4[P4 统计]
   P1 --> P3[P3 媒体]
   P3 --> Q[§Q 发布]
   P4 --> Q
-  P2 --> Q
+  P25 --> Q
 ```
 
 ---
@@ -485,6 +508,8 @@ flowchart TD
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
+| 2026-07-09 | v3.0 | 稳定性热力 S + P2.5 双轨 skill/组测/设置；P3 媒体全栈；修复 `word_skill_progress.stage` JPA 校验；真机验收清单 |
+| 2026-07-09 | v2.9 | P3 全栈：Images/Stains MinIO API、Study WordCard 聚合、Android WordMediaRepository 去 Mock；P2 真机验收清单 |
 | 2026-07-09 | v2.8 | P2 全栈：B01~B10 Quiz API + applyQuizResult；Android QuizRepository + 组内全词数测验；Q-01 applyQuizResult 单测 |
 | 2026-07-08 | v2.7 | P1 全栈：B01~B12 Today/Study API、Android Today/Study 真 API + A16、P1-T01~T03 curl 冒烟 |
 | 2026-07-08 | v2.6 | P0-T04 真机全流程验收通过；P0 主链路里程碑达成；焦点转 P1 Today/Study |

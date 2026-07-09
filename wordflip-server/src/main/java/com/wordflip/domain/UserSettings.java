@@ -50,6 +50,19 @@ public class UserSettings {
     @Column(name = "review_reminder_enabled", nullable = false, columnDefinition = "TINYINT(1)")
     private boolean reviewReminderEnabled = false;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "heat_display_mode", nullable = false,
+            columnDefinition = "ENUM('combined', 'dictation', 'choice', 'free')")
+    private HeatDisplayMode heatDisplayMode = HeatDisplayMode.combined;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "quiz_launch_mode", nullable = false,
+            columnDefinition = "ENUM('mixed', 'free_select')")
+    private QuizLaunchMode quizLaunchMode = QuizLaunchMode.mixed;
+
+    @Column(name = "default_question_limit", nullable = false, columnDefinition = "TINYINT UNSIGNED")
+    private int defaultQuestionLimit = 10;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 }

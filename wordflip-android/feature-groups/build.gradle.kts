@@ -17,6 +17,7 @@ dependencies {
     implementation(project(":core-ui"))
     implementation(project(":core-model"))
     implementation(project(":core-network"))
+    implementation(project(":feature-settings"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

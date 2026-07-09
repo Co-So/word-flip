@@ -11,6 +11,8 @@ import com.wordflip.core.model.book.parseGroupStrategy
 import com.wordflip.core.model.book.storageValue
 import com.wordflip.core.model.group.GroupSource
 import com.wordflip.core.model.group.GroupStatus
+import com.wordflip.core.model.media.StainMode
+import com.wordflip.core.model.media.StainType
 import com.wordflip.core.model.settings.ThemeMode
 import com.wordflip.core.model.settings.parseThemeMode
 import com.wordflip.core.model.settings.storageValue
@@ -30,6 +32,8 @@ object WordFlipGson {
         .registerTypeAdapter(StudyReason::class.java, studyReasonAdapter())
         .registerTypeAdapter(ThemeMode::class.java, themeModeAdapter())
         .registerTypeAdapter(GroupStrategy::class.java, groupStrategyAdapter())
+        .registerTypeAdapter(StainType::class.java, stainTypeAdapter())
+        .registerTypeAdapter(StainMode::class.java, stainModeAdapter())
         .create()
 
     private fun bookSourceAdapter(): TypeAdapter<BookSource> = object : TypeAdapter<BookSource>() {
@@ -170,5 +174,58 @@ object WordFlipGson {
         }
 
         override fun read(reader: JsonReader): GroupStrategy = parseGroupStrategy(reader.nextString())
+    }
+
+    /** openapi：coffee / ink / highlight / crayon / random-line */
+    private fun stainTypeAdapter(): TypeAdapter<StainType> = object : TypeAdapter<StainType>() {
+        override fun write(out: JsonWriter, value: StainType?) {
+            if (value == null) {
+                out.nullValue()
+                return
+            }
+            out.value(
+                when (value) {
+                    StainType.COFFEE -> "coffee"
+                    StainType.INK -> "ink"
+                    StainType.HIGHLIGHT -> "highlight"
+                    StainType.CRAYON -> "crayon"
+                    StainType.RANDOM_LINE -> "random-line"
+                },
+            )
+        }
+
+        override fun read(reader: JsonReader): StainType {
+            return when (reader.nextString().lowercase()) {
+                "ink" -> StainType.INK
+                "highlight" -> StainType.HIGHLIGHT
+                "crayon" -> StainType.CRAYON
+                "random-line" -> StainType.RANDOM_LINE
+                else -> StainType.COFFEE
+            }
+        }
+    }
+
+    private fun stainModeAdapter(): TypeAdapter<StainMode> = object : TypeAdapter<StainMode>() {
+        override fun write(out: JsonWriter, value: StainMode?) {
+            if (value == null) {
+                out.nullValue()
+                return
+            }
+            out.value(
+                when (value) {
+                    StainMode.RANDOM -> "random"
+                    StainMode.SINGLE -> "single"
+                    StainMode.MULTI -> "multi"
+                },
+            )
+        }
+
+        override fun read(reader: JsonReader): StainMode {
+            return when (reader.nextString().lowercase()) {
+                "single" -> StainMode.SINGLE
+                "multi" -> StainMode.MULTI
+                else -> StainMode.RANDOM
+            }
+        }
     }
 }

@@ -13,7 +13,8 @@ object MainRoutes {
     const val STUDY = "study/{groupId}?groupName={groupName}&wordCount={wordCount}"
     const val GROUP_DETAIL = "group_detail/{groupId}?groupName={groupName}&stainMode={stainMode}"
     const val SNAPSHOT = "snapshot/{groupId}?groupName={groupName}"
-    const val QUIZ = "quiz/{source}?groupId={groupId}&wordLimit={wordLimit}&nonce={nonce}"
+    const val QUIZ =
+        "quiz/{source}?groupId={groupId}&wordLimit={wordLimit}&questionTypes={questionTypes}&launchMode={launchMode}&nonce={nonce}"
     const val CUSTOM_GROUP = "custom_group"
 
     fun studyRoute(groupId: Int, groupName: String, wordCount: Int): String {
@@ -31,12 +32,21 @@ object MainRoutes {
         return "snapshot/$groupId?groupName=$encodedName"
     }
 
+    /**
+     * 测验路由；[questionTypes] 为逗号分隔 apiValue（如 dictation,choice_en_cn）。
+     */
     fun quizRoute(
         source: String = "today",
         groupId: Int = -1,
         wordLimit: Int = 10,
+        questionTypes: String = "",
+        launchMode: String = "",
         nonce: Long = System.currentTimeMillis(),
-    ): String = "quiz/$source?groupId=$groupId&wordLimit=$wordLimit&nonce=$nonce"
+    ): String {
+        val types = Uri.encode(questionTypes)
+        val mode = Uri.encode(launchMode)
+        return "quiz/$source?groupId=$groupId&wordLimit=$wordLimit&questionTypes=$types&launchMode=$mode&nonce=$nonce"
+    }
 
     val tabRoutes = setOf(SETTINGS, BOOKS, GROUPS, STATS, TODAY)
 

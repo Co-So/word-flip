@@ -1,14 +1,19 @@
 package com.wordflip.feature.snapshot
 
+import android.content.Context
+import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.wordflip.core.model.fake.FakeStudyData
-import com.wordflip.core.model.fake.MockWordMediaStore
 import com.wordflip.core.model.media.ImageFilters
 import com.wordflip.core.model.media.ImageTransform
 import com.wordflip.core.model.study.WordCard
-import kotlinx.coroutines.delay
+import com.wordflip.core.model.study.WordImagePayload
+import com.wordflip.core.network.media.WordMediaRepository
+import com.wordflip.core.network.study.StudyRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -18,11 +23,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 卡拍页 ViewModel（REQ-SNAP-1~6）：组内卡片网格、选图/拍照、编辑器保存 Mock。
+ * 卡拍页 ViewModel（REQ-SNAP-1~6）：组内卡片网格；媒体走 WordMediaRepository（P3 真 API）。
  */
-class SnapshotViewModel(
-    private val groupId: Int,
+@HiltViewModel
+class SnapshotViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val appContext: Context,
+    private val studyRepository: StudyRepository,
+    private val wordMediaRepository: WordMediaRepository,
 ) : ViewModel() {
+
+    private val groupId: Int = checkNotNull(savedStateHandle["groupId"])
 
     private val _uiState = MutableStateFlow<SnapshotUiState>(SnapshotUiState.Loading)
     val uiState: StateFlow<SnapshotUiState> = _uiState.asStateFlow()
@@ -30,15 +41,12 @@ class SnapshotViewModel(
     private val _events = MutableSharedFlow<SnapshotUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<SnapshotUiEvent> = _events.asSharedFlow()
 
-    private var baseWords: List<WordCard> = emptyList()
+    /** 选图后、上传前的本地 URI */
+    private val pendingLocalUris = mutableMapOf<String, String>()
+    private var pickTargetWordKey: String? = null
 
     init {
         loadGroup()
-        viewModelScope.launch {
-            MockWordMediaStore.revision.collect {
-                refreshWords()
-            }
-        }
     }
 
     fun reload() = loadGroup()
@@ -46,26 +54,34 @@ class SnapshotViewModel(
     private fun loadGroup() {
         viewModelScope.launch {
             _uiState.value = SnapshotUiState.Loading
-            delay(150)
-            val payload = FakeStudyData.forGroup(groupId)
-            if (payload == null) {
-                _uiState.value = SnapshotUiState.Error("未找到分组")
-                return@launch
-            }
-            baseWords = payload.words
-            _uiState.value = SnapshotUiState.Content(
-                groupName = payload.group.name,
-                words = mergeWords(),
-                flipStates = payload.words.associate { it.wordKey to false },
-            )
+            studyRepository.loadStudyGroup(groupId)
+                .onSuccess { payload ->
+                    val words = payload.words.map { it.withPendingLocalPreview() }
+                    _uiState.value = SnapshotUiState.Content(
+                        groupName = payload.group.name,
+                        words = words,
+                        flipStates = words.associate { it.wordKey to false },
+                    )
+                }
+                .onFailure { error ->
+                    _uiState.value = SnapshotUiState.Error(error.message ?: "加载卡拍数据失败")
+                }
         }
     }
 
-    private fun mergeWords(): List<WordCard> = MockWordMediaStore.applyToWords(baseWords)
+    private fun WordCard.withPendingLocalPreview(): WordCard {
+        val local = pendingLocalUris[wordKey] ?: return this
+        return copy(image = image.copy(hasImage = true, imageUrl = local))
+    }
 
-    private fun refreshWords() {
-        val content = _uiState.value as? SnapshotUiState.Content ?: return
-        _uiState.value = content.copy(words = mergeWords())
+    private fun applyImageToWord(wordKey: String, image: WordImagePayload) {
+        updateContent { content ->
+            content.copy(
+                words = content.words.map { card ->
+                    if (card.wordKey == wordKey) card.copy(image = image) else card
+                },
+            )
+        }
     }
 
     private inline fun updateContent(block: (SnapshotUiState.Content) -> SnapshotUiState.Content) {
@@ -82,17 +98,14 @@ class SnapshotViewModel(
         }
     }
 
-    /** 编辑器内「换图」：关闭编辑器并弹出选图 Sheet（不可走 onBackFaceClick，否则会立刻重开编辑器） */
     fun requestReplaceImage(wordKey: String) {
         updateContent { it.copy(editorWordKey = null, sheetWordKey = wordKey) }
     }
 
-    /** 记录即将选图的目标词，避免 Activity Result 回调时 sheetWordKey 已丢失 */
     fun markPickTarget(wordKey: String) {
         pickTargetWordKey = wordKey
     }
 
-    /** 相册/相机返回后消费 pick 目标 */
     fun onImagePickedFromLauncher(uri: String) {
         val key = pickTargetWordKey
             ?: (_uiState.value as? SnapshotUiState.Content)?.sheetWordKey
@@ -101,9 +114,6 @@ class SnapshotViewModel(
         onImagePicked(key, uri)
     }
 
-    private var pickTargetWordKey: String? = null
-
-    /** 无图背面点击：打开添加图片 Sheet */
     fun onBackFaceClick(wordKey: String) {
         val word = word(wordKey) ?: return
         if (word.image.hasImage) {
@@ -125,43 +135,73 @@ class SnapshotViewModel(
         updateContent { it.copy(editorWordKey = null) }
     }
 
-    /** P3-A04：选图/拍照后进入编辑器 */
     fun onImagePicked(wordKey: String, uri: String) {
-        MockWordMediaStore.saveImage(wordKey, uri)
+        pendingLocalUris[wordKey] = uri
+        applyImageToWord(wordKey, WordImagePayload(hasImage = true, imageUrl = uri, showCnOnImage = true))
         openEditor(wordKey)
         viewModelScope.launch {
             _events.emit(SnapshotUiEvent.Toast("已选择图片"))
         }
     }
 
-    /** P3-A06 Mock 保存 */
+    /** 有本地待传文件则 POST；否则 PATCH transform */
     fun saveImageEdit(
         wordKey: String,
         transform: ImageTransform,
         filters: ImageFilters,
         showCn: Boolean,
     ) {
-        val stored = MockWordMediaStore.getImage(wordKey) ?: return
-        MockWordMediaStore.saveImage(
-            wordKey = wordKey,
-            localUri = stored.localUri,
-            transform = transform,
-            filters = filters,
-            showCnOnImage = showCn,
-        )
-        closeEditor()
         viewModelScope.launch {
-            _events.emit(SnapshotUiEvent.Toast("已保存到卡片"))
+            val pendingUri = pendingLocalUris[wordKey]
+            val result = if (pendingUri != null) {
+                val bytes = readUriBytes(pendingUri)
+                if (bytes == null) {
+                    _events.emit(SnapshotUiEvent.Toast("读取图片失败"))
+                    return@launch
+                }
+                wordMediaRepository.uploadImage(
+                    wordKey = wordKey,
+                    fileBytes = bytes,
+                    mimeType = guessMime(pendingUri),
+                    transform = transform,
+                    filters = filters,
+                    showCn = showCn,
+                )
+            } else {
+                wordMediaRepository.patchImageTransform(wordKey, transform, filters, showCn)
+            }
+            result
+                .onSuccess { payload ->
+                    pendingLocalUris.remove(wordKey)
+                    applyImageToWord(wordKey, payload)
+                    // 保存后翻到背面便于立即查看（REQ-IMAGE-16）
+                    updateContent { content ->
+                        content.copy(
+                            editorWordKey = null,
+                            flipStates = content.flipStates + (wordKey to true),
+                        )
+                    }
+                    _events.emit(SnapshotUiEvent.Toast("已保存到卡片"))
+                }
+                .onFailure { error ->
+                    _events.emit(SnapshotUiEvent.Toast(error.message ?: "保存失败"))
+                }
         }
     }
 
-    /** P3-A06 Mock 清除 */
     fun clearImage(wordKey: String) {
-        MockWordMediaStore.clearImage(wordKey)
-        closeSheet()
-        closeEditor()
         viewModelScope.launch {
-            _events.emit(SnapshotUiEvent.Toast("已清除图片"))
+            wordMediaRepository.deleteImage(wordKey)
+                .onSuccess {
+                    pendingLocalUris.remove(wordKey)
+                    applyImageToWord(wordKey, WordImagePayload())
+                    closeSheet()
+                    closeEditor()
+                    _events.emit(SnapshotUiEvent.Toast("已清除图片"))
+                }
+                .onFailure { error ->
+                    _events.emit(SnapshotUiEvent.Toast(error.message ?: "清除失败"))
+                }
         }
     }
 
@@ -171,10 +211,17 @@ class SnapshotViewModel(
             ?.firstOrNull { it.wordKey == wordKey }
     }
 
-    class Factory(private val groupId: Int) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return SnapshotViewModel(groupId) as T
+    private fun readUriBytes(uriString: String): ByteArray? = try {
+        appContext.contentResolver.openInputStream(Uri.parse(uriString))?.use { it.readBytes() }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun guessMime(uriString: String): String {
+        val mime = appContext.contentResolver.getType(Uri.parse(uriString))
+        return when {
+            mime == "image/png" || mime == "image/jpeg" || mime == "image/webp" -> mime
+            else -> "image/jpeg"
         }
     }
 }

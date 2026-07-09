@@ -5,6 +5,7 @@ import com.wordflip.dto.today.TodayDashboard;
 import com.wordflip.repository.GroupRepository;
 import com.wordflip.repository.GroupWordRepository;
 import com.wordflip.repository.TodayQueryRepository;
+import com.wordflip.repository.UserRecentGroupRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -15,7 +16,6 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -31,6 +31,8 @@ class TodayServiceTest {
     private GroupRepository groupRepository;
     @Mock
     private GroupWordRepository groupWordRepository;
+    @Mock
+    private UserRecentGroupRepository userRecentGroupRepository;
     @Mock
     private ReviewService reviewService;
     @Mock
@@ -51,12 +53,14 @@ class TodayServiceTest {
         when(todayQueryRepository.countNewWordsInGroup(1L, 10L)).thenReturn(42L);
         when(todayQueryRepository.countDueReviewInGroup(eq(1L), eq(10L), eq(today))).thenReturn(0L);
         when(reviewService.calculateStreakDays(1L, today)).thenReturn(0);
+        when(userRecentGroupRepository.findRecentByUserId(1L)).thenReturn(List.of());
 
         TodayDashboard dashboard = todayService.buildDashboard(1L, today);
 
         assertThat(dashboard.tasks().newWords().count()).isEqualTo(42);
         assertThat(dashboard.stats().completionPercent()).isZero();
         assertThat(dashboard.recommendedStudy()).isNotNull();
+        assertThat(dashboard.recentGroups()).isEmpty();
     }
 
     private static StudyGroup sampleGroup() {

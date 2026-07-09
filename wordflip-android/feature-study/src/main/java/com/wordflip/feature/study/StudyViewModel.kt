@@ -1,15 +1,17 @@
 package com.wordflip.feature.study
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.wordflip.core.model.media.ImageFilters
 import com.wordflip.core.model.media.ImageTransform
-import com.wordflip.core.model.media.StainMode
 import com.wordflip.core.model.media.StainType
-import com.wordflip.core.model.fake.MockWordMediaStore
 import com.wordflip.core.model.study.WordCard
+import com.wordflip.core.model.study.WordImagePayload
+import com.wordflip.core.model.study.WordStainPayload
+import com.wordflip.core.network.media.WordMediaRepository
 import com.wordflip.core.network.study.StudyRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,13 +26,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 学习页 ViewModel：GET /study/groups/{id}；退出时 POST /study/sessions（P1-A16）。
+ * 学习页 ViewModel：GET /study/groups/{id}；媒体走 WordMediaRepository（P3 真 API）。
  */
 @HiltViewModel
 class StudyViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     @ApplicationContext appContext: Context,
     private val studyRepository: StudyRepository,
+    private val wordMediaRepository: WordMediaRepository,
 ) : ViewModel() {
 
     private val groupId: Int = checkNotNull(savedStateHandle["groupId"])
@@ -41,34 +44,17 @@ class StudyViewModel @Inject constructor(
     private val viewedWordKeys = mutableSetOf<String>()
     private var sessionReported = false
 
+    /** 选图后、上传前的本地 URI，供编辑器预览 */
+    private val pendingLocalUris = mutableMapOf<String, String>()
+
     private val _uiState = MutableStateFlow<StudyUiState>(StudyUiState.Loading)
     val uiState: StateFlow<StudyUiState> = _uiState.asStateFlow()
 
     private val _events = MutableSharedFlow<StudyUiEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<StudyUiEvent> = _events.asSharedFlow()
 
-    private var baseWords: List<WordCard> = emptyList()
-
     init {
         loadGroup()
-        viewModelScope.launch {
-            MockWordMediaStore.revision.collect {
-                refreshMediaOverlay()
-            }
-        }
-    }
-
-    private fun refreshMediaOverlay() {
-        val content = _uiState.value as? StudyUiState.Content ?: return
-        updateContent { state ->
-            // 保留当前打乱顺序，仅叠加图片/污渍 Mock 状态
-            state.copy(
-                orderedWords = state.orderedWords.map { card ->
-                    val base = baseWords.find { it.wordKey == card.wordKey } ?: card
-                    MockWordMediaStore.applyToWordCard(base)
-                },
-            )
-        }
     }
 
     private fun loadGroup() {
@@ -77,11 +63,11 @@ class StudyViewModel @Inject constructor(
             studyRepository.loadStudyGroup(groupId)
                 .onSuccess { payload ->
                     val guideDismissed = guidePreferences.isGuideDismissed()
-                    baseWords = payload.words
+                    val words = payload.words.map { it.withPendingLocalPreview() }
                     _uiState.value = StudyUiState.Content(
-                        payload = payload,
-                        orderedWords = MockWordMediaStore.applyToWords(baseWords),
-                        flipStates = payload.words.associate { it.wordKey to false },
+                        payload = payload.copy(words = words),
+                        orderedWords = words,
+                        flipStates = words.associate { it.wordKey to false },
                         isShuffling = false,
                         detailWordKey = null,
                         showGuide = !guideDismissed,
@@ -91,6 +77,35 @@ class StudyViewModel @Inject constructor(
                 .onFailure { error ->
                     _uiState.value = StudyUiState.Error(error.message ?: "加载学习数据失败")
                 }
+        }
+    }
+
+    private fun WordCard.withPendingLocalPreview(): WordCard {
+        val local = pendingLocalUris[wordKey] ?: return this
+        return copy(image = image.copy(hasImage = true, imageUrl = local))
+    }
+
+    private fun applyImageToWord(wordKey: String, image: WordImagePayload) {
+        updateContent { state ->
+            val mapper: (WordCard) -> WordCard = { card ->
+                if (card.wordKey == wordKey) card.copy(image = image) else card
+            }
+            state.copy(
+                orderedWords = state.orderedWords.map(mapper),
+                payload = state.payload.copy(words = state.payload.words.map(mapper)),
+            )
+        }
+    }
+
+    private fun applyStainToWord(wordKey: String, stain: WordStainPayload) {
+        updateContent { state ->
+            val mapper: (WordCard) -> WordCard = { card ->
+                if (card.wordKey == wordKey) card.copy(stain = stain) else card
+            }
+            state.copy(
+                orderedWords = state.orderedWords.map(mapper),
+                payload = state.payload.copy(words = state.payload.words.map(mapper)),
+            )
         }
     }
 
@@ -263,8 +278,9 @@ class StudyViewModel @Inject constructor(
             editorReturnDetailWordKey = key
         }
         pickTargetWordKey = null
-        MockWordMediaStore.saveImage(key, uri)
-        updateContent { it.copy(editorWordKey = key, detailWordKey = null) }
+        pendingLocalUris[key] = uri
+        applyImageToWord(key, WordImagePayload(hasImage = true, imageUrl = uri, showCnOnImage = true))
+        updateContent { it.copy(editorWordKey = key, detailWordKey = null, imagePickSheetWordKey = null) }
         viewModelScope.launch {
             _events.emit(StudyUiEvent.Toast("已添加图片"))
         }
@@ -308,17 +324,35 @@ class StudyViewModel @Inject constructor(
         filters: ImageFilters,
         showCn: Boolean,
     ) {
-        val stored = MockWordMediaStore.getImage(wordKey) ?: return
-        MockWordMediaStore.saveImage(
-            wordKey = wordKey,
-            localUri = stored.localUri,
-            transform = transform,
-            filters = filters,
-            showCnOnImage = showCn,
-        )
-        closeImageEditor()
         viewModelScope.launch {
-            _events.emit(StudyUiEvent.Toast("已保存到卡片"))
+            val pendingUri = pendingLocalUris[wordKey]
+            val result = if (pendingUri != null) {
+                val bytes = readUriBytes(pendingUri)
+                if (bytes == null) {
+                    _events.emit(StudyUiEvent.Toast("读取图片失败"))
+                    return@launch
+                }
+                wordMediaRepository.uploadImage(
+                    wordKey = wordKey,
+                    fileBytes = bytes,
+                    mimeType = guessMime(pendingUri),
+                    transform = transform,
+                    filters = filters,
+                    showCn = showCn,
+                )
+            } else {
+                wordMediaRepository.patchImageTransform(wordKey, transform, filters, showCn)
+            }
+            result
+                .onSuccess { payload ->
+                    pendingLocalUris.remove(wordKey)
+                    applyImageToWord(wordKey, payload)
+                    closeImageEditor()
+                    _events.emit(StudyUiEvent.Toast("已保存到卡片"))
+                }
+                .onFailure { error ->
+                    _events.emit(StudyUiEvent.Toast(error.message ?: "保存失败"))
+                }
         }
     }
 
@@ -334,30 +368,24 @@ class StudyViewModel @Inject constructor(
         wordKey: String,
         allowedTypes: List<StainType> = StainType.entries,
     ) {
-        val types = allowedTypes.ifEmpty { StainType.entries }
-        val mode = when (types.size) {
-            1 -> StainMode.SINGLE
-            StainType.entries.size -> StainMode.RANDOM
-            else -> StainMode.MULTI
+        viewModelScope.launch {
+            wordMediaRepository.regenerateStain(wordKey, allowedTypes.ifEmpty { StainType.entries })
+                .onSuccess { applyStainToWord(wordKey, it) }
+                .onFailure { _events.emit(StudyUiEvent.Toast(it.message ?: "更换污渍失败")) }
         }
-        MockWordMediaStore.regenerateStain(
-            wordKey = wordKey,
-            mode = mode,
-            allowedTypes = types,
-        )
     }
 
     /** REQ-STUDY-18 / REQ-STAIN-5~7：显示/隐藏污渍切换 */
     fun toggleStainVisibility(wordKey: String) {
         val word = currentWord(wordKey) ?: return
-        if (word.stain.hidden) {
-            MockWordMediaStore.showStain(wordKey)
-        } else {
-            MockWordMediaStore.hideStain(wordKey)
+        viewModelScope.launch {
+            wordMediaRepository.setStainHidden(wordKey, !word.stain.hidden)
+                .onSuccess { applyStainToWord(wordKey, it) }
+                .onFailure { _events.emit(StudyUiEvent.Toast(it.message ?: "更新污渍失败")) }
         }
     }
 
-    /** REQ-STUDY-19：图片上显示中文 overlay 开关（Mock 状态） */
+    /** REQ-STUDY-19：图片上显示中文 overlay 开关 */
     fun toggleShowCnOnImage(wordKey: String) {
         val word = currentWord(wordKey) ?: return
         if (!word.image.hasImage) {
@@ -366,12 +394,30 @@ class StudyViewModel @Inject constructor(
             }
             return
         }
-        MockWordMediaStore.toggleShowCnOnImage(wordKey)
+        val nextShow = !word.image.showCnOnImage
+        val transform = word.image.transform ?: ImageTransform()
+        val filters = word.image.filters ?: ImageFilters()
         viewModelScope.launch {
-            val next = MockWordMediaStore.getImage(wordKey)?.showCnOnImage == true
-            _events.emit(
-                StudyUiEvent.Toast(if (next) "已显示中文" else "已隐藏中文"),
-            )
+            wordMediaRepository.patchImageTransform(wordKey, transform, filters, nextShow)
+                .onSuccess {
+                    applyImageToWord(wordKey, it)
+                    _events.emit(StudyUiEvent.Toast(if (nextShow) "已显示中文" else "已隐藏中文"))
+                }
+                .onFailure { _events.emit(StudyUiEvent.Toast(it.message ?: "更新失败")) }
+        }
+    }
+
+    private fun readUriBytes(uriString: String): ByteArray? = try {
+        appContext.contentResolver.openInputStream(Uri.parse(uriString))?.use { it.readBytes() }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun guessMime(uriString: String): String {
+        val mime = appContext.contentResolver.getType(Uri.parse(uriString))
+        return when {
+            mime == "image/png" || mime == "image/jpeg" || mime == "image/webp" -> mime
+            else -> "image/jpeg"
         }
     }
 

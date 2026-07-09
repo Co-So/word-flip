@@ -8,6 +8,7 @@ import com.wordflip.core.model.study.StudyGroupPayload
 import com.wordflip.core.model.study.WordCard
 import com.wordflip.core.model.study.WordDetail
 import com.wordflip.core.model.media.StainGenerator
+import com.wordflip.core.model.study.WordProgressSnapshot
 import com.wordflip.core.model.study.WordStainPayload
 import com.wordflip.core.model.study.WordSummary
 
@@ -58,6 +59,7 @@ object FakeStudyData {
     fun wordsForGroupDetail(groupId: Int): List<GroupWordItem> {
         val payload = forGroup(groupId) ?: return emptyList()
         return payload.words.mapIndexed { index, card ->
+            val mastery = detailMasteryFor(groupId, index)
             GroupWordItem(
                 summary = WordSummary(
                     wordKey = card.wordKey,
@@ -66,29 +68,86 @@ object FakeStudyData {
                     pos = card.pos,
                     ph = card.ph,
                 ),
-                mastery = detailMasteryFor(groupId, index),
+                mastery = mastery,
+                progress = fakeProgressFor(mastery, index),
             )
         }
     }
 
-    /** 按组与序号注入展示用三态分布 */
+    /** Mock 双轨进度：choice 略弱于 dictation，展示热力取较低档 */
+    private fun fakeProgressFor(dictation: MasterySnapshot, index: Int): WordProgressSnapshot {
+        val choice = when (index % 3) {
+            0 -> dictation.copy(skill = "choice")
+            1 -> MasterySnapshot(
+                level = MasteryLevel.FUZZY,
+                hasQuizHistory = true,
+                stage = 1,
+                stability = 15.0,
+                heatLevel = 1,
+                skill = "choice",
+            )
+            else -> MasterySnapshot(
+                level = MasteryLevel.UNLEARNED,
+                hasQuizHistory = false,
+                skill = "choice",
+            )
+        }
+        val displayHeat = minOf(dictation.heatLevel, choice.heatLevel)
+        val displayStability = minOf(dictation.stability, choice.stability)
+        return WordProgressSnapshot(
+            dictation = dictation.copy(skill = "dictation"),
+            choice = choice,
+            displayHeatLevel = displayHeat,
+            displayStability = displayStability,
+            heatDisplayMode = "combined",
+        )
+    }
+
+    /** 按组与序号注入展示用热力 + 三态分布 */
     private fun detailMasteryFor(groupId: Int, index: Int): MasterySnapshot {
         return when (groupId) {
             1 -> when (index % 5) {
-                0, 1 -> MasterySnapshot(MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 3)
-                2 -> MasterySnapshot(MasteryLevel.FUZZY, hasQuizHistory = true, stage = 1)
-                else -> MasterySnapshot(MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 5)
+                0, 1 -> MasterySnapshot(
+                    MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 3,
+                    stability = 45.0, heatLevel = 2,
+                )
+                2 -> MasterySnapshot(
+                    MasteryLevel.FUZZY, hasQuizHistory = true, stage = 1,
+                    stability = 18.0, heatLevel = 1,
+                )
+                else -> MasterySnapshot(
+                    MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 5,
+                    stability = 82.0, heatLevel = 4,
+                )
             }
             2 -> when (index % 4) {
-                0 -> MasterySnapshot(MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 2)
-                1 -> MasterySnapshot(MasteryLevel.FUZZY, hasQuizHistory = true, stage = 1)
-                2 -> MasterySnapshot(MasteryLevel.UNKNOWN, hasQuizHistory = true, stage = 0)
+                0 -> MasterySnapshot(
+                    MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 2,
+                    stability = 35.0, heatLevel = 2,
+                )
+                1 -> MasterySnapshot(
+                    MasteryLevel.FUZZY, hasQuizHistory = true, stage = 1,
+                    stability = 12.0, heatLevel = 1,
+                )
+                2 -> MasterySnapshot(
+                    MasteryLevel.UNKNOWN, hasQuizHistory = true, stage = 0,
+                    stability = 5.0, heatLevel = 0,
+                )
                 else -> MasterySnapshot(MasteryLevel.UNLEARNED, hasQuizHistory = false)
             }
             5, 6 -> when (index % 3) {
-                0 -> MasterySnapshot(MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 2)
-                1 -> MasterySnapshot(MasteryLevel.FUZZY, hasQuizHistory = true, stage = 1)
-                else -> MasterySnapshot(MasteryLevel.UNKNOWN, hasQuizHistory = true, stage = 0)
+                0 -> MasterySnapshot(
+                    MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 2,
+                    stability = 28.0, heatLevel = 1,
+                )
+                1 -> MasterySnapshot(
+                    MasteryLevel.FUZZY, hasQuizHistory = true, stage = 1,
+                    stability = 15.0, heatLevel = 1,
+                )
+                else -> MasterySnapshot(
+                    MasteryLevel.UNKNOWN, hasQuizHistory = true, stage = 0,
+                    stability = 3.0, heatLevel = 0,
+                )
             }
             else -> MasterySnapshot(MasteryLevel.UNLEARNED, hasQuizHistory = false)
         }

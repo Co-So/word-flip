@@ -67,6 +67,12 @@
             <artifactId>minio</artifactId>
             <version>${minio.version}</version>
         </dependency>
+        <!-- ImageIO WebP 编解码（P3 卡拍压缩为 .webp） -->
+        <dependency>
+            <groupId>org.sejda.imageio</groupId>
+            <artifactId>webp-imageio</artifactId>
+            <version>0.1.6</version>
+        </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>

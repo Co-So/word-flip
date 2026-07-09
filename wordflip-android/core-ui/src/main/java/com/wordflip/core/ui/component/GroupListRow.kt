@@ -72,7 +72,7 @@ fun GroupListRow(
                         GroupListStatusBadge(status = group.status)
                     }
                     Text(
-                        text = "未学习 ${group.stats.unlearned} · 模糊 ${group.stats.fuzzy} · 总 ${group.stats.total}",
+                        text = "新词 ${group.stats.heat0} · 巩固 ${group.stats.heat2} · 很熟 ${group.stats.heat4} · 总 ${group.stats.total}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

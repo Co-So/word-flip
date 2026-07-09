@@ -1,14 +1,21 @@
 package com.wordflip.core.model.quiz
 
-import com.wordflip.core.model.study.MasteryLevel
+import com.wordflip.core.model.settings.QuestionType
+import com.wordflip.core.model.settings.apiValue
 import com.wordflip.core.model.study.MasterySnapshot
 import com.wordflip.core.model.study.WordDetail
 
-/** 测验入口来源，对齐 openapi `CreateQuizSessionRequest.source` */
+/**
+ * 测验入口来源，对齐 openapi `CreateQuizSessionRequest.source`。
+ * today/study/retry 沿用原入口；groups/all/recent 为组测扩展。
+ */
 enum class QuizSource {
     TODAY,
     STUDY,
     RETRY,
+    GROUPS,
+    ALL,
+    RECENT,
 }
 
 /** 题目提示，对齐 openapi `QuizQuestion.prompt` */
@@ -16,6 +23,14 @@ data class QuizPrompt(
     val cn: String,
     val pos: String? = null,
     val ph: String? = null,
+    /** choice_cn_en 等题型可返回英文提示 */
+    val en: String? = null,
+)
+
+/** 选择题选项，对齐 openapi `QuizQuestion.options[]` */
+data class QuizOption(
+    val key: String,
+    val label: String,
 )
 
 /**
@@ -26,9 +41,16 @@ data class QuizQuestionItem(
     val wordKey: String,
     val expectedEn: String,
     val prompt: QuizPrompt,
+    /** 题型；缺省默写以兼容旧响应 */
+    val type: String = QuestionType.DICTATION.apiValue(),
+    /** 选择题选项；dictation 为 null */
+    val options: List<QuizOption>? = null,
     /** 错题巩固：词义详情（Mock 来自 WordCard.detail） */
     val detail: WordDetail? = null,
-)
+) {
+    val isChoice: Boolean
+        get() = type.startsWith("choice_")
+}
 
 /** 判题反馈类型，对齐 openapi `AnswerResult.feedback` */
 enum class QuizFeedbackType {

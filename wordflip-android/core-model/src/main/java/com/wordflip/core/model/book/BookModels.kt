@@ -66,7 +66,21 @@ data class UserSettingsResponse(
     val groupStrategy: GroupStrategy = GroupStrategy.BOOK_ORDER,
     val autoSpeak: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val heatDisplayMode: String = "combined",
+    val quizLaunchMode: String = "mixed",
+    val defaultQuestionLimit: Int = 10,
     val summary: BooksSummary,
+)
+
+/**
+ * PATCH /settings/preferences 请求体（不触发分组追加）。
+ */
+data class PreferencesPatchRequest(
+    val autoSpeak: Boolean? = null,
+    val themeMode: String? = null,
+    val heatDisplayMode: String? = null,
+    val quizLaunchMode: String? = null,
+    val defaultQuestionLimit: Int? = null,
 )
 
 /**
@@ -103,6 +117,9 @@ data class SaveBooksSettingsResponse(
     val groupStrategy: GroupStrategy = GroupStrategy.BOOK_ORDER,
     val autoSpeak: Boolean,
     val themeMode: ThemeMode,
+    val heatDisplayMode: String = "combined",
+    val quizLaunchMode: String = "mixed",
+    val defaultQuestionLimit: Int = 10,
     val summary: BooksSummary,
     val appendedGroups: AppendedGroups,
 )

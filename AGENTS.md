@@ -48,14 +48,14 @@
 
 | 规则 | 说明 |
 |------|------|
-| **掌握度仅测验写入** | 三态 `unlearned` / `fuzzy` / `unknown`；唯一入口 `ReviewService.applyQuizResult`，由 `QuizService` 调用。**禁止** `PATCH /words/{wordKey}/mastery` 或客户端/local 改态 |
-| **学习翻转不改态** | 卡片浏览、`POST /study/sessions` 不更新掌握度 |
+| **掌握度仅测验写入** | 队列三态 `unlearned` / `fuzzy` / `unknown` + 稳定性 `stability`（S）；**按 skill 双轨**（`dictation` / `choice`）各一套热力与 SRS；唯一入口 `ReviewService.applyQuizResult`，由 `QuizService` 调用。**禁止** `PATCH /words/{wordKey}/mastery` 或客户端/local 改态 |
+| **学习翻转不改态** | 卡片浏览、`POST /study/sessions` 不更新三态与稳定性 S |
 | **分组增量追加** | `PUT /settings` 仅对未入组词 append 新 groups；**禁止** DELETE/重建已有 groups |
 | **一词一组** | `UNIQUE(user_id, word_key)` on `group_words` |
 | **wordKey** | `en.trim().toLowerCase()`；用户域学习进度均绑 `(user_id, word_key)` |
 | **取消勾选不撤词** | 取消词书勾选不删除已入组单词 |
 | **服务端权威** | SRS 间隔、判题、导入解析、今日任务计数均在 **Spring Boot**；Android 不做业务计算 |
-| **已掌握统计** | `stage >= 5 AND DATEDIFF(next_review_at, today) >= 30`（非第四档掌握度） |
+| **已掌握统计** | `stability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（非用户可选状态）；组详情主展示 heatLevel |
 
 SRS 间隔（天）：`[1, 2, 4, 7, 15, 30]`。详见 `api-modules.md` §2.2。
 

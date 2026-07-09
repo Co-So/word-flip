@@ -25,11 +25,11 @@ object FakeQuizData {
         questionLimit: Int = DEFAULT_LIMIT,
     ): QuizSessionPayload {
         val words = when (source) {
-            QuizSource.STUDY -> {
+            QuizSource.STUDY, QuizSource.GROUPS, QuizSource.RECENT -> {
                 val payload = FakeStudyData.forGroup(groupId ?: 3)
                 payload?.words.orEmpty()
             }
-            QuizSource.TODAY, QuizSource.RETRY -> {
+            QuizSource.TODAY, QuizSource.RETRY, QuizSource.ALL -> {
                 // Mock：合并第 2、3 组词作为测验池（模拟到期复习 ∪ fuzzy/unknown）
                 val group2 = FakeStudyData.forGroup(2)?.words.orEmpty()
                 val group3 = FakeStudyData.forGroup(3)?.words.orEmpty()
@@ -48,6 +48,8 @@ object FakeQuizData {
                     pos = card.pos,
                     ph = card.ph,
                 ),
+                type = "dictation",
+                options = null,
                 detail = card.detail,
             )
         }
@@ -64,11 +66,25 @@ object FakeQuizData {
         correct: Boolean,
         consecutiveWrongBefore: Int,
     ): Pair<MasterySnapshot, MasterySnapshot> {
-        val before = MasterySnapshot(MasteryLevel.UNLEARNED, hasQuizHistory = consecutiveWrongBefore > 0)
+        val before = MasterySnapshot(
+            MasteryLevel.UNLEARNED,
+            hasQuizHistory = consecutiveWrongBefore > 0,
+            stability = if (consecutiveWrongBefore > 0) 20.0 else 0.0,
+            heatLevel = if (consecutiveWrongBefore > 0) 1 else 0,
+        )
         val after = when {
-            correct -> MasterySnapshot(MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 2)
-            consecutiveWrongBefore >= 1 -> MasterySnapshot(MasteryLevel.UNKNOWN, hasQuizHistory = true, stage = 0)
-            else -> MasterySnapshot(MasteryLevel.FUZZY, hasQuizHistory = true, stage = 1)
+            correct -> MasterySnapshot(
+                MasteryLevel.UNLEARNED, hasQuizHistory = true, stage = 2,
+                stability = 25.0, heatLevel = 1,
+            )
+            consecutiveWrongBefore >= 1 -> MasterySnapshot(
+                MasteryLevel.UNKNOWN, hasQuizHistory = true, stage = 0,
+                stability = 5.0, heatLevel = 0,
+            )
+            else -> MasterySnapshot(
+                MasteryLevel.FUZZY, hasQuizHistory = true, stage = 1,
+                stability = 12.0, heatLevel = 1,
+            )
         }
         return before to after
     }

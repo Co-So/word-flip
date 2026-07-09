@@ -121,7 +121,6 @@ fun StudyScreen(
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.background,
-            snackbarHost = { WordFlipToastHost(snackbarHostState) },
             topBar = {
                 // 编辑器全屏时隐藏学习页 TopBar，避免误触返回「今日」
                 if (!isEditorOpen) {
@@ -254,6 +253,14 @@ fun StudyScreen(
                 },
             )
         }
+
+        // Toast 叠在编辑器之上，保存失败时用户才能看到提示
+        WordFlipToastHost(
+            snackbarHostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .zIndex(20f),
+        )
     }
 }
 

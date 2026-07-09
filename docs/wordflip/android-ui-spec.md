@@ -62,16 +62,15 @@ flowchart TB
 
 ---
 
-## 4. 掌握度展示（v6）
+## 4. 稳定性热力展示（v6.3）
 
-| 状态 | UI | 可编辑 |
+| 展示 | UI | 可编辑 |
 |------|-----|--------|
-| 未学习 | Chip + 图标 | **否** |
-| 模糊 | Chip + 图标 | **否** |
-| 不认识 | Chip + 图标 | **否** |
+| heatLevel 0–4 | 热力 Chip + 文案（新词/初识/巩固中/较熟/很熟） | **否** |
+| fuzzy / unknown | 薄弱角标（需加强 / 需重学） | **否** |
 
-- **最终状态由默写测验更新**（REQ-QUIZ-6）
-- 学习页卡片 **不显示** Chip；分组详情 **只读** 展示
+- **最终状态由默写测验更新**（REQ-QUIZ-6 / REQ-EBBING-8）；客户端不计算 S
+- 学习页卡片 **不显示** 热力 Chip；分组详情 **只读** 展示
 - 禁止 v5 的「记得/模糊」手动按钮
 
 ---
@@ -104,15 +103,15 @@ flowchart TB
 
 ### 5.4 分组管理
 
-- 组卡片：状态 Badge、**未学习/模糊/不认识/总词**、进度条
+- 组卡片：状态 Badge、**热力分档（新词…很熟）/总词**、进度条
 - 快捷：`PhotoCamera` 卡拍、`Palette` 污渍（48dp 触控）
 - 点击卡片 → 分组详情
 
 ### 5.5 分组详情
 
-- **列表模式**：单词 + 只读掌握度 Chip；顶栏：返回、污渍、开始学习
+- **列表模式**：单词 + 只读稳定性热力 Chip（薄弱角标可选）；顶栏：返回、污渍、开始学习
 - **污渍模式**：FilterChip 类型、一键生成、2 列预览网格
-- **无** 手动改掌握度
+- **无** 手动改掌握度 / 稳定性
 
 ### 5.6 卡片学习
 
@@ -169,7 +168,8 @@ Light / Dark 全屏验收清单见 MASTER §2–3 与 §8 修订说明。
 | `WordFlipTheme` | Light/Dark ColorScheme + Typography |
 | `WordFlipScaffold` | TopBar + 可选 bottom CTA + NavBar |
 | `FlipCard` | 双面翻转、污渍层 |
-| `MasteryChip` | 三态只读 |
+| `StabilityHeatChip` | 稳定性热力只读（+ 薄弱角标） |
+| `MasteryChip` | 遗留三态 Chip（可逐步弃用） |
 | `StatTripleRow` | 今日三格 |
 | `TaskRow` | 任务行 |
 | `BookListItem` | 词书勾选 |

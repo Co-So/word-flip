@@ -68,6 +68,7 @@ dependencies {
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+    implementation(libs.coil.compose)
     // Kotlin 2.2+ 使用 KSP 替代 kapt 处理 Hilt 注解
     ksp(libs.hilt.compiler)
 

@@ -1,10 +1,15 @@
 package com.wordflip.feature.settings
 
+import com.wordflip.core.model.settings.HeatDisplayMode
+import com.wordflip.core.model.settings.QuizLaunchMode
 import com.wordflip.core.model.settings.ThemeMode
 
 data class SettingsContent(
     val autoSpeak: Boolean,
     val themeMode: ThemeMode,
+    val heatDisplayMode: HeatDisplayMode = HeatDisplayMode.COMBINED,
+    val quizLaunchMode: QuizLaunchMode = QuizLaunchMode.MIXED,
+    val defaultQuestionLimit: Int = 10,
 )
 
 sealed interface SettingsUiState {

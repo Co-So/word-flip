@@ -46,9 +46,9 @@ class GroupServiceTest {
     @Mock
     private com.wordflip.repository.UserWordLexiconRepository userWordLexiconRepository;
     @Mock
-    private com.wordflip.repository.WordMasteryRepository wordMasteryRepository;
-    @Mock
     private com.wordflip.repository.WordFreqRankRepository wordFreqRankRepository;
+    @Mock
+    private ReviewService reviewService;
 
     @InjectMocks
     private GroupService groupService;

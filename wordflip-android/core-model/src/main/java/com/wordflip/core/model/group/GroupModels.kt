@@ -1,6 +1,7 @@
 package com.wordflip.core.model.group
 
 import com.wordflip.core.model.study.MasterySnapshot
+import com.wordflip.core.model.study.WordProgressSnapshot
 import com.wordflip.core.model.study.WordSummary
 
 /** 分组来源，对齐 openapi `GroupDetail.source` */
@@ -17,13 +18,15 @@ enum class GroupStatus {
 }
 
 /**
- * 分组四维统计，对齐 openapi `GroupStats`。
+ * 分组热力分档统计，对齐 openapi `GroupStats`。
  */
 data class GroupStats(
-    val unlearned: Int,
-    val fuzzy: Int,
-    val unknown: Int,
-    val total: Int,
+    val heat0: Int = 0,
+    val heat1: Int = 0,
+    val heat2: Int = 0,
+    val heat3: Int = 0,
+    val heat4: Int = 0,
+    val total: Int = 0,
 )
 
 /**
@@ -41,12 +44,17 @@ data class GroupDetail(
 
 /**
  * 分组单词列表项，对齐 openapi `GroupWordsResponse.words[]`。
- * 掌握度只读展示，仅测验写入（REQ-GROUP）。
+ * 掌握度只读展示，仅测验写入（REQ-GROUP）；热力优先 [progress.displayHeatLevel]。
  */
 data class GroupWordItem(
     val summary: WordSummary,
     val mastery: MasterySnapshot,
-)
+    val progress: WordProgressSnapshot? = null,
+) {
+    /** 组详情主展示热力档：优先 progress 聚合值 */
+    val displayHeatLevel: Int
+        get() = progress?.displayHeatLevel ?: mastery.heatLevel
+}
 
 /** GET /groups 响应 */
 data class GroupListResponse(
@@ -64,10 +72,12 @@ data class GroupWordItemDto(
     val pos: String? = null,
     val ph: String? = null,
     val mastery: MasterySnapshot,
+    val progress: WordProgressSnapshot? = null,
 ) {
     fun toGroupWordItem(): GroupWordItem = GroupWordItem(
         summary = WordSummary(wordKey = wordKey, en = en, cn = cn, pos = pos, ph = ph),
         mastery = mastery,
+        progress = progress,
     )
 }
 

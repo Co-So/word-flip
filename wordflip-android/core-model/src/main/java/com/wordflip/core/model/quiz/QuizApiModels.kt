@@ -1,12 +1,17 @@
 package com.wordflip.core.model.quiz
 
+import com.wordflip.core.model.settings.QuestionType
+import com.wordflip.core.model.settings.apiValue
 import com.wordflip.core.model.study.MasterySnapshot
 
 /** POST /quiz/sessions 请求体 */
 data class CreateQuizSessionRequest(
     val source: String = "today",
     val groupId: Int? = null,
+    val groupIds: List<Int>? = null,
     val questionLimit: Int = 10,
+    val questionTypes: List<String>? = null,
+    val launchMode: String? = null,
 )
 
 /** POST /quiz/sessions 201 响应 */
@@ -23,13 +28,17 @@ data class QuizSessionCreated(
 data class QuizQuestionPayload(
     val questionIndex: Int,
     val wordKey: String,
+    val type: String = QuestionType.DICTATION.apiValue(),
     val prompt: QuizPrompt,
+    val options: List<QuizOption>? = null,
 )
 
 /** POST .../answer 请求 */
 data class SubmitAnswerRequest(
     val questionIndex: Int,
-    val answer: String,
+    val answer: String? = null,
+    /** 选择题选中选项 key；默写题可省略 */
+    val selectedKey: String? = null,
 )
 
 /** POST .../answer 200 响应 */
@@ -73,6 +82,8 @@ fun QuizQuestionPayload.toQuestionItem(expectedEn: String = ""): QuizQuestionIte
     wordKey = wordKey,
     expectedEn = expectedEn,
     prompt = prompt,
+    type = type,
+    options = options,
     detail = null,
 )
 

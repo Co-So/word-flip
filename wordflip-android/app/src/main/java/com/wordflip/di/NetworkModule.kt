@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.wordflip.core.network.books.BooksSettingsRepository
 import com.wordflip.core.network.groups.GroupsRepository
 import com.wordflip.core.network.quiz.QuizRepository
+import com.wordflip.core.network.media.WordMediaRepository
 import com.wordflip.core.network.study.StudyRepository
 import com.wordflip.core.network.today.TodayRepository
 import com.wordflip.core.network.gson.WordFlipGson
@@ -12,14 +13,17 @@ import com.wordflip.core.network.ApiErrorParser
 import com.wordflip.core.network.api.AuthApi
 import com.wordflip.core.network.api.BooksApi
 import com.wordflip.core.network.api.GroupsApi
+import com.wordflip.core.network.api.ImagesApi
 import com.wordflip.core.network.api.QuizApi
 import com.wordflip.core.network.api.SettingsApi
+import com.wordflip.core.network.api.StainsApi
 import com.wordflip.core.network.api.StudyApi
 import com.wordflip.core.network.api.TodayApi
 import com.wordflip.core.network.auth.AuthRepository
 import com.wordflip.core.network.auth.TokenRefresher
 import com.wordflip.core.network.interceptor.AuthInterceptor
 import com.wordflip.core.network.interceptor.TokenAuthenticator
+import com.wordflip.core.network.settings.PreferencesRepository
 import com.wordflip.core.network.token.EncryptedTokenStore
 import com.wordflip.core.network.token.TokenStore
 import dagger.Binds
@@ -177,6 +181,13 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    fun providePreferencesRepository(
+        settingsApi: SettingsApi,
+        apiErrorParser: ApiErrorParser,
+    ): PreferencesRepository = PreferencesRepository(settingsApi, apiErrorParser)
+
+    @Provides
+    @Singleton
     fun provideGroupsApi(retrofit: Retrofit): GroupsApi =
         retrofit.create(GroupsApi::class.java)
 
@@ -209,7 +220,7 @@ object NetworkModule {
     fun provideStudyRepository(
         studyApi: StudyApi,
         apiErrorParser: ApiErrorParser,
-    ): StudyRepository = StudyRepository(studyApi, apiErrorParser)
+    ): StudyRepository = StudyRepository(studyApi, apiErrorParser, BuildConfig.API_BASE_URL)
 
     @Provides
     @Singleton
@@ -222,6 +233,31 @@ object NetworkModule {
         quizApi: QuizApi,
         apiErrorParser: ApiErrorParser,
     ): QuizRepository = QuizRepository(quizApi, apiErrorParser)
+
+    @Provides
+    @Singleton
+    fun provideImagesApi(retrofit: Retrofit): ImagesApi =
+        retrofit.create(ImagesApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideStainsApi(retrofit: Retrofit): StainsApi =
+        retrofit.create(StainsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideWordMediaRepository(
+        imagesApi: ImagesApi,
+        stainsApi: StainsApi,
+        gson: Gson,
+        apiErrorParser: ApiErrorParser,
+    ): WordMediaRepository = WordMediaRepository(
+        imagesApi,
+        stainsApi,
+        gson,
+        apiErrorParser,
+        BuildConfig.API_BASE_URL,
+    )
 }
 
 @Module

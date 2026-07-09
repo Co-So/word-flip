@@ -20,8 +20,8 @@ object FakeGroupsData {
             source = GroupSource.AUTO,
             status = GroupStatus.COMPLETED,
             createdAt = "2026-06-01T08:00:00Z",
-            stats = GroupStats(unlearned = 2, fuzzy = 1, unknown = 0, total = 20),
-            progress = 0.85f,
+            stats = GroupStats(heat0 = 2, heat1 = 3, heat2 = 5, heat3 = 6, heat4 = 4, total = 20),
+            progress = 0.20f,
         ),
         GroupDetail(
             id = 2,
@@ -29,8 +29,8 @@ object FakeGroupsData {
             source = GroupSource.AUTO,
             status = GroupStatus.LEARNING,
             createdAt = "2026-06-10T08:00:00Z",
-            stats = GroupStats(unlearned = 8, fuzzy = 5, unknown = 2, total = 20),
-            progress = 0.25f,
+            stats = GroupStats(heat0 = 8, heat1 = 5, heat2 = 4, heat3 = 2, heat4 = 1, total = 20),
+            progress = 0.05f,
         ),
         GroupDetail(
             id = 3,
@@ -38,7 +38,7 @@ object FakeGroupsData {
             source = GroupSource.AUTO,
             status = GroupStatus.NOT_STARTED,
             createdAt = "2026-06-15T08:00:00Z",
-            stats = GroupStats(unlearned = 20, fuzzy = 0, unknown = 0, total = 20),
+            stats = GroupStats(heat0 = 20, total = 20),
             progress = 0f,
         ),
         GroupDetail(
@@ -47,7 +47,7 @@ object FakeGroupsData {
             source = GroupSource.AUTO,
             status = GroupStatus.NOT_STARTED,
             createdAt = "2026-06-16T08:00:00Z",
-            stats = GroupStats(unlearned = 15, fuzzy = 0, unknown = 0, total = 15),
+            stats = GroupStats(heat0 = 15, total = 15),
             progress = 0f,
         ),
         GroupDetail(
@@ -56,7 +56,7 @@ object FakeGroupsData {
             source = GroupSource.AUTO,
             status = GroupStatus.LEARNING,
             createdAt = "2026-06-18T08:00:00Z",
-            stats = GroupStats(unlearned = 6, fuzzy = 3, unknown = 1, total = 10),
+            stats = GroupStats(heat0 = 6, heat1 = 3, heat2 = 1, total = 10),
             progress = 0f,
         ),
         GroupDetail(
@@ -65,8 +65,8 @@ object FakeGroupsData {
             source = GroupSource.CUSTOM,
             status = GroupStatus.LEARNING,
             createdAt = "2026-06-20T08:00:00Z",
-            stats = GroupStats(unlearned = 4, fuzzy = 2, unknown = 1, total = 10),
-            progress = 0.3f,
+            stats = GroupStats(heat0 = 4, heat1 = 2, heat2 = 3, heat3 = 1, total = 10),
+            progress = 0f,
         ),
     )
 
@@ -75,7 +75,7 @@ object FakeGroupsData {
     fun findById(groupId: Int): GroupDetail? = groups.find { it.id == groupId }
 
     /**
-     * 创建自定义分组（Mock 等价 POST /groups/custom）；组内词默认未学习。
+     * 创建自定义分组（Mock 等价 POST /groups/custom）；组内词默认未巩固。
      */
     fun createCustomGroup(wordKeys: List<String>, name: String? = null): GroupDetail {
         require(wordKeys.isNotEmpty()) { "wordKeys must not be empty" }
@@ -89,7 +89,7 @@ object FakeGroupsData {
             source = GroupSource.CUSTOM,
             status = GroupStatus.NOT_STARTED,
             createdAt = Instant.now().toString(),
-            stats = GroupStats(unlearned = total, fuzzy = 0, unknown = 0, total = total),
+            stats = GroupStats(heat0 = total, total = total),
             progress = 0f,
         )
         groups.add(detail)

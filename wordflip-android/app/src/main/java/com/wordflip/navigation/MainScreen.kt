@@ -134,6 +134,11 @@ fun MainScreen(
                     onNavigateToQuiz = {
                         navController.navigate(MainRoutes.quizRoute(source = "today"))
                     },
+                    onNavigateToRecentQuiz = { groupId, _ ->
+                        navController.navigate(
+                            MainRoutes.quizRoute(source = "recent", groupId = groupId),
+                        )
+                    },
                 )
             }
             composable(
@@ -157,10 +162,22 @@ fun MainScreen(
                     groupId = groupId,
                     groupName = groupName,
                     initialStainMode = stainMode,
+                    settingsPreferences = settingsPreferences,
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToStudy = { nav ->
                         navController.navigate(
                             MainRoutes.studyRoute(nav.groupId, nav.groupName, nav.wordCount),
+                        )
+                    },
+                    onNavigateToQuiz = { source, gId, wordLimit, questionTypes, launchMode ->
+                        navController.navigate(
+                            MainRoutes.quizRoute(
+                                source = source,
+                                groupId = gId,
+                                wordLimit = wordLimit,
+                                questionTypes = questionTypes,
+                                launchMode = launchMode,
+                            ),
                         )
                     },
                 )
@@ -231,6 +248,14 @@ fun MainScreen(
                     navArgument("wordLimit") {
                         type = NavType.IntType
                         defaultValue = 10
+                    },
+                    navArgument("questionTypes") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                    navArgument("launchMode") {
+                        type = NavType.StringType
+                        defaultValue = ""
                     },
                     navArgument("nonce") {
                         type = NavType.StringType

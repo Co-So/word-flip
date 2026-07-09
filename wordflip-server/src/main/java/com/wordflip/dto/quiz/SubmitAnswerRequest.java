@@ -1,18 +1,19 @@
 package com.wordflip.dto.quiz;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 /**
  * POST /quiz/sessions/{sessionId}/answer 请求体。
+ * 默写用 answer；选择用 selectedKey。
  */
 public class SubmitAnswerRequest {
 
     @NotNull
     private Integer questionIndex;
 
-    @NotBlank
     private String answer;
+
+    private String selectedKey;
 
     public Integer getQuestionIndex() {
         return questionIndex;
@@ -28,5 +29,13 @@ public class SubmitAnswerRequest {
 
     public void setAnswer(String answer) {
         this.answer = answer;
+    }
+
+    public String getSelectedKey() {
+        return selectedKey;
+    }
+
+    public void setSelectedKey(String selectedKey) {
+        this.selectedKey = selectedKey;
     }
 }

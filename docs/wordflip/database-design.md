@@ -1,11 +1,11 @@
 # WordFlip 数据库设计
 
-> 版本：v1.0  
-> 日期：2026-06-30  
+> 版本：v1.1  
+> 日期：2026-07-09  
 > 状态：**已定稿（MVP）**  
 > 关联：[requirements.md](./requirements.md) · [architecture.md](./architecture.md) · [api-modules.md](./api-modules.md) · [openapi.yaml](../../wordflip-api/openapi.yaml)
 
-本文档为 WordFlip MVP 的 **MySQL 8 逻辑模型** 与 **Redis 辅助存储** 设计。业务规则以 `requirements.md` / `api-modules.md` / `openapi.yaml` 为准；Flyway 脚本 `V1__init_schema.sql` 应与本设计一一对应。
+本文档为 WordFlip MVP 的 **MySQL 8 逻辑模型** 与 **Redis 辅助存储** 设计。业务规则以 `requirements.md` / `api-modules.md` / `openapi.yaml` 为准；Flyway 脚本应与本设计一一对应（含 `V10__word_skill_progress.sql`）。
 
 ---
 
@@ -16,7 +16,7 @@
 | 服务端权威 | 掌握度、SRS、分组增量规则仅存 MySQL，Redis 仅缓存/会话 |
 | 用户域 wordKey | `word_key = LOWER(TRIM(en))`；学习进度、图片、污渍、掌握度均绑定 `(user_id, word_key)` |
 | 一词一组 | `group_words.UNIQUE(user_id, word_key)` |
-| 掌握度仅测验写 | 无 `word_mastery` 的手动 PATCH；仅 `applyQuizResult` 事务写入 |
+| 掌握度仅测验写 | 无 mastery 手动 PATCH；仅 `applyQuizResult` 按 skill 写入 `word_skill_progress` |
 | 分组增量追加 | `PUT /settings` 只 INSERT 新组，不 DELETE/重建已有 `groups` |
 | 勾选与入组解耦 | 取消勾选词书 **不** 删除 `group_words` |
 | InnoDB + utf8mb4 | 字符集 `utf8mb4_unicode_ci`；主键 `BIGINT UNSIGNED`（雪花或自增，全库统一） |
@@ -36,26 +36,27 @@
 | **Words** | GroupService | `book_words`, `user_book_selection`, `group_words`, `user_word_lexicon` | — |
 | **Groups** | GroupService | `groups`, `group_words` | — |
 | **Study** | StudyService | `groups`, `group_words`, `user_word_lexicon`, `word_learning_state`* | — |
-| **Today** | ReviewService | `group_words`, `word_learning_state`, `word_mastery`, `review_plans` | `today:{userId}:{yyyyMMdd}` |
-| **Quiz** | QuizService → ReviewService | `quiz_sessions`, `quiz_questions`, `quiz_answers`, `word_mastery`, `review_plans` | — |
+| **Today** | ReviewService | `group_words`, `word_skill_progress`, `user_recent_groups` | `today:{userId}:{yyyyMMdd}` |
+| **Quiz** | QuizService → ReviewService | `quiz_sessions`, `quiz_questions`, `quiz_answers`, `word_skill_progress` | — |
 | **Images** | ImageService | `word_images` | — |
 | **Stains** | StainService | `word_stains` | — |
 | **Stats** | StatsService | `study_logs`, `achievement_definitions`, `user_achievements`, `quiz_answers` | 可选 stats 缓存 |
 
-\* Study 读取掌握度时 JOIN `word_mastery` + `review_plans`（或下文合并视图）。
+\* Study 读取掌握度时 JOIN `word_skill_progress`（按 skill；展示热力见 `heat_display_mode`）。
 
-### 2.1 表清单（22 张）
+### 2.1 表清单
 
 ```
 【Auth / Settings】  users, user_settings
 【Books / Lexicon】   books, book_words, user_book_selection, user_word_lexicon
-【Groups】           groups, group_words
-【SRS / Quiz】       word_mastery, review_plans, quiz_sessions, quiz_questions, quiz_answers
+【Groups】           groups, group_words, user_recent_groups
+【SRS / Quiz】       word_skill_progress, word_mastery*, review_plans*, quiz_sessions, quiz_questions, quiz_answers
 【Media】            word_images, word_stains
 【Stats】            study_logs, achievement_definitions, user_achievements
 【Import 可选】      book_import_previews（MVP 主用 Redis）
 ```
 
+\* `word_mastery` / `review_plans` 为历史表；V10 起权威进度在 `word_skill_progress`（按 skill 合并三态+S+SRS）。
 ---
 
 ## 3. 总体 ER 图
@@ -68,8 +69,10 @@ erDiagram
   users ||--o{ user_word_lexicon : dictionary
   users ||--o{ groups : owns
   users ||--o{ group_words : assigns
-  users ||--o{ word_mastery : mastery
-  users ||--o{ review_plans : schedule
+  users ||--o{ word_mastery : mastery_legacy
+  users ||--o{ review_plans : schedule_legacy
+  users ||--o{ word_skill_progress : skill_progress
+  users ||--o{ user_recent_groups : recent
   users ||--o{ word_images : images
   users ||--o{ word_stains : stains
   users ||--o{ study_logs : logs
@@ -80,9 +83,10 @@ erDiagram
   books ||--o{ user_book_selection : selected_by
 
   groups ||--o{ group_words : contains
+  groups ||--o{ user_recent_groups : recent_by
 
   group_words }o--|| user_word_lexicon : "word_key"
-  word_mastery }o--|| review_plans : "1:1 user+word_key"
+  word_mastery }o--|| review_plans : "1:1 user+word_key (legacy)"
 
   quiz_sessions ||--o{ quiz_questions : contains
   quiz_sessions ||--o{ quiz_answers : answers
@@ -164,6 +168,9 @@ erDiagram
 | `study_guide_completed` | TINYINT(1) | NO | 0 | REQ-STUDY-23 |
 | `reminder_enabled` | TINYINT(1) | NO | 0 | 规划项占位 |
 | `review_reminder_enabled` | TINYINT(1) | NO | 0 | 规划项占位 |
+| `heat_display_mode` | ENUM('combined','dictation','choice','free') | NO | combined | 组详情热力展示 |
+| `quiz_launch_mode` | ENUM('mixed','free_select') | NO | mixed | 开测模式 |
+| `default_question_limit` | TINYINT UNSIGNED | NO | 10 | 默认测验题数 |
 | `updated_at` | DATETIME(3) | NO | ON UPDATE | |
 
 **FK：** `user_id → users(id) ON DELETE CASCADE`
@@ -349,25 +356,74 @@ ORDER BY word_key ASC   -- 确定性切分，保证幂等
 
 ## 8. SRS / Quiz 模块
 
-### 8.1 设计决策：`word_mastery` + `review_plans` 拆分
+### 8.0 `word_skill_progress`（权威进度，V10）
 
-| 方案 | 结论 |
-|------|------|
-| 拆分（采用） | 与 architecture 一致；`word_mastery`=语义状态，`review_plans`=调度 |
-| 合并单表 | 查询更简单，但偏离架构；若性能瓶颈可合并后保留 VIEW |
-
-**1:1 强制：** 首次测验答题 **同事务** INSERT 两表；之后 `applyQuizResult` 同事务 UPDATE。
-
-### 8.2 `word_mastery`
+按 `(user_id, word_key, skill)` 各一套队列三态 + 稳定性 S + SRS。`skill`=`dictation`|`choice`。
 
 | 列 | 类型 | NULL | 默认 | 说明 |
 |----|------|------|------|------|
 | `id` | BIGINT UNSIGNED | NO | — | PK |
 | `user_id` | BIGINT UNSIGNED | NO | — | |
 | `word_key` | VARCHAR(191) | NO | — | |
-| `level` | ENUM('unlearned','fuzzy','unknown') | NO | unlearned | 三态 |
+| `skill` | ENUM('dictation','choice') | NO | — | 题型技能 |
+| `level` | ENUM('unlearned','fuzzy','unknown') | NO | unlearned | 队列三态 |
+| `has_quiz_history` | TINYINT(1) | NO | 0 | 该 skill 首次答题后恒 1 |
+| `first_quiz_at` | DATETIME(3) | YES | NULL | |
+| `stability` | DECIMAL(6,2) | NO | 0.00 | 稳定性权值 S（0–100） |
+| `window_correct_gain` | DECIMAL(6,2) | NO | 0.00 | 短窗答对累计升幅 |
+| `window_started_at` | DATETIME(3) | YES | NULL | 短窗起点 |
+| `recent_wrong_count` | INT UNSIGNED | NO | 0 | 短窗内答错次数 |
+| `stage` | TINYINT UNSIGNED | NO | 0 | SRS stage 0..5 |
+| `next_review_at` | DATE | YES | NULL | 下次复习日 |
+| `last_quiz_at` | DATETIME(3) | YES | NULL | |
+| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
+
+**索引：**
+
+```sql
+UNIQUE uk_wsp_user_word_skill (user_id, word_key, skill)
+KEY idx_wsp_due (user_id, skill, next_review_at)
+KEY idx_wsp_stability (user_id, skill, stability)
+KEY idx_wsp_level (user_id, skill, level)
+```
+
+**迁移：** V10 将旧 `word_mastery`+`review_plans` 写入 `skill='dictation'` 行。
+
+### 8.0.1 `user_recent_groups`
+
+今日页「最近学习」最多 3 条。
+
+| 列 | 类型 | NULL | 说明 |
+|----|------|------|------|
+| `user_id` | BIGINT UNSIGNED | NO | PK 之一 |
+| `group_id` | BIGINT UNSIGNED | NO | PK 之一 |
+| `last_studied_at` | DATETIME(3) | NO | 最近学习/测验时间 |
+
+**索引：** `PRIMARY KEY (user_id, group_id)` · `KEY idx_urg_user_time (user_id, last_studied_at DESC)`
+
+### 8.1 设计决策：历史 `word_mastery` + `review_plans`
+
+| 方案 | 结论 |
+|------|------|
+| 拆分（V1–V9） | `word_mastery`=语义状态，`review_plans`=调度 |
+| 按 skill 合并（V10 采用） | `word_skill_progress` 为权威；旧表保留兼容/迁移源 |
+
+**写入：** `applyQuizResult` 同事务 UPSERT `word_skill_progress`（按 skill）。
+
+### 8.2 `word_mastery`（历史，迁移源）
+
+| 列 | 类型 | NULL | 默认 | 说明 |
+|----|------|------|------|------|
+| `id` | BIGINT UNSIGNED | NO | — | PK |
+| `user_id` | BIGINT UNSIGNED | NO | — | |
+| `word_key` | VARCHAR(191) | NO | — | |
+| `level` | ENUM('unlearned','fuzzy','unknown') | NO | unlearned | 队列三态 |
 | `has_quiz_history` | TINYINT(1) | NO | 0 | 首次答题后恒 1 |
 | `first_quiz_at` | DATETIME(3) | YES | NULL | |
+| `stability` | DECIMAL(6,2) | NO | 0.00 | 稳定性权值 S（0–100） |
+| `window_correct_gain` | DECIMAL(6,2) | NO | 0.00 | 当前短窗内答对已计入升幅 |
+| `window_started_at` | DATETIME(3) | YES | NULL | 短窗起点 |
+| `recent_wrong_count` | INT UNSIGNED | NO | 0 | 短窗内答错次数 |
 | `updated_at` | DATETIME(3) | NO | ON UPDATE | |
 
 **索引：**
@@ -376,11 +432,12 @@ ORDER BY word_key ASC   -- 确定性切分，保证幂等
 UNIQUE uk_wm_user_word (user_id, word_key)
 KEY idx_wm_new_words (user_id, level, has_quiz_history)
 KEY idx_wm_quiz_pool (user_id, level)
+KEY idx_wm_stability (user_id, stability)
 ```
 
-**无行语义（API 层）：** `level=unlearned`, `hasQuizHistory=false`, `stage=0`, `nextReviewAt=null`
+**无行语义（API 层）：** `level=unlearned`, `hasQuizHistory=false`, `stage=0`, `nextReviewAt=null`, `stability=0`, `heatLevel=0`
 
-### 8.3 `review_plans`
+### 8.3 `review_plans`（历史，迁移源）
 
 | 列 | 类型 | NULL | 默认 | 说明 |
 |----|------|------|------|------|
@@ -400,9 +457,9 @@ KEY idx_rp_due (user_id, next_review_at)
 KEY idx_rp_mastered (user_id, stage, next_review_at)
 ```
 
-### 8.4 applyQuizResult 状态机（定稿）
+### 8.4 applyQuizResult 状态机（定稿，按 skill）
 
-`INTERVALS = [1, 2, 4, 7, 15, 30]`（天）
+`INTERVALS = [1, 2, 4, 7, 15, 30]`（天）；作用在 `word_skill_progress` 对应 skill 行。
 
 | 条件 | level | stage | next_review_at |
 |------|-------|-------|----------------|
@@ -414,21 +471,13 @@ KEY idx_rp_mastered (user_id, stage, next_review_at)
 
 ```sql
 SELECT correct FROM quiz_answers
-WHERE user_id=? AND word_key=?
+WHERE user_id=? AND word_key=? AND skill=?
 ORDER BY answered_at DESC, id DESC LIMIT 1;
 ```
 
 若存在且 `correct=0` → 本次答错 → `unknown`。
 
-**已掌握统计（闭合 paradox）：**
-
-stage=5 时 `next_review_at` 常为 `today+30`，严格 `>` 永远无法满足。定稿：
-
-```sql
-stage >= 5 AND DATEDIFF(next_review_at, :today) >= 30
-```
-
-（需同步修订 openapi 中 `> today + 30d` 为 `>=`。）
+**已掌握统计：** `stability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（按展示轨 / 综合轨，见 api-modules §2.2）。
 
 ### 8.5 `quiz_sessions`
 
@@ -436,10 +485,13 @@ stage >= 5 AND DATEDIFF(next_review_at, :today) >= 30
 |----|------|------|------|------|
 | `id` | CHAR(36) | NO | — | PK，UUID |
 | `user_id` | BIGINT UNSIGNED | NO | — | |
-| `source` | ENUM('today','study','retry') | NO | today | |
-| `group_id` | BIGINT UNSIGNED | YES | NULL | study 源过滤 |
+| `source` | ENUM('today','study','retry','groups','all','recent') | NO | today | |
+| `group_id` | BIGINT UNSIGNED | YES | NULL | 单组过滤 |
+| `group_ids_json` | JSON | YES | NULL | 多组测验 |
 | `status` | ENUM('in_progress','completed') | NO | in_progress | |
 | `question_limit` | INT | NO | 10 | |
+| `question_types_json` | JSON | YES | NULL | 本场题型列表 |
+| `launch_mode` | VARCHAR(32) | YES | NULL | mixed|free_select |
 | `total_questions` | INT | NO | — | 实际出题数 |
 | `current_index` | INT | NO | 0 | |
 | `score` | INT | NO | 0 | 答对数 |
@@ -450,7 +502,7 @@ stage >= 5 AND DATEDIFF(next_review_at, :today) >= 30
 
 ### 8.6 `quiz_questions`（会话题面）
 
-创建 session 时写入；支持 409 防重复题号。
+Create session 时写入；支持 409 防重复题号。
 
 | 列 | 类型 | NULL | 说明 |
 |----|------|------|------|
@@ -458,10 +510,13 @@ stage >= 5 AND DATEDIFF(next_review_at, :today) >= 30
 | `session_id` | CHAR(36) | NO | FK → quiz_sessions |
 | `question_index` | INT | NO | 与 API 一致（0-based） |
 | `word_key` | VARCHAR(191) | NO | 同 session 内 DISTINCT |
+| `question_type` | ENUM('dictation','choice_en_cn','choice_cn_en') | NO | 题型 |
 | `expected_en` | VARCHAR(191) | NO | 判题快照 |
 | `prompt_cn` | VARCHAR(512) | NO | |
 | `prompt_pos` | VARCHAR(32) | YES | |
 | `prompt_ph` | VARCHAR(64) | YES | |
+| `options_json` | JSON | YES | 选择题选项 |
+| `correct_key` | VARCHAR(191) | YES | 选择题正确 key |
 
 **索引：** `UNIQUE uk_qq_session_index (session_id, question_index)`
 
@@ -474,10 +529,12 @@ stage >= 5 AND DATEDIFF(next_review_at, :today) >= 30
 | `session_id` | CHAR(36) | NO | FK |
 | `question_id` | BIGINT UNSIGNED | NO | FK → quiz_questions |
 | `word_key` | VARCHAR(191) | NO | |
+| `skill` | ENUM('dictation','choice') | NO | 作答对应 skill |
+| `question_type` | ENUM('dictation','choice_en_cn','choice_cn_en') | NO | 题型快照 |
 | `question_index` | INT | NO | |
 | `user_answer` | VARCHAR(512) | NO | trim 后存储 |
 | `correct` | TINYINT(1) | NO | |
-| `is_consecutive_wrong` | TINYINT(1) | NO | 0 | 审计：是否触发 unknown |
+| `is_consecutive_wrong` | TINYINT(1) | NO | 审计：是否触发 unknown |
 | `answered_at` | DATETIME(3) | NO | |
 
 **索引：**
@@ -492,15 +549,14 @@ KEY idx_qa_user_time (user_id, answered_at DESC)
 
 ```
 BEGIN;
-  1. SELECT last correct FROM quiz_answers (连续错题)
-  2. 计算 newLevel, newStage, newNextReviewAt
+  1. SELECT last correct FROM quiz_answers (同 wordKey+skill 连续错题)
+  2. 计算 newLevel, newStage, newNextReviewAt + ΔS
   3. INSERT quiz_answers
-  4. UPSERT word_mastery (has_quiz_history=1)
-  5. UPSERT review_plans
-  6. UPDATE quiz_sessions
+  4. UPSERT word_skill_progress (has_quiz_history=1)
+  5. UPDATE quiz_sessions
 COMMIT;
 → DEL Redis today:{userId}:{yyyyMMdd}
-→ IF session completed: upsert study_logs
+→ IF session completed: upsert study_logs；刷新 user_recent_groups
 ```
 
 ---
@@ -746,6 +802,7 @@ achievement_definitions → user_achievements
 | 日期 | 版本 | 说明 |
 |------|------|------|
 | 2026-06-30 | v1.0 | 初版：22 表 + Redis + 评审闭合；对齐 openapi v1.0 / api-modules v1.1 |
+| 2026-07-09 | v1.1 | 增加 word_skill_progress / user_recent_groups；测验题型与设置列；对齐 openapi v1.1 |
 
 ---
 

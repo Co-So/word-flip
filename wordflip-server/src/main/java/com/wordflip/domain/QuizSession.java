@@ -12,7 +12,7 @@ import lombok.Setter;
 import java.time.Instant;
 
 /**
- * 默写测验会话实体，对应 quiz_sessions 表（REQ-NAV-6：每次进入新建）。
+ * 测验会话实体，对应 quiz_sessions 表。
  */
 @Entity
 @Table(name = "quiz_sessions")
@@ -28,11 +28,14 @@ public class QuizSession {
     private Long userId;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "ENUM('today', 'study', 'retry')")
+    @Column(nullable = false, columnDefinition = "ENUM('today', 'study', 'retry', 'groups', 'all', 'recent')")
     private QuizSessionSource source = QuizSessionSource.today;
 
     @Column(name = "group_id")
     private Long groupId;
+
+    @Column(name = "group_ids_json", columnDefinition = "JSON")
+    private String groupIdsJson;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "ENUM('in_progress', 'completed')")
@@ -40,6 +43,12 @@ public class QuizSession {
 
     @Column(name = "question_limit", nullable = false)
     private int questionLimit = 10;
+
+    @Column(name = "question_types_json", columnDefinition = "JSON")
+    private String questionTypesJson;
+
+    @Column(name = "launch_mode", length = 32)
+    private String launchMode;
 
     @Column(name = "total_questions", nullable = false)
     private int totalQuestions;

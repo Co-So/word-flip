@@ -149,7 +149,7 @@ fun ImageEditorScreen(
                             label = "缩小",
                             onClick = {
                                 transform = transform.copy(
-                                    scale = (transform.scale - 0.1f).coerceIn(0.5f, 2.5f),
+                                    scale = (transform.scale - 0.1f).coerceIn(0.2f, 3f),
                                 )
                             },
                         )
@@ -163,7 +163,7 @@ fun ImageEditorScreen(
                             label = "放大",
                             onClick = {
                                 transform = transform.copy(
-                                    scale = (transform.scale + 0.1f).coerceIn(0.5f, 2.5f),
+                                    scale = (transform.scale + 0.1f).coerceIn(0.2f, 3f),
                                 )
                             },
                         )
