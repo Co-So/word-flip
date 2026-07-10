@@ -1,0 +1,35 @@
+{"id": "strip_adv", "input": {"word_key": "abruptly", "en": "abruptly", "cn": "突然地 (adv.)", "pos": "adv."}, "expect_quality": "ok", "expect_primary_cn": "突然地", "expect_primary_pos": "adv."}
+{"id": "strip_v_fullwidth", "input": {"word_key": "absorb", "en": "absorb", "cn": "吸收（液体、气体等） (v.)", "pos": "v."}, "expect_quality": "ok", "expect_primary_cn": "吸收（液体、气体等）"}
+{"id": "multi_sense_estimate", "input": {"word_key": "estimate", "en": "estimate", "cn": "估计，估价 (n.)；评价，估量 (v.)", "pos": "n."}, "expect_quality": "ok", "expect_min_senses": 2, "expect_primary_cn": "估计，估价"}
+{"id": "leading_n_junk", "input": {"word_key": "estimate2", "en": "estimate", "cn": "n. (n.)；估计，估价 (n.)；评价，估量 (v.)", "pos": null}, "expect_quality": "ok", "expect_primary_cn": "估计，估价"}
+{"id": "vi_leading", "input": {"word_key": "wail", "en": "wail", "cn": "vi大声哀号，恸哭；呼啸，尖啸 (v.)", "pos": "v."}, "expect_quality": "ok", "expect_primary_cn": "大声哀号，恸哭"}
+{"id": "simple_n", "input": {"word_key": "time", "en": "time", "cn": "时间 (n.)", "pos": "n."}, "expect_quality": "ok", "expect_primary_cn": "时间"}
+{"id": "simple_adj", "input": {"word_key": "happy", "en": "happy", "cn": "快乐的 (adj.)", "pos": "adj."}, "expect_quality": "ok", "expect_primary_cn": "快乐的"}
+{"id": "simple_v", "input": {"word_key": "run", "en": "run", "cn": "跑 (v.)", "pos": "v."}, "expect_quality": "ok", "expect_primary_cn": "跑"}
+{"id": "prep_clean", "input": {"word_key": "about", "en": "about", "cn": "关于 (prep.)", "pos": "prep."}, "expect_quality": "ok", "expect_primary_cn": "关于"}
+{"id": "empty_cn", "input": {"word_key": "foo", "en": "foo", "cn": "", "pos": null}, "expect_quality": "reject"}
+{"id": "cn_eq_en", "input": {"word_key": "foo", "en": "foo", "cn": "foo", "pos": null}, "expect_quality": "reject"}
+{"id": "latin_only", "input": {"word_key": "bar", "en": "bar", "cn": "something else", "pos": null}, "expect_quality": "reject"}
+{"id": "function_debris_in", "input": {"word_key": "in", "en": "in", "cn": "favour (prep.)；为收款人 (of赞成，以.)", "pos": "prep."}, "expect_quality": "uncertain"}
+{"id": "function_debris_of", "input": {"word_key": "of", "en": "of", "cn": "course (adv.)；当然", "pos": null}, "expect_quality": "uncertain"}
+{"id": "english_head_strip", "input": {"word_key": "favour", "en": "favour", "cn": "favour (prep.)；为收款人", "pos": null}, "expect_quality": "ok", "expect_primary_cn": "为收款人"}
+{"id": "without_debris", "input": {"word_key": "without", "en": "without", "cn": "without (v.)；的情况下勉强对付 (sth在缺少.)", "pos": "v."}, "expect_quality": "ok", "expect_primary_cn": "的情况下勉强对付"}
+{"id": "semicolon_multi", "input": {"word_key": "book", "en": "book", "cn": "书 (n.)；预订 (v.)", "pos": "n."}, "expect_quality": "ok", "expect_min_senses": 2}
+{"id": "chinese_semicolon", "input": {"word_key": "light", "en": "light", "cn": "光；轻的", "pos": null}, "expect_quality": "ok", "expect_min_senses": 2, "expect_primary_cn": "光"}
+{"id": "pos_from_cn", "input": {"word_key": "quickly", "en": "quickly", "cn": "迅速地 (adv.)", "pos": null}, "expect_quality": "ok", "expect_primary_pos": "adv."}
+{"id": "n_and_a", "input": {"word_key": "aboriginal", "en": "aboriginal", "cn": "土著（居民） (n.)；土著的 (adj.)", "pos": "n&a."}, "expect_quality": "ok", "expect_min_senses": 2}
+{"id": "abandon", "input": {"word_key": "abandon", "en": "abandon", "cn": "放弃 (v.)", "pos": "v."}, "expect_quality": "ok", "expect_primary_cn": "放弃"}
+{"id": "abbreviation", "input": {"word_key": "abbreviation", "en": "abbreviation", "cn": "缩写 (n.)", "pos": "n."}, "expect_quality": "ok"}
+{"id": "abnormal", "input": {"word_key": "abnormal", "en": "abnormal", "cn": "不正常的；变态的 (adj.)", "pos": "adj."}, "expect_quality": "ok"}
+{"id": "abolish", "input": {"word_key": "abolish", "en": "abolish", "cn": "废除 (v.)", "pos": "v."}, "expect_quality": "ok"}
+{"id": "empty_en", "input": {"word_key": "", "en": "", "cn": "测试", "pos": null}, "expect_quality": "reject"}
+{"id": "space_pos", "input": {"word_key": "cat", "en": "cat", "cn": "猫  (n.)  ", "pos": "n."}, "expect_quality": "ok", "expect_primary_cn": "猫"}
+{"id": "vt_pos", "input": {"word_key": "make", "en": "make", "cn": "制造 (vt.)", "pos": "vt."}, "expect_quality": "ok", "expect_primary_cn": "制造"}
+{"id": "double_trailing", "input": {"word_key": "x1", "en": "word", "cn": "释义 (n.) (n.)", "pos": null}, "expect_quality": "ok", "expect_primary_cn": "释义"}
+{"id": "conj", "input": {"word_key": "and", "en": "and", "cn": "和；与 (conj.)", "pos": "conj."}, "expect_quality": "ok", "expect_primary_cn": "和"}
+{"id": "num", "input": {"word_key": "one", "en": "one", "cn": "一 (num.)", "pos": "num."}, "expect_quality": "ok", "expect_primary_cn": "一"}
+{"id": "int", "input": {"word_key": "oh", "en": "oh", "cn": "哦 (int.)", "pos": "int."}, "expect_quality": "ok", "expect_primary_cn": "哦"}
+{"id": "mostly_latin_reject", "input": {"word_key": "xyz", "en": "xyz", "cn": "abc def ghi jkl", "pos": null}, "expect_quality": "reject"}
+{"id": "phrase_ok", "input": {"word_key": "look_up", "en": "look up", "cn": "查阅 (v.)", "pos": "v."}, "expect_quality": "ok", "expect_primary_cn": "查阅"}
+{"id": "long_cn", "input": {"word_key": "photosynthesis", "en": "photosynthesis", "cn": "光合作用 (n.)", "pos": "n."}, "expect_quality": "ok"}
+{"id": "semi_and_pos", "input": {"word_key": "present", "en": "present", "cn": "礼物 (n.)；现在的 (adj.)；呈现 (v.)", "pos": "n."}, "expect_quality": "ok", "expect_min_senses": 3}

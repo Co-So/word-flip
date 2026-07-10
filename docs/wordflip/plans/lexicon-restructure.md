@@ -2,7 +2,7 @@
 
 > 版本：v1.0  
 > 日期：2026-07-10  
-> 状态：**Phase A 契约已落地**；下一步 Phase B 清洗工具 → C 建表灌数  
+> 状态：**Phase A+B 完成**；下一步 Phase C 建表灌数  
 > 关联：[requirements.md](../requirements.md) · [database-design.md](../database-design.md) · [api-modules.md](../api-modules.md) · [architecture.md](../architecture.md) · [TASK.md](../../../TASK.md)
 
 ---
@@ -228,3 +228,4 @@ CLI 形态：`rules` → `llm` → `merge` → `emit` → `report`。
 |------|------|------|
 | 2026-07-10 | v1.0 | 初版定稿：模型、文档清单、工具、阶段、验收；写入 `docs/wordflip/plans/` |
 | 2026-07-10 | v1.1 | Phase A 完成：权威文档与 openapi Sense/Example 已写入；状态改为推进 B |
+| 2026-07-10 | v1.2 | Phase B：`tools/word-lexicon-cleaner` 规则+LLM+报告；去重词 ok≈99.7% |

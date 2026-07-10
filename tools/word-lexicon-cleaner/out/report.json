@@ -1,0 +1,35 @@
+{
+  "total": 7896,
+  "ok": 7873,
+  "uncertain": 22,
+  "reject": 1,
+  "ok_ratio": 0.9971,
+  "multi_sense": 4280,
+  "with_ok_primary": 7888,
+  "top_reject_uncertain_reasons": [
+    [
+      "latin_in_multi_sense",
+      14
+    ],
+    [
+      "function_word_debris",
+      5
+    ],
+    [
+      "seg0:drop:no_han",
+      1
+    ],
+    [
+      "seg0:empty_cn",
+      1
+    ],
+    [
+      "seg0:mostly_latin",
+      1
+    ],
+    [
+      "seg2:mostly_latin",
+      1
+    ]
+  ]
+}

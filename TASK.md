@@ -19,7 +19,7 @@
 | **P1** | 今日 + 学习 + SRS 读 | 28 / 28 |
 | **P2** | 默写测验 + 掌握度写 | 22 / 24 |
 | **P2.5** | 多题型独立权重 + 组测 | 7 / 8 |
-| **P-LEX** | 词库结构化（1:n sense + 清洗工具） | 6 / 18 |
+| **P-LEX** | 词库结构化（1:n sense + 清洗工具） | 11 / 18 |
 | **P3** | 卡拍 + 图片 + 污渍 | 19 / 22 |
 | **P4** | 统计 + 设置完善 | 8 / 14 |
 | **Q** | 联调、测试、发布准备 | 3 / 12 |
@@ -31,8 +31,8 @@
 
 | 轨道 | 任务 ID | 状态 |
 |------|---------|------|
-| P-LEX | 计划落盘 + Phase A 契约 | ✅ A01–A05 完成 |
-| P-LEX | 下一步 Phase B 清洗工具 | ⬜ P-LEX-B01 起 |
+| P-LEX | Phase A 契约 + Phase B 清洗工具 | ✅ A01–A05、B01–B05 |
+| P-LEX | 下一步 Phase C 建表灌数 | ⬜ P-LEX-C01 起 |
 | 待你勾选 | P0-T03、P2-T*、P2.5-T01、P3-T* | 真机验收（可与 P-LEX 并行，但测验质量依赖 P-LEX） |
 
 #### 真机验收清单（本地勾选后把 TASK 项标 `[x]`）
@@ -408,11 +408,11 @@
 
 ### P-LEX-B 清洗工具（Phase B）
 
-- [ ] P-LEX-B01 创建 `tools/word-lexicon-cleaner/` 脚手架 + README
-- [ ] P-LEX-B02 规则引擎 + ok/uncertain/reject 分流 + 报告
-- [ ] P-LEX-B03 黄金样例 ≥30 条单测
-- [ ] P-LEX-B04 LLM 适配器（可配置；无 Key 可跳过）
-- [ ] P-LEX-B05 对现有 ~14k book_words 跑通规则并归档产物
+- [x] P-LEX-B01 创建 `tools/word-lexicon-cleaner/` 脚手架 + README
+- [x] P-LEX-B02 规则引擎 + ok/uncertain/reject 分流 + 报告
+- [x] P-LEX-B03 黄金样例 ≥30 条单测
+- [x] P-LEX-B04 LLM 适配器（可配置；无 Key 可跳过）
+- [x] P-LEX-B05 对现有 ~14k book_words 跑通规则并归档产物
 
 ### P-LEX-C 表与灌数（Phase C）
 
