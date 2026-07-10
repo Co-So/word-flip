@@ -1,13 +1,13 @@
 # WordFlip 数据库设计
 
-> 版本：v1.2  
+> 版本：v1.3  
 > 日期：2026-07-10  
-> 状态：**已定稿（MVP + 词库结构化契约）**  
+> 状态：**已定稿（MVP + 词库结构化契约；dict_* 已落地）**  
 > 关联：[requirements.md](./requirements.md) · [architecture.md](./architecture.md) · [api-modules.md](./api-modules.md) · [openapi.yaml](../../wordflip-api/openapi.yaml) · [plans/lexicon-restructure.md](./plans/lexicon-restructure.md)
 
 本文档为 WordFlip MVP 的 **MySQL 8 逻辑模型** 与 **Redis 辅助存储** 设计。业务规则以 `requirements.md` / `api-modules.md` / `openapi.yaml` 为准；Flyway 脚本应与本设计一一对应（含 `V10__word_skill_progress.sql`）。
 
-> **词库结构化：** 目标表 `dict_words` / `dict_senses` / `dict_examples` 见 §6.0；Flyway 建表与灌数在 Phase C。在此之前 `book_words` / `user_word_lexicon` 扁平列仍为现行物理 schema，但语义上 `cn/pos/ph` 视为 **primary 冗余**。
+> **词库结构化：** `dict_words` / `dict_senses` / `dict_examples` 见 §6.0；Flyway `V13` 建表、`V14` 灌数、`V15` 同步 lexicon primary。`book_words` 扁平列仍保留作过渡只读。
 
 ---
 
@@ -61,7 +61,7 @@
 ```
 
 \* `word_mastery` / `review_plans` 为历史表；V10 起权威进度在 `word_skill_progress`（按 skill 合并三态+S+SRS）。
-\* `dict_*` 由 Phase C Flyway 落地；落地前释义仍读 `book_words` / `user_word_lexicon` 扁平列。
+\* `dict_*`：V13 建表、V14 灌入清洗 ok 词、V15 回填 `user_word_lexicon` primary。
 ---
 
 ## 3. 总体 ER 图
@@ -190,9 +190,11 @@ erDiagram
 
 ## 6. Books / Lexicon 模块
 
-### 6.0 全局词典 `dict_*`（目标 schema，Phase C）
+### 6.0 全局词典 `dict_*`（V13+）
 
 内置词书共享的全局词典；释义真相来源。进度键仍为 `word_key`，不按义项拆。
+
+**Flyway：** `V13__create_dict_tables.sql` → `V14__seed_dict_from_cleaner.sql`（由 `tools/word-lexicon-cleaner` 生成）→ `V15__sync_lexicon_primary_from_dict.sql`。
 
 #### 6.0.1 `dict_words`（Headword）
 
@@ -868,6 +870,7 @@ achievement_definitions → user_achievements
 | 2026-06-30 | v1.0 | 初版：22 表 + Redis + 评审闭合；对齐 openapi v1.0 / api-modules v1.1 |
 | 2026-07-09 | v1.1 | 增加 word_skill_progress / user_recent_groups；测验题型与设置列；对齐 openapi v1.1 |
 | 2026-07-10 | v1.2 | Phase A：`dict_words` / `dict_senses` / `dict_examples`；book_words / lexicon primary 冗余演进 |
+| 2026-07-10 | v1.3 | Phase C：V13–V15 建表灌数与 lexicon 同步落地 |
 
 ---
 

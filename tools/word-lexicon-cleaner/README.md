@@ -29,6 +29,7 @@ raw JSONL → rules → (llm) → merge → emit / report
 | `merge` | 合并 rules + llm 产物 |
 | `report` | 统计报告（Markdown + JSON） |
 | `emit` | 生成 `dict_*` upsert SQL 草稿（供 Phase C 审阅） |
+| `gen_flyway_seed` | 从 `cleaned.jsonl` 生成正式 `V14__seed_dict_from_cleaner.sql` |
 
 示例：
 
@@ -38,7 +39,7 @@ python -m word_lexicon_cleaner rules -i out/raw.jsonl -o out/rules.jsonl
 python -m word_lexicon_cleaner llm -i out/rules.jsonl -o out/llm.jsonl
 python -m word_lexicon_cleaner merge -r out/rules.jsonl -l out/llm.jsonl -o out/cleaned.jsonl
 python -m word_lexicon_cleaner report -i out/cleaned.jsonl -o out/report.md
-python -m word_lexicon_cleaner emit -i out/cleaned.jsonl -o out/V13__dict_seed_draft.sql
+python -m word_lexicon_cleaner.gen_flyway_seed -i out/cleaned.jsonl -o ../../wordflip-server/src/main/resources/db/migration/V14__seed_dict_from_cleaner.sql
 ```
 
 ## 测试

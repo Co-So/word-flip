@@ -19,7 +19,7 @@
 | **P1** | 今日 + 学习 + SRS 读 | 28 / 28 |
 | **P2** | 默写测验 + 掌握度写 | 22 / 24 |
 | **P2.5** | 多题型独立权重 + 组测 | 7 / 8 |
-| **P-LEX** | 词库结构化（1:n sense + 清洗工具） | 11 / 18 |
+| **P-LEX** | 词库结构化（1:n sense + 清洗工具） | 14 / 18 |
 | **P3** | 卡拍 + 图片 + 污渍 | 19 / 22 |
 | **P4** | 统计 + 设置完善 | 8 / 14 |
 | **Q** | 联调、测试、发布准备 | 3 / 12 |
@@ -31,8 +31,8 @@
 
 | 轨道 | 任务 ID | 状态 |
 |------|---------|------|
-| P-LEX | Phase A 契约 + Phase B 清洗工具 | ✅ A01–A05、B01–B05 |
-| P-LEX | 下一步 Phase C 建表灌数 | ⬜ P-LEX-C01 起 |
+| P-LEX | Phase A–C（契约 / 清洗 / dict 灌数） | ✅ |
+| P-LEX | 下一步 Phase D 服务端读路径 | ⬜ P-LEX-D01 起 |
 | 待你勾选 | P0-T03、P2-T*、P2.5-T01、P3-T* | 真机验收（可与 P-LEX 并行，但测验质量依赖 P-LEX） |
 
 #### 真机验收清单（本地勾选后把 TASK 项标 `[x]`）
@@ -416,9 +416,9 @@
 
 ### P-LEX-C 表与灌数（Phase C）
 
-- [ ] P-LEX-C01 Flyway 建 `dict_*` 表
-- [ ] P-LEX-C02 灌入清洗结果；保证 ok 词有唯一 primary
-- [ ] P-LEX-C03 同步 `user_word_lexicon` primary 冗余字段
+- [x] P-LEX-C01 Flyway 建 `dict_*` 表
+- [x] P-LEX-C02 灌入清洗结果；保证 ok 词有唯一 primary
+- [x] P-LEX-C03 同步 `user_word_lexicon` primary 冗余字段
 
 ### P-LEX-D 服务端读路径（Phase D）
 
