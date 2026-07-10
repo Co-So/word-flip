@@ -16,6 +16,12 @@
 | [wordflip/api-modules.md](wordflip/api-modules.md) | API 模块划分与业务规则 |
 | [wordflip/user-design.md](wordflip/user-design.md) | 账号与登录 |
 
+## 实施计划
+
+| 文档 | 说明 |
+|------|------|
+| [wordflip/plans/lexicon-restructure.md](wordflip/plans/lexicon-restructure.md) | **词库结构化改造**（Word 1—n Sense；清洗工具；阶段 A–F） |
+
 ## 客户端
 
 | 文档 | 说明 |

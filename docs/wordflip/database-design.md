@@ -7,6 +7,8 @@
 
 本文档为 WordFlip MVP 的 **MySQL 8 逻辑模型** 与 **Redis 辅助存储** 设计。业务规则以 `requirements.md` / `api-modules.md` / `openapi.yaml` 为准；Flyway 脚本应与本设计一一对应（含 `V10__word_skill_progress.sql`）。
 
+> **待修订（词库结构化）：** 将新增 `dict_words` / `dict_senses` / `dict_examples`；`book_words` 演进为词表引用。详见 [plans/lexicon-restructure.md](./plans/lexicon-restructure.md)。在 Phase C 落地前，本节 `book_words` / `user_word_lexicon` 扁平列仍为现行 schema。
+
 ---
 
 ## 1. 设计原则

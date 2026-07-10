@@ -10,7 +10,7 @@ data class TodayDashboard(
     val stats: TodayStats,
     val tasks: TodayTasks,
     val recommendedStudy: RecommendedStudy?,
-    /** 最近学习/测验的分组（最多 3），点击可进组测 */
+    /** 最近学习/测验的分组（最多 3）；主点进学习，次要进组测 */
     val recentGroups: List<RecentGroup> = emptyList(),
 )
 
@@ -48,7 +48,7 @@ data class TaskSource(
     val count: Int,
 )
 
-/** 推荐学习分组，供底部 CTA 文案（REQ-TODAY-7） */
+/** 推荐学习分组（任务副标题等仍可用；今日页不再用底栏 CTA） */
 data class RecommendedStudy(
     val groupId: Int,
     val groupName: String,

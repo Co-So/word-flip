@@ -20,6 +20,11 @@ public final class StabilityCalculator {
     public static final double DELTA_CORRECT_MIN = 0.05;
     public static final double DELTA_CORRECT_MAX = 3.0;
     public static final double DELTA_WRONG_CAP = 8.0;
+    /**
+     * 该 skill 首次答对的稳定性下限（heatLevel≥1「初识」）。
+     * 无测验史时 gapDays=0→R=1，公式仅涨 0.05，热力会长期停在「新词」。
+     */
+    public static final double INITIAL_CORRECT_STABILITY = 12.0;
 
     private StabilityCalculator() {
     }

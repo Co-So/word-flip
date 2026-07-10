@@ -96,14 +96,44 @@ class ReviewServiceTest {
     }
 
     @Test
+    void applyQuizResult_firstCorrect_reachesInitialHeatBand() {
+        when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.dictation))
+                .thenReturn(Optional.empty());
+
+        MasterySnapshot after = reviewService.applyQuizResult(
+                USER_ID, WORD_KEY, Skill.dictation, true, false, ZONE);
+
+        assertThat(after.stability()).isGreaterThanOrEqualTo(StabilityCalculator.INITIAL_CORRECT_STABILITY);
+        assertThat(after.heatLevel()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void applyQuizResult_correctWhileStillHeat0_boostsToInitial() {
+        WordSkillProgress progress = baseProgress(0.05, Skill.choice);
+        progress.setHasQuizHistory(true);
+        progress.setLastQuizAt(Instant.now().minus(1, ChronoUnit.HOURS));
+        progress.setWindowStartedAt(Instant.now().minus(1, ChronoUnit.HOURS));
+        when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.choice))
+                .thenReturn(Optional.of(progress));
+
+        MasterySnapshot after = reviewService.applyQuizResult(
+                USER_ID, WORD_KEY, Skill.choice, true, false, ZONE);
+
+        assertThat(after.stability()).isGreaterThanOrEqualTo(StabilityCalculator.INITIAL_CORRECT_STABILITY);
+        assertThat(after.heatLevel()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
     void applyQuizResult_sameDayManyCorrect_capsWindowGainAtOne() {
-        WordSkillProgress progress = baseProgress(10.0, Skill.dictation);
+        WordSkillProgress progress = baseProgress(20.0, Skill.dictation);
+        progress.setHasQuizHistory(true);
+        progress.setLastQuizAt(Instant.now().minus(2, ChronoUnit.HOURS));
         progress.setWindowStartedAt(Instant.now().minus(1, ChronoUnit.HOURS));
         progress.setWindowCorrectGain(BigDecimal.ZERO.setScale(2));
         when(wordSkillProgressRepository.findByUserIdAndWordKeyAndSkill(USER_ID, WORD_KEY, Skill.dictation))
                 .thenReturn(Optional.of(progress));
 
-        double start = 10.0;
+        double start = 20.0;
         for (int i = 0; i < 10; i++) {
             MasterySnapshot snap = reviewService.applyQuizResult(
                     USER_ID, WORD_KEY, Skill.dictation, true, false, ZONE);

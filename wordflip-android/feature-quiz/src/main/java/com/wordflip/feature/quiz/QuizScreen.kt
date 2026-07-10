@@ -210,7 +210,7 @@ private fun QuizQuestionContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // ① 顶部：提示区（默写/英选中看中文；中选英可看英文）
+        // ① 顶部题干：dictation/中选英看中文；英选中看英文（REQ-QUIZ-11）
         QuizWordHeader(
             state = state,
             isSpeaking = isSpeaking,
@@ -270,7 +270,8 @@ private fun QuizQuestionContent(
 }
 
 /**
- * 顶部单词区：正式测验展示中文；巩固阶段展示英文，盖住后在同位置换显中文。
+ * 顶部题干区：dictation / choice_cn_en 展示中文；choice_en_cn 展示英文；
+ * 巩固阶段展示英文，盖住后在同位置换显中文。
  */
 @Composable
 private fun QuizWordHeader(
@@ -319,10 +320,25 @@ private fun QuizWordHeader(
                         },
                     )
                 }
+                // 英选中答错：优先展示中文正确答案，避免用户以为「答案是另一个英文」
+                val type = state.question.type.lowercase()
+                val displayAnswerText = state.feedback?.expectedAnswer
+                    ?.takeIf { it.isNotBlank() }
+                    ?: state.question.prompt.cn
+                if (type == "choice_en_cn" && displayAnswerText.isNotBlank()) {
+                    Text(
+                        text = displayAnswerText,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = WordFlipColors.extra.success,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (state.hintPanelCovered) {
                     // 盖住英文：原单词位显示中文释义，便于对照默写
                     Text(
-                        text = state.question.prompt.cn,
+                        text = preferChinesePrompt(state.question.prompt.cn),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -354,13 +370,20 @@ private fun QuizWordHeader(
                 )
             }
         } else {
-            // choice_cn_en：提示英文；其余题型提示中文
-            val promptText = if (state.question.type == "choice_cn_en") {
-                state.question.prompt.en?.takeIf { it.isNotBlank() }
+            // REQ-QUIZ-11：英选中=英文题干+中文选项；中选英=中文题干+英文选项
+            val type = state.question.type.lowercase()
+            val promptText = when (type) {
+                "choice_en_cn" -> state.question.prompt.en?.takeIf { it.isNotBlank() }
                     ?: state.question.expectedEn.takeIf { it.isNotBlank() }
-                    ?: state.question.prompt.cn
-            } else {
-                state.question.prompt.cn
+                    ?: state.question.wordKey
+                // 词书 cn 常夹带英文搭配（如 favour (prep.)；为收款人），从首个汉字起展示，避免「英文选英文」观感
+                "choice_cn_en" -> preferChinesePrompt(state.question.prompt.cn)
+                else -> preferChinesePrompt(state.question.prompt.cn)
+            }
+            val hint = when (type) {
+                "choice_en_cn" -> "选出正确的中文释义"
+                "choice_cn_en" -> "选出正确的英文单词"
+                else -> null
             }
             Column(
                 modifier = Modifier
@@ -369,16 +392,27 @@ private fun QuizWordHeader(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                if (hint != null) {
+                    Text(
+                        text = hint,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 Text(
                     text = promptText,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                 )
-                PosPhRow(
-                    pos = state.question.prompt.pos,
-                    ph = state.question.prompt.ph,
-                )
+                // 英选中才展示音标；中选英题干为中文，音标易造成「英文题干」错觉
+                if (type == "choice_en_cn" || type == "dictation") {
+                    PosPhRow(
+                        pos = state.question.prompt.pos,
+                        ph = state.question.prompt.ph,
+                    )
+                }
             }
         }
     }
@@ -642,7 +676,15 @@ private fun QuizHintSection(
                 )
             }
             state.wrongAttemptAnswer?.let { wrong ->
-                HintLine(text = "你写了：$wrong")
+                val prefix = if (state.question.isChoice) "你选了：" else "你写了："
+                HintLine(text = prefix + wrong)
+            }
+            state.feedback?.expectedAnswer?.takeIf { it.isNotBlank() }?.let { answer ->
+                HintLine(
+                    text = "正确答案：$answer",
+                    color = WordFlipColors.extra.success,
+                    bold = true,
+                )
             }
 
             if (detail != null) {
@@ -813,4 +855,14 @@ fun parseQuizSource(value: String): QuizSource {
         "recent" -> QuizSource.RECENT
         else -> QuizSource.TODAY
     }
+}
+
+/**
+ * 词书 cn 常以英文搭配开头（如 `favour (prep.)；为收款人`）。
+ * 中选英题干从首个汉字截取，避免题干看起来像英文、再配英文选项形成「英文选英文」。
+ */
+internal fun preferChinesePrompt(cn: String): String {
+    if (cn.isBlank()) return cn
+    val index = cn.indexOfFirst { it in '\u4e00'..'\u9fff' }
+    return if (index > 0) cn.substring(index) else cn
 }

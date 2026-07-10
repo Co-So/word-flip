@@ -7,6 +7,8 @@
 
 本文档汇总 WordFlip 从 MVP 到全端扩展的**技术选型、系统架构、模块边界与基础设施设计**。业务行为以 `requirements.md` 为准；本文档只描述技术实现层面。
 
+> **待修订（词库结构化）：** §4.6 单词模型将改为 Headword 1—n Sense 1—n Example；离线清洗工具见 `tools/`。计划：[plans/lexicon-restructure.md](./plans/lexicon-restructure.md)。
+
 ---
 
 ## 1. 决策摘要

@@ -35,9 +35,22 @@ public record WordProgressSnapshot(
                 stability = c.stability();
             }
             case free, combined -> {
-                // 综合：取较低 heat（木桶）；free 默认也先给综合，客户端可再切换
-                heat = Math.min(d.heatLevel(), c.heatLevel());
-                stability = Math.min(d.stability(), c.stability());
+                // 综合木桶：只聚合「已有测验史」的 skill；未测轨不参与 min，避免单轨测验热力被锁在 0
+                boolean dHist = d.hasQuizHistory();
+                boolean cHist = c.hasQuizHistory();
+                if (dHist && cHist) {
+                    heat = Math.min(d.heatLevel(), c.heatLevel());
+                    stability = Math.min(d.stability(), c.stability());
+                } else if (dHist) {
+                    heat = d.heatLevel();
+                    stability = d.stability();
+                } else if (cHist) {
+                    heat = c.heatLevel();
+                    stability = c.stability();
+                } else {
+                    heat = 0;
+                    stability = 0.0;
+                }
             }
             default -> {
                 heat = Math.min(d.heatLevel(), c.heatLevel());

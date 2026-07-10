@@ -169,7 +169,25 @@ class QuizViewModel @Inject constructor(
 
                     val feedback = result.toFeedback()
                     val revealedEn = result.expectedEn.orEmpty()
-                    val questionWithAnswer = question.copy(expectedEn = revealedEn.ifBlank { question.expectedEn })
+                    val revealedAnswer = result.expectedAnswer?.takeIf { it.isNotBlank() }
+                        ?: revealedEn
+                    val questionWithAnswer = question.copy(
+                        expectedEn = revealedEn.ifBlank { question.expectedEn },
+                        prompt = question.prompt.copy(
+                            cn = when {
+                                question.type.equals("choice_en_cn", ignoreCase = true) &&
+                                    revealedAnswer.isNotBlank() -> revealedAnswer
+                                else -> question.prompt.cn
+                            },
+                        ),
+                    )
+                    // 选择题答错：展示选项 label，而非 wordKey
+                    val wrongDisplay = if (selectedKey != null) {
+                        question.options?.firstOrNull { it.key == selectedKey }?.label
+                            ?: selectedKey
+                    } else {
+                        displayAnswer
+                    }
 
                     if (result.correct) {
                         _uiState.value = state.copy(
@@ -188,9 +206,9 @@ class QuizViewModel @Inject constructor(
                     } else {
                         wrongWords += QuizWrongWord(
                             wordKey = question.wordKey,
-                            en = revealedEn,
-                            cn = question.prompt.cn,
-                            userAnswer = displayAnswer,
+                            en = revealedEn.ifBlank { question.expectedEn },
+                            cn = questionWithAnswer.prompt.cn,
+                            userAnswer = wrongDisplay,
                         )
                         // 选择题答错：仍进入巩固（默写正确答案）
                         _uiState.value = state.copy(
@@ -199,7 +217,7 @@ class QuizViewModel @Inject constructor(
                             userAnswer = "",
                             feedback = feedback,
                             consolidationActive = true,
-                            wrongAttemptAnswer = displayAnswer,
+                            wrongAttemptAnswer = wrongDisplay,
                             practiceHint = null,
                             practicePassed = false,
                             hintPanelCovered = false,
@@ -302,6 +320,7 @@ private fun com.wordflip.core.model.quiz.AnswerResult.toFeedback(): QuizAnswerFe
         type = type,
         message = message,
         expectedEn = expectedEn,
+        expectedAnswer = expectedAnswer ?: expectedEn,
         masteryBefore = masteryUpdate?.before,
         masteryAfter = masteryUpdate?.after,
     )

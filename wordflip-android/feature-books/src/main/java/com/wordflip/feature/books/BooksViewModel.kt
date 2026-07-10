@@ -4,12 +4,9 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.wordflip.core.model.book.BookImportParseException
 import com.wordflip.core.model.book.BookItem
 import com.wordflip.core.model.book.BooksSummary
 import com.wordflip.core.model.book.GroupStrategy
-import com.wordflip.core.model.fake.FakeBooksData
-import com.wordflip.core.model.fake.MockBookImportParser
 import com.wordflip.core.network.books.BooksSettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -43,6 +40,9 @@ class BooksViewModel @Inject constructor(
     private var savedGroupStrategy: GroupStrategy = GroupStrategy.BOOK_ORDER
     private var serverSummary: BooksSummary = BooksSummary(0, 0, 0)
 
+    /** 从详情「加入学习」带回的预勾选词书 */
+    private var pendingPreselectBookId: Long? = null
+
     /** 已有内容时静默刷新，避免 Tab 切换闪 Loading */
     fun loadBooks() {
         viewModelScope.launch {
@@ -58,6 +58,12 @@ class BooksViewModel @Inject constructor(
                     savedGroupSize = page.settings.groupSize
                     savedGroupStrategy = page.settings.groupStrategy
                     serverSummary = page.settings.summary
+                    val preselect = pendingPreselectBookId
+                    pendingPreselectBookId = null
+                    if (preselect != null && !inWizard) {
+                        startWizardWithPreselect(page.books, preselect)
+                        return@onSuccess
+                    }
                     _uiState.value = BooksUiState.Content(
                         books = page.books.map { book ->
                             book.copy(selected = book.id in savedBookIds)
@@ -82,18 +88,43 @@ class BooksViewModel @Inject constructor(
         }
     }
 
+    /** 详情页「加入学习」：回到 Hub 后启动 ADD 向导并预勾选 */
+    fun prepareJoinLearning(bookId: Long) {
+        pendingPreselectBookId = bookId
+    }
+
+    fun openBookDetail(bookId: Long) {
+        viewModelScope.launch {
+            _events.emit(BooksUiEvent.NavigateToBookDetail(bookId))
+        }
+    }
+
     /** 启动向导：增加书籍（锁定已选）或重新分组（全可选） */
     fun startWizard(mode: BooksWizardMode) {
         val content = currentContent() ?: return
-        val books = content.books.map { book ->
-            book.copy(selected = book.id in savedBookIds)
+        startWizardInternal(content.books, mode, preselectBookId = null)
+    }
+
+    private fun startWizardWithPreselect(books: List<BookItem>, bookId: Long) {
+        startWizardInternal(books, BooksWizardMode.ADD, preselectBookId = bookId)
+    }
+
+    private fun startWizardInternal(
+        books: List<BookItem>,
+        mode: BooksWizardMode,
+        preselectBookId: Long?,
+    ) {
+        val content = currentContent()
+        val mapped = books.map { book ->
+            val selected = book.id in savedBookIds || book.id == preselectBookId
+            book.copy(selected = selected)
         }
         publishContent(
-            books = books,
+            books = mapped,
             groupSize = savedGroupSize,
             groupStrategy = savedGroupStrategy,
-            importSheet = content.importSheet,
-            isParsingImport = content.isParsingImport,
+            importSheet = content?.importSheet,
+            isParsingImport = content?.isParsingImport == true,
             isSaving = false,
             wizardMode = mode,
             wizardStep = BooksWizardStep.SELECT_BOOKS,
@@ -278,23 +309,21 @@ class BooksViewModel @Inject constructor(
         }
     }
 
-    /** 删除 imported 词书；仍 Mock，待 DELETE API（P0-B24） */
+    /** 删除 imported 词书（DELETE /books/{id}）；已入组词保留 */
     fun confirmDeleteBook(bookId: Long) {
         val content = currentContent() ?: return
-        if (!FakeBooksData.deleteBook(bookId)) return
-        val updated = content.books.filterNot { it.id == bookId }
-        publishContent(
-            books = updated,
-            groupSize = content.groupSize,
-            groupStrategy = content.groupStrategy,
-            importSheet = content.importSheet,
-            isParsingImport = content.isParsingImport,
-            isSaving = content.isSaving,
-            wizardMode = content.wizardMode,
-            wizardStep = content.wizardStep,
-            lockedBookIds = content.lockedBookIds,
-        )
-        emitToast("词书已删除")
+        viewModelScope.launch {
+            booksSettingsRepository.deleteBook(bookId)
+                .onSuccess {
+                    loadBooks()
+                    _events.emit(BooksUiEvent.Toast("词书已删除"))
+                }
+                .onFailure { error ->
+                    _events.emit(BooksUiEvent.Toast(error.message ?: "删除失败"))
+                    // 保持当前 content，避免空白
+                    _uiState.value = content
+                }
+        }
     }
 
     fun onImportClick() {
@@ -315,26 +344,28 @@ class BooksViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = content.copy(isParsingImport = true)
             try {
-                val (text, fileName) = withContext(Dispatchers.IO) {
-                    readTextFromUri(context, uri)
+                val (bytes, fileName, mime) = withContext(Dispatchers.IO) {
+                    readBytesFromUri(context, uri)
                 }
-                val parsed = MockBookImportParser.parse(text, fileName)
-                val preview = FakeBooksData.previewImport(parsed)
-                val latest = currentContent() ?: return@launch
-                _uiState.value = latest.copy(
-                    isParsingImport = false,
-                    importSheet = ImportSheetState(
-                        previewToken = preview.previewToken,
-                        suggestedName = preview.suggestedName,
-                        totalCount = preview.totalCount,
-                        previewWords = preview.previewWords,
-                        nameInput = preview.suggestedName,
-                    ),
-                )
-            } catch (e: BookImportParseException) {
-                val latest = currentContent() ?: return@launch
-                _uiState.value = latest.copy(isParsingImport = false)
-                _events.emit(BooksUiEvent.Toast(e.message ?: "未识别到有效单词"))
+                booksSettingsRepository.previewImport(bytes, fileName, mime)
+                    .onSuccess { preview ->
+                        val latest = currentContent() ?: return@onSuccess
+                        _uiState.value = latest.copy(
+                            isParsingImport = false,
+                            importSheet = ImportSheetState(
+                                previewToken = preview.previewToken,
+                                suggestedName = preview.suggestedName,
+                                totalCount = preview.totalCount,
+                                previewWords = preview.previewWords,
+                                nameInput = preview.suggestedName,
+                            ),
+                        )
+                    }
+                    .onFailure { error ->
+                        val latest = currentContent() ?: return@onFailure
+                        _uiState.value = latest.copy(isParsingImport = false)
+                        _events.emit(BooksUiEvent.Toast(error.message ?: "未识别到有效单词"))
+                    }
             } catch (_: Exception) {
                 val latest = currentContent() ?: return@launch
                 _uiState.value = latest.copy(isParsingImport = false)
@@ -353,11 +384,10 @@ class BooksViewModel @Inject constructor(
 
     fun cancelImport() {
         val content = currentContent() ?: return
-        content.importSheet?.previewToken?.let { FakeBooksData.cancelImportPreview(it) }
         _uiState.value = content.copy(importSheet = null)
     }
 
-    /** 确认导入词书；仍 Mock（P0-B23） */
+    /** 确认导入：自动勾选但不入组；引导用户走「增加书籍」 */
     fun confirmImport() {
         val content = currentContent() ?: return
         val sheet = content.importSheet ?: return
@@ -371,21 +401,24 @@ class BooksViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _uiState.value = content.copy(importSheet = sheet.copy(isConfirming = true))
-            val result = FakeBooksData.confirmImport(sheet.previewToken, trimmedName)
-            if (result == null) {
-                val latest = currentContent() ?: return@launch
-                _uiState.value = latest.copy(
-                    importSheet = sheet.copy(
-                        isConfirming = false,
-                        nameError = "词书名称已存在或预览已过期",
-                    ),
-                )
-                return@launch
-            }
-            loadBooks()
-            _events.emit(
-                BooksUiEvent.Toast("已导入「${result.book.name}」，共 ${result.book.wordCount} 词"),
-            )
+            booksSettingsRepository.confirmImport(sheet.previewToken, trimmedName)
+                .onSuccess { result ->
+                    loadBooks()
+                    _events.emit(
+                        BooksUiEvent.Toast(
+                            "已导入「${result.book.name}」并勾选 · 点「增加书籍」写入分组",
+                        ),
+                    )
+                }
+                .onFailure { error ->
+                    val latest = currentContent() ?: return@onFailure
+                    _uiState.value = latest.copy(
+                        importSheet = sheet.copy(
+                            isConfirming = false,
+                            nameError = error.message ?: "导入失败",
+                        ),
+                    )
+                }
         }
     }
 
@@ -467,11 +500,11 @@ class BooksViewModel @Inject constructor(
         }
     }
 
-    private fun readTextFromUri(context: Context, uri: Uri): Pair<String, String> {
-        val fileName = uri.lastPathSegment ?: "import.txt"
-        val text = context.contentResolver.openInputStream(uri)?.use { stream ->
-            stream.bufferedReader().readText()
-        } ?: throw BookImportParseException("未识别到有效单词")
-        return text to fileName
+    private fun readBytesFromUri(context: Context, uri: Uri): Triple<ByteArray, String, String> {
+        val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "import.txt"
+        val mime = context.contentResolver.getType(uri) ?: "text/plain"
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalStateException("无法读取文件")
+        return Triple(bytes, fileName, mime)
     }
 }

@@ -57,4 +57,5 @@ sealed interface BooksUiEvent {
     data class ConfirmDelete(val bookId: Long, val bookName: String) : BooksUiEvent
     data object NavigateToCustomGroup : BooksUiEvent
     data object LaunchFilePicker : BooksUiEvent
+    data class NavigateToBookDetail(val bookId: Long) : BooksUiEvent
 }

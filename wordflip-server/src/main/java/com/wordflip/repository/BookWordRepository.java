@@ -1,6 +1,8 @@
 package com.wordflip.repository;
 
 import com.wordflip.domain.BookWord;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -42,4 +44,14 @@ public interface BookWordRepository extends JpaRepository<BookWord, Long> {
             WHERE ubs.id.userId = :userId
             """)
     long countDistinctSelectedWordKeys(@Param("userId") Long userId);
+
+    long countByBookId(Long bookId);
+
+    /** 词书详情词条分页（按 sort_order） */
+    @Query("""
+            SELECT bw FROM BookWord bw
+            WHERE bw.bookId = :bookId
+            ORDER BY bw.sortOrder ASC, bw.id ASC
+            """)
+    Page<BookWord> findByBookIdOrderBySortOrderAsc(@Param("bookId") Long bookId, Pageable pageable);
 }

@@ -207,6 +207,17 @@ public class ReviewService {
         double windowGain = StabilityCalculator.fromStored(progress.getWindowCorrectGain());
 
         if (correct) {
+            // 首次答对，或仍停在「新词」档：抬到初识下限。
+            // 否则 gap=0→R=1 只涨 0.05，热力长期不更新（含历史脏数据）。
+            boolean establishInitial = previousQuizAt == null
+                    || StabilityCalculator.heatLevel(s) == 0;
+            if (establishInitial) {
+                s = Math.max(s, StabilityCalculator.INITIAL_CORRECT_STABILITY);
+                progress.setStability(StabilityCalculator.toStored(s));
+                progress.setWindowCorrectGain(StabilityCalculator.toStored(StabilityCalculator.CAP_CORRECT_IN_WINDOW));
+                progress.setRecentWrongCount(0);
+                return;
+            }
             double delta = StabilityCalculator.correctDelta(s, gap, windowGain);
             s = StabilityCalculator.applyDelta(s, delta);
             progress.setStability(StabilityCalculator.toStored(s));

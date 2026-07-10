@@ -45,6 +45,8 @@ data class SubmitAnswerRequest(
 data class AnswerResult(
     val correct: Boolean,
     val expectedEn: String? = null,
+    /** 答错时按题型展示的正确答案（英选中=中文，其余=英文） */
+    val expectedAnswer: String? = null,
     val feedback: String,
     val masteryUpdate: MasteryUpdatePayload? = null,
     val session: AnswerSessionProgress,
@@ -77,15 +79,25 @@ data class QuizResultPayload(
 )
 
 /** QuizQuestionPayload → 本地测验题目（expectedEn 答错后由服务端返回） */
-fun QuizQuestionPayload.toQuestionItem(expectedEn: String = ""): QuizQuestionItem = QuizQuestionItem(
-    questionIndex = questionIndex,
-    wordKey = wordKey,
-    expectedEn = expectedEn,
-    prompt = prompt,
-    type = type,
-    options = options,
-    detail = null,
-)
+fun QuizQuestionPayload.toQuestionItem(expectedEn: String = ""): QuizQuestionItem {
+    // 英选中：预填英文题干，避免 prompt.en 缺失时只能显示空串
+    val seededEn = expectedEn.ifBlank {
+        if (type.equals("choice_en_cn", ignoreCase = true)) {
+            prompt.en?.takeIf { it.isNotBlank() } ?: wordKey
+        } else {
+            ""
+        }
+    }
+    return QuizQuestionItem(
+        questionIndex = questionIndex,
+        wordKey = wordKey,
+        expectedEn = seededEn,
+        prompt = prompt,
+        type = type,
+        options = options,
+        detail = null,
+    )
+}
 
 fun QuizResultPayload.toResultData(): QuizResultData = QuizResultData(
     sessionId = sessionId,

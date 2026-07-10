@@ -54,6 +54,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.wordflip.core.model.book.BookItem
+import com.wordflip.core.model.book.BookSource
 import com.wordflip.core.model.book.GroupStrategy
 import com.wordflip.core.ui.component.BookListItem
 import com.wordflip.core.ui.component.NetworkErrorView
@@ -81,6 +82,9 @@ private val GROUP_STRATEGY_OPTIONS = listOf(
 @Composable
 fun BooksScreen(
     onNavigateToCustomGroup: () -> Unit = {},
+    onNavigateToBookDetail: (Long) -> Unit = {},
+    joinLearningBookId: Long? = null,
+    onJoinLearningConsumed: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: BooksViewModel = hiltViewModel(),
 ) {
@@ -89,6 +93,13 @@ fun BooksScreen(
     var pendingDelete by remember { mutableStateOf<Pair<Long, String>?>(null) }
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(joinLearningBookId) {
+        val id = joinLearningBookId ?: return@LaunchedEffect
+        viewModel.prepareJoinLearning(id)
+        onJoinLearningConsumed()
+        viewModel.loadBooks()
+    }
 
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -115,6 +126,7 @@ fun BooksScreen(
                         arrayOf("text/*", "application/json", "application/csv"),
                     )
                 }
+                is BooksUiEvent.NavigateToBookDetail -> onNavigateToBookDetail(event.bookId)
             }
         }
     }
@@ -325,6 +337,57 @@ private fun BooksHubContent(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        val builtin = state.books.filter { it.source == BookSource.BUILTIN }
+        val imported = state.books.filter { it.source == BookSource.IMPORTED }
+
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "系统词书",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        items(builtin, key = { it.id }) { book ->
+            BookListItem(
+                book = book,
+                onToggle = {},
+                onDelete = null,
+                browseMode = true,
+                onBrowse = { viewModel.openBookDetail(book.id) },
+            )
+            HorizontalDivider()
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "我的导入",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        if (imported.isEmpty()) {
+            item {
+                Text(
+                    text = "暂无导入词书，可点上方「导入单词书」",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            items(imported, key = { it.id }) { book ->
+                BookListItem(
+                    book = book,
+                    onToggle = {},
+                    onDelete = null,
+                    browseMode = true,
+                    onBrowse = { viewModel.openBookDetail(book.id) },
+                )
+                HorizontalDivider()
+            }
         }
     }
 }

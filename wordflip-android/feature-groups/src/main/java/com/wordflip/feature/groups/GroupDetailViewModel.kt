@@ -49,7 +49,11 @@ class GroupDetailViewModel @Inject constructor(
 
     fun loadDetail(stainMode: Boolean = (_uiState.value as? GroupDetailUiState.Content)?.stainMode ?: false) {
         viewModelScope.launch {
-            _uiState.value = GroupDetailUiState.Loading
+            val previous = _uiState.value as? GroupDetailUiState.Content
+            // 已有内容时静默刷新，避免从测验返回时全屏 Loading 闪烁
+            if (previous == null) {
+                _uiState.value = GroupDetailUiState.Loading
+            }
             try {
                 val (group, words) = coroutineScope {
                     val groupDeferred = async { groupsRepository.loadGroupDetail(groupId) }
@@ -68,11 +72,15 @@ class GroupDetailViewModel @Inject constructor(
                     words = words,
                     stainMode = stainMode,
                     stainCards = stainCards,
-                    selectedStainTypes = StainType.entries.toSet(),
+                    selectedStainTypes = previous?.selectedStainTypes ?: StainType.entries.toSet(),
                     stainsHidden = stainCards.all { it.stain.hidden } && stainCards.isNotEmpty(),
                 )
             } catch (error: Exception) {
-                _uiState.value = GroupDetailUiState.Error(error.message ?: "加载分组详情失败")
+                if (previous != null) {
+                    _events.emit(GroupDetailUiEvent.Toast(error.message ?: "刷新分组详情失败"))
+                } else {
+                    _uiState.value = GroupDetailUiState.Error(error.message ?: "加载分组详情失败")
+                }
             }
         }
     }

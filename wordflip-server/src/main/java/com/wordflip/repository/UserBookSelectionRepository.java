@@ -26,4 +26,8 @@ public interface UserBookSelectionRepository extends JpaRepository<UserBookSelec
     void deleteAllByUserId(@Param("userId") Long userId);
 
     boolean existsByIdUserIdAndIdBookId(Long userId, Long bookId);
+
+    @Modifying
+    @Query("DELETE FROM UserBookSelection ubs WHERE ubs.id.userId = :userId AND ubs.id.bookId = :bookId")
+    void deleteByUserIdAndBookId(@Param("userId") Long userId, @Param("bookId") Long bookId);
 }

@@ -9,6 +9,7 @@ import com.wordflip.dto.word.WordSummary;
 import com.wordflip.repository.BookWordRepository;
 import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserWordLexiconRepository;
+import com.wordflip.util.WordSenseNormalizer;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -47,13 +48,13 @@ public class WordLookupService {
         for (UserWordLexicon lexicon : userWordLexiconRepository.findByUserIdAndWordKeyIn(userId, wordKeys)) {
             result.put(
                     lexicon.getWordKey(),
-                    new WordSummary(
+                    WordSenseNormalizer.normalizeSummary(new WordSummary(
                             lexicon.getWordKey(),
                             lexicon.getEn(),
                             lexicon.getCn(),
                             lexicon.getPos(),
                             lexicon.getPh()
-                    )
+                    ))
             );
         }
         List<String> missing = wordKeys.stream().filter(key -> !result.containsKey(key)).toList();
@@ -67,13 +68,13 @@ public class WordLookupService {
         for (BookWord bookWord : bookWordRepository.findByBookIdsAndWordKeys(selectedBookIds, missing)) {
             result.putIfAbsent(
                     bookWord.getWordKey(),
-                    new WordSummary(
+                    WordSenseNormalizer.normalizeSummary(new WordSummary(
                             bookWord.getWordKey(),
                             bookWord.getEn(),
                             bookWord.getCn(),
                             bookWord.getPos(),
                             bookWord.getPh()
-                    )
+                    ))
             );
         }
         return result;

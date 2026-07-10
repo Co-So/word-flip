@@ -16,6 +16,7 @@ object MainRoutes {
     const val QUIZ =
         "quiz/{source}?groupId={groupId}&wordLimit={wordLimit}&questionTypes={questionTypes}&launchMode={launchMode}&nonce={nonce}"
     const val CUSTOM_GROUP = "custom_group"
+    const val BOOK_DETAIL = "book_detail/{bookId}"
 
     fun studyRoute(groupId: Int, groupName: String, wordCount: Int): String {
         val encodedName = Uri.encode(groupName)
@@ -31,6 +32,8 @@ object MainRoutes {
         val encodedName = Uri.encode(groupName)
         return "snapshot/$groupId?groupName=$encodedName"
     }
+
+    fun bookDetailRoute(bookId: Long): String = "book_detail/$bookId"
 
     /**
      * 测验路由；[questionTypes] 为逗号分隔 apiValue（如 dictation,choice_en_cn）。

@@ -17,10 +17,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Spellcheck
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,17 +47,18 @@ import com.wordflip.core.model.today.RecentGroup
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.StatTripleRow
 import com.wordflip.core.ui.component.TaskRow
-import com.wordflip.core.ui.component.WordFlipToastController
 import com.wordflip.core.ui.component.WordFlipToastHost
 import com.wordflip.core.ui.component.WordFlipTopBar
 import com.wordflip.core.ui.component.WordFlipTopBarAction
 import com.wordflip.core.ui.component.rememberWordFlipToast
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * 今日首页（REQ-TODAY-1~8）：问候、统计、任务、固定 CTA。
+ * 今日首页：问候、统计、最近学习组（主入口）、今日任务（REQ-TODAY）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,17 +105,6 @@ fun TodayScreen(
                 else -> WordFlipTopBar(title = "今日")
             }
         },
-        bottomBar = {
-            if (uiState is TodayUiState.Content) {
-                val dashboard = (uiState as TodayUiState.Content).dashboard
-                StartStudyBar(
-                    label = viewModel.buildStartStudyLabel(dashboard.recommendedStudy),
-                    onClick = {
-                        viewModel.resolveStudyNavigation(dashboard.recommendedStudy)?.let(onNavigateToStudy)
-                    },
-                )
-            }
-        },
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -138,7 +129,6 @@ fun TodayScreen(
                     TodayContent(
                         state = state,
                         viewModel = viewModel,
-                        toast = toast,
                         onNavigateToStudy = onNavigateToStudy,
                         onNavigateToQuiz = onNavigateToQuiz,
                         onNavigateToRecentQuiz = onNavigateToRecentQuiz,
@@ -172,14 +162,12 @@ private fun TodayHeader(
             }
         },
     )
-    // 日期行放在 TopBar 下方由 Content 区首行展示
 }
 
 @Composable
 private fun TodayContent(
     state: TodayUiState.Content,
     viewModel: TodayViewModel,
-    toast: WordFlipToastController,
     onNavigateToStudy: (StudyNavigation) -> Unit,
     onNavigateToQuiz: () -> Unit,
     onNavigateToRecentQuiz: (groupId: Int, groupName: String) -> Unit,
@@ -203,6 +191,26 @@ private fun TodayContent(
             dueReviewCount = dashboard.stats.dueReviewCount,
             completionPercent = dashboard.stats.completionPercent,
         )
+        // 最近学习组上提为主入口（替代原底部「开始学习」）
+        if (dashboard.recentGroups.isNotEmpty()) {
+            Text(
+                text = "最近学习",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                dashboard.recentGroups.take(3).forEach { group ->
+                    RecentGroupCard(
+                        group = group,
+                        onStudyClick = {
+                            onNavigateToStudy(viewModel.resolveRecentStudyNavigation(group))
+                        },
+                        onQuizClick = { onNavigateToRecentQuiz(group.groupId, group.name) },
+                    )
+                }
+            }
+        }
         Text(
             text = "今日任务",
             style = MaterialTheme.typography.titleMedium,
@@ -242,87 +250,61 @@ private fun TodayContent(
                 contentDescription = "默写测验，${dashboard.tasks.quiz.count} 题",
             )
         }
-        // 最近学习组（最多 3）：点击进组测 source=recent
-        if (dashboard.recentGroups.isNotEmpty()) {
-            Text(
-                text = "最近学习",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                dashboard.recentGroups.take(3).forEach { group ->
-                    RecentGroupCard(
-                        group = group,
-                        onClick = { onNavigateToRecentQuiz(group.groupId, group.name) },
-                    )
-                }
-            }
-        }
         Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
+/** 最近组卡片：主区域进学习，右侧测验按钮进组测（REQ-TODAY-13） */
 @Composable
 private fun RecentGroupCard(
     group: RecentGroup,
-    onClick: () -> Unit,
+    onStudyClick: () -> Unit,
+    onQuizClick: () -> Unit,
 ) {
     OutlinedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                imageVector = Icons.Outlined.Quiz,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = group.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onStudyClick),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.PlayArrow,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
                 )
-                Text(
-                    text = "点击开始测验",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = group.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = formatRelativeStudiedAt(group.lastStudiedAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            Text(
-                text = "测验",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-    }
-}
-
-@Composable
-private fun StartStudyBar(
-    label: String,
-    onClick: () -> Unit,
-) {
-    Surface(
-        tonalElevation = 3.dp,
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Button(
-            onClick = onClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            Text(text = label)
+            TextButton(onClick = onQuizClick) {
+                Icon(
+                    imageVector = Icons.Outlined.Quiz,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.size(4.dp))
+                Text(text = "测验")
+            }
         }
     }
 }
@@ -368,4 +350,22 @@ private fun formatLocalizedDate(isoDate: String): String {
         val formatter = DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINESE)
         date.format(formatter)
     }.getOrElse { isoDate }
+}
+
+/** 将 ISO lastStudiedAt 格式化为相对时间文案 */
+internal fun formatRelativeStudiedAt(isoDateTime: String): String {
+    return runCatching {
+        val instant = Instant.parse(isoDateTime)
+        val minutes = Duration.between(instant, Instant.now()).toMinutes().coerceAtLeast(0)
+        when {
+            minutes < 1 -> "刚刚学习"
+            minutes < 60 -> "${minutes} 分钟前"
+            minutes < 60 * 24 -> "${minutes / 60} 小时前"
+            minutes < 60 * 24 * 7 -> "${minutes / (60 * 24)} 天前"
+            else -> {
+                val date = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                date.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINESE))
+            }
+        }
+    }.getOrElse { "最近学习" }
 }

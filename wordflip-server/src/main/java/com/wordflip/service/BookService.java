@@ -1,15 +1,21 @@
 package com.wordflip.service;
 
+import com.wordflip.domain.Book;
 import com.wordflip.domain.BookWord;
 import com.wordflip.domain.UserWordLexicon;
 import com.wordflip.dto.book.BookListResponse;
+import com.wordflip.dto.book.BookWordsResponse;
+import com.wordflip.dto.common.PageMeta;
 import com.wordflip.dto.settings.BooksSummary;
+import com.wordflip.dto.word.WordSummary;
 import com.wordflip.exception.WordflipException;
 import com.wordflip.repository.BookRepository;
 import com.wordflip.repository.BookWordRepository;
 import com.wordflip.repository.GroupWordRepository;
 import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserWordLexiconRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,7 +27,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 词书列表与汇总计算（distinct 词数、estimatedGroupCount、unassignedCount）。
+ * 词书列表、详情、词条分页与汇总计算。
  */
 @Service
 public class BookService {
@@ -54,6 +60,31 @@ public class BookService {
                 .map(book -> BookListResponse.BookItem.from(book, selectedIds.contains(book.getId())))
                 .toList();
         return new BookListResponse(items);
+    }
+
+    /** GET /books/{bookId}：可见性校验后返回单书 */
+    @Transactional(readOnly = true)
+    public BookListResponse.BookItem getBook(Long userId, Long bookId) {
+        Book book = requireVisibleBook(userId, bookId);
+        boolean selected = userBookSelectionRepository.existsByIdUserIdAndIdBookId(userId, bookId);
+        return BookListResponse.BookItem.from(book, selected);
+    }
+
+    /** GET /books/{bookId}/words：按 sort_order 分页，只读 */
+    @Transactional(readOnly = true)
+    public BookWordsResponse listBookWords(Long userId, Long bookId, int page, int size) {
+        requireVisibleBook(userId, bookId);
+        int safePage = Math.max(page, 0);
+        int safeSize = size <= 0 ? 20 : Math.min(size, 100);
+        Page<BookWord> wordPage = bookWordRepository.findByBookIdOrderBySortOrderAsc(
+                bookId,
+                PageRequest.of(safePage, safeSize)
+        );
+        List<WordSummary> words = wordPage.getContent().stream()
+                .map(bw -> new WordSummary(bw.getWordKey(), bw.getEn(), bw.getCn(), bw.getPos(), bw.getPh()))
+                .toList();
+        PageMeta meta = PageMeta.of(safePage, safeSize, wordPage.getTotalElements());
+        return BookWordsResponse.of(meta, words);
     }
 
     /** 计算词书汇总（对齐 openapi BooksSummary） */
@@ -120,12 +151,24 @@ public class BookService {
             return;
         }
         Set<Long> visibleIds = bookRepository.findVisibleBooks(userId).stream()
-                .map(b -> b.getId())
+                .map(Book::getId)
                 .collect(java.util.stream.Collectors.toSet());
         for (Long bookId : bookIds) {
             if (!visibleIds.contains(bookId)) {
                 throw new WordflipException("NOT_FOUND", "词书不存在或不可访问: " + bookId);
             }
         }
+    }
+
+    /** builtin 全员可见；imported 须归属当前用户 */
+    private Book requireVisibleBook(Long userId, Long bookId) {
+        Book book = bookRepository.findById(bookId)
+                .orElseThrow(() -> new WordflipException("NOT_FOUND", "词书不存在"));
+        boolean visible = book.getSource() == com.wordflip.domain.BookSource.builtin
+                || userId.equals(book.getUserId());
+        if (!visible) {
+            throw new WordflipException("NOT_FOUND", "词书不存在或不可访问");
+        }
+        return book;
     }
 }

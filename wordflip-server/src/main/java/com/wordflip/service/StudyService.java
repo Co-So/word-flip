@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wordflip.domain.GroupWord;
 import com.wordflip.domain.StudyGroup;
+import com.wordflip.domain.UserRecentGroup;
+import com.wordflip.domain.UserRecentGroupId;
 import com.wordflip.domain.WordImage;
 import com.wordflip.domain.WordStain;
 import com.wordflip.dto.media.ImageTransform;
@@ -20,6 +22,7 @@ import com.wordflip.dto.word.WordSummary;
 import com.wordflip.exception.WordflipException;
 import com.wordflip.repository.GroupRepository;
 import com.wordflip.repository.GroupWordRepository;
+import com.wordflip.repository.UserRecentGroupRepository;
 import com.wordflip.repository.WordImageRepository;
 import com.wordflip.repository.WordStainRepository;
 import com.wordflip.util.StableHash;
@@ -47,6 +50,7 @@ public class StudyService {
     private final WordLookupService wordLookupService;
     private final ReviewService reviewService;
     private final TodayCacheService todayCacheService;
+    private final UserRecentGroupRepository userRecentGroupRepository;
     private final WordImageRepository wordImageRepository;
     private final WordStainRepository wordStainRepository;
     private final ObjectMapper objectMapper;
@@ -57,6 +61,7 @@ public class StudyService {
             WordLookupService wordLookupService,
             ReviewService reviewService,
             TodayCacheService todayCacheService,
+            UserRecentGroupRepository userRecentGroupRepository,
             WordImageRepository wordImageRepository,
             WordStainRepository wordStainRepository,
             ObjectMapper objectMapper
@@ -66,6 +71,7 @@ public class StudyService {
         this.wordLookupService = wordLookupService;
         this.reviewService = reviewService;
         this.todayCacheService = todayCacheService;
+        this.userRecentGroupRepository = userRecentGroupRepository;
         this.wordImageRepository = wordImageRepository;
         this.wordStainRepository = wordStainRepository;
         this.objectMapper = objectMapper;
@@ -146,7 +152,7 @@ public class StudyService {
         }
     }
 
-    /** POST /study/sessions：upsert study_logs + 失效 Today 缓存 */
+    /** POST /study/sessions：upsert study_logs、最近学习组 + 失效 Today 缓存 */
     @Transactional
     public StudySessionReportResponse reportSession(
             Long userId,
@@ -159,9 +165,28 @@ public class StudyService {
         int wordsViewed = request.getWordsViewed() != null ? request.getWordsViewed() : 0;
 
         int streakDays = reviewService.recordStudySession(userId, logDate, duration, wordsViewed);
+        // 卡片学习完成也写入最近组，今日页「最近学习」名实相符（REQ-TODAY-13）
+        recordRecentGroup(userId, request.getGroupId());
         todayCacheService.invalidate(userId, logDate);
 
         return new StudySessionReportResponse(logDate, streakDays);
+    }
+
+    /** upsert user_recent_groups，与 QuizService.recordRecentGroups 同表 */
+    private void recordRecentGroup(Long userId, Long groupId) {
+        if (groupId == null) {
+            return;
+        }
+        UserRecentGroup recent = userRecentGroupRepository
+                .findById(new UserRecentGroupId(userId, groupId))
+                .orElseGet(() -> {
+                    UserRecentGroup created = new UserRecentGroup();
+                    created.setUserId(userId);
+                    created.setGroupId(groupId);
+                    return created;
+                });
+        recent.setLastStudiedAt(Instant.now());
+        userRecentGroupRepository.save(recent);
     }
 
     private StudyGroup requireOwnedGroup(Long userId, Long groupId) {

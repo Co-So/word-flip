@@ -270,6 +270,22 @@ paths:
           description: 导入频率超限
 
   /books/{bookId}:
+    get:
+      tags: [Books]
+      summary: 词书详情
+      description: |
+        返回单本可见词书（builtin 全员可见，或当前用户的 imported）。
+        仅浏览元数据，不改变勾选与分组。
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
     delete:
       tags: [Books]
       summary: 删除导入词书
@@ -281,6 +297,26 @@ paths:
           description: 已删除
         '403':
           description: 内置词书不可删
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /books/{bookId}/words:
+    get:
+      tags: [Books]
+      summary: 词书词条分页
+      description: |
+        按 `sort_order` 返回书内词条（只读浏览）。词书须对当前用户可见。
+        不写入掌握度、不改分组。
+      parameters:
+        - $ref: '#/components/parameters/BookId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookWordsResponse'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1254,6 +1290,17 @@ components:
           $ref: '#/components/schemas/BookItem'
           description: confirm 后 selected=true
 
+    BookWordsResponse:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [words]
+          properties:
+            words:
+              type: array
+              items:
+                $ref: '#/components/schemas/WordSummary'
+
     UnassignedWordsResponse:
       allOf:
         - $ref: '#/components/schemas/PageMeta'
@@ -1529,7 +1576,7 @@ components:
               type: string
             en:
               type: string
-              description: choice_cn_en 等题型可返回英文提示
+              description: choice_en_cn（英→中）题干英文；其余题型可省略
         options:
           type: array
           nullable: true
@@ -1583,7 +1630,13 @@ components:
         expectedEn:
           type: string
           nullable: true
-          description: 答错时返回标准答案
+          description: 答错时返回英文标准答案（巩固默写用）
+        expectedAnswer:
+          type: string
+          nullable: true
+          description: |
+            答错时按题型展示的正确答案文案：
+            choice_en_cn 为清洗后的中文释义；dictation / choice_cn_en 为英文。
         feedback:
           type: string
           enum: [correct, wrong]

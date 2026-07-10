@@ -23,7 +23,7 @@ data class QuizPrompt(
     val cn: String,
     val pos: String? = null,
     val ph: String? = null,
-    /** choice_cn_en 等题型可返回英文提示 */
+    /** choice_en_cn（英→中）题干英文；服务端仅该题型填充 */
     val en: String? = null,
 )
 
@@ -63,6 +63,8 @@ data class QuizAnswerFeedback(
     val type: QuizFeedbackType,
     val message: String,
     val expectedEn: String? = null,
+    /** 按题型展示的正确答案文案 */
+    val expectedAnswer: String? = null,
     val masteryBefore: MasterySnapshot? = null,
     val masteryAfter: MasterySnapshot? = null,
 )

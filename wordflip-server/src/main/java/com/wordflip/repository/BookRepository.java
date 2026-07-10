@@ -22,4 +22,6 @@ public interface BookRepository extends JpaRepository<Book, Long> {
     List<Book> findVisibleBooks(@Param("userId") Long userId);
 
     List<Book> findBySourceAndUserId(BookSource source, Long userId);
+
+    boolean existsByUserIdAndName(Long userId, String name);
 }

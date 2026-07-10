@@ -10,7 +10,7 @@
 
 | 项 | 说明 |
 |----|------|
-| 当前阶段 | 脚手架已就绪；**P0 业务开发进行中**（见 [TASK.md](TASK.md)） |
+| 当前阶段 | 脚手架已就绪；**P-LEX 词库结构化**为当前质量优先项（见 [TASK.md](TASK.md) / [plans/lexicon-restructure.md](docs/wordflip/plans/lexicon-restructure.md)） |
 | MVP 范围 | P0 登录/词书/分组 → P1 今日/学习 → P2 测验 → P3 卡拍/图片/污渍 → P4 统计/设置 |
 | 不在 MVP | iOS、React Web（二期）、云备份、推送提醒、微服务拆分 |
 
@@ -23,8 +23,9 @@
 3. **[docs/wordflip/database-design.md](docs/wordflip/database-design.md)** — 表结构与查询  
 4. **[docs/wordflip/api-modules.md](docs/wordflip/api-modules.md)** — 模块与业务规则  
 5. **[docs/wordflip/architecture.md](docs/wordflip/architecture.md)** — 技术架构  
-6. **[prototypes/wordflip-v5.html](prototypes/wordflip-v5.html)** — UI/动效参考（**非**业务逻辑）  
-7. **[docs/prd/WordFlip-PRD.md](docs/prd/WordFlip-PRD.md)** — 历史 PRD v2，**勿作实施依据**
+6. **[docs/wordflip/plans/](docs/wordflip/plans/)** — 跨模块实施计划（实施期补充；结论须并入 1–5）  
+7. **[prototypes/wordflip-v5.html](prototypes/wordflip-v5.html)** — UI/动效参考（**非**业务逻辑）  
+8. **[docs/prd/WordFlip-PRD.md](docs/prd/WordFlip-PRD.md)** — 历史 PRD v2，**勿作实施依据**
 
 目录与文件放置见 [STRUCTURE.md](STRUCTURE.md)。任务拆解见 [TASK.md](TASK.md)。
 
@@ -49,6 +50,7 @@
 | 规则 | 说明 |
 |------|------|
 | **掌握度仅测验写入** | 队列三态 `unlearned` / `fuzzy` / `unknown` + 稳定性 `stability`（S）；**按 skill 双轨**（`dictation` / `choice`）各一套热力与 SRS；唯一入口 `ReviewService.applyQuizResult`，由 `QuizService` 调用。**禁止** `PATCH /words/{wordKey}/mastery` 或客户端/local 改态 |
+| **释义真相（改造中）** | 目标为 `dict_senses`：**一词多义 1:n**；展示/测验默认 **primary** sense；`cn` 不含词性（词性在 `pos`）。进度仍绑 `wordKey`。见 [plans/lexicon-restructure.md](docs/wordflip/plans/lexicon-restructure.md) |
 | **学习翻转不改态** | 卡片浏览、`POST /study/sessions` 不更新三态与稳定性 S |
 | **分组增量追加** | `PUT /settings` 仅对未入组词 append 新 groups；**禁止** DELETE/重建已有 groups |
 | **一词一组** | `UNIQUE(user_id, word_key)` on `group_words` |

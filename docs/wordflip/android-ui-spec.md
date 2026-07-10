@@ -7,6 +7,8 @@
 
 本文档规定 WordFlip **Android 客户端**的界面结构、交互、组件与双主题行为。业务逻辑以 `requirements.md` v6 为准；视觉 token 以 `design-system/MASTER.md` 为准。
 
+> **待修订（词库结构化）：** 卡片背面展示 primary 释义；详情抽屉展示多义项 + 例句。见 [plans/lexicon-restructure.md](./plans/lexicon-restructure.md) Phase E。
+
 ---
 
 ## 1. 设计定位
@@ -88,10 +90,10 @@ flowchart TB
 
 ### 5.2 今日（首页）
 
-- **REQ-TODAY-1**：compact 下主内容尽量不滚动；**「开始学习」固定于 NavBar 上方**
-- 结构：问候 + 日期 + 连续天 Badge → 三格统计 → 三任务行 → 固定 CTA
+- **REQ-TODAY-1**：compact 下主内容尽量少滚动；**「最近学习」列表为主入口**（置于任务区上方），不再使用底部固定「开始学习」CTA
+- 结构：问候 + 日期 + 连续天 Badge → 三格统计 → 最近学习（≤3）→ 三任务行
+- 最近学习卡片：组名 + 相对时间；主点击 → 卡片学习；次要「测验」→ `source=recent`
 - 三任务：新词学习 / 到期复习 / 默写测验（数量来自服务端）
-- CTA 文案示例：「开始学习 · 第3组 · 20 词」
 - 通知：`IconButton` → MVP Snackbar 占位
 
 ### 5.3 词书

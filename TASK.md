@@ -1,9 +1,9 @@
 # WordFlip 任务清单（TASK）
 
-> 版本：v3.0  
-> 日期：2026-07-09  
+> 版本：v3.2  
+> 日期：2026-07-10  
 > 用法：完成一项将 `[ ]` 改为 `[x]`。任务按依赖顺序排列，建议自上而下打勾。  
-> 关联：[requirements.md](docs/wordflip/requirements.md) · [architecture.md](docs/wordflip/architecture.md) · [STRUCTURE.md](STRUCTURE.md)
+> 关联：[requirements.md](docs/wordflip/requirements.md) · [architecture.md](docs/wordflip/architecture.md) · [STRUCTURE.md](STRUCTURE.md) · [词库改造计划](docs/wordflip/plans/lexicon-restructure.md)
 
 ---
 
@@ -15,28 +15,29 @@
 | **I** | 基础设施 Docker | 8 / 8 |
 | **S** | 后端脚手架 + 公共层 | 21 / 21 |
 | **A** | Android 脚手架 + 公共层 | 14 / 14 |
-| **P0** | 登录 + 词书 + 分组 | 62 / 70 |
+| **P0** | 登录 + 词书 + 分组 | 69 / 71 |
 | **P1** | 今日 + 学习 + SRS 读 | 28 / 28 |
 | **P2** | 默写测验 + 掌握度写 | 22 / 24 |
 | **P2.5** | 多题型独立权重 + 组测 | 7 / 8 |
+| **P-LEX** | 词库结构化（1:n sense + 清洗工具） | 1 / 18 |
 | **P3** | 卡拍 + 图片 + 污渍 | 19 / 22 |
 | **P4** | 统计 + 设置完善 | 8 / 14 |
 | **Q** | 联调、测试、发布准备 | 3 / 12 |
 | **B** | 二期 Backlog | — |
 
-### 当前焦点（2026-07-09）
+### 当前焦点（2026-07-10）
 
-**P2.5 + P3 代码已落地**：稳定性热力 S、dictation/choice 双轨、组测入口、Images/Stains MinIO。待真机勾选 P2-T03/T04、P2.5-T01、P3-T01~T03。
+**词库质量优先**：扁平 `cn` 字符串导致测验/详情不可用。按 [lexicon-restructure.md](docs/wordflip/plans/lexicon-restructure.md) 推进 **P-LEX**（契约 → 清洗工具 → 表与灌数 → 读写切换 → Android）。
 
 | 轨道 | 任务 ID | 状态 |
 |------|---------|------|
-| P2 | P2-B01~B10、A07、T01~T02 | ✅ Quiz + applyQuizResult；分组详情热力 Chip |
-| P2.5 | B01~B04、A01~A02 | ✅ `word_skill_progress` 双轨 + 选择题/mixed + 设置偏好 |
-| P3 | P3-B01~B06、A06/A11 | ✅ MinIO 图片 + 污渍 + Study 卡片聚合 |
-| 待你勾选 | P2-T03~T04、P2.5-T01、P3-T01~T03 | 真机验收（见下方清单） |
+| P-LEX | 计划落盘 + 文档指针 | ✅ 本提交 |
+| P-LEX | A～F 实施项 | ⬜ 见下方 §P-LEX |
+| 待你勾选 | P0-T03、P2-T*、P2.5-T01、P3-T* | 真机验收（可与 P-LEX 并行，但测验质量依赖 P-LEX） |
 
 #### 真机验收清单（本地勾选后把 TASK 项标 `[x]`）
 
+- [ ] **P0-T03** 导入 CSV → 增加书籍 → 新词入组
 - [ ] **P2-T03** 分组详情记下热力 Chip → 只学习翻卡（不测验）→ 回详情热力**不变** → 完成测验后再回详情 → 热力**已变**
 - [ ] **P2-T04** 打开词数 20/30/50 的分组 → 进入测验 → 题数 = 组词数（非固定 10）→ 答完回详情热力分档统计/进度已更新
 - [ ] **P2.5-T01** 默写/选择分别升权；组测；今日最近组；热力展示模式（combined/dictation/choice/free）
@@ -44,14 +45,15 @@
 
 | 区域 | 状态 |
 |------|------|
+| 词书 | Hub 系统/导入分区；详情词条；导入/删除 **真 API** |
 | 今日 | GET /today **真 API**；`recentGroups`；Tab 静默刷新 |
 | 学习 | GET /study/groups/{id} + POST /study/sessions **真 API** |
 | 分组 | 列表/详情热力 heat0~4；组详情测验入口 |
 | 测验 | 多题型 + mixed/free_select；按 skill 写 S/SRS |
-| 联调 | P1/P2 单测 ✅；P2-T / P2.5-T / P3-T 待真机 |
+| 联调 | P1/P2 单测 ✅；P0-T03 / P2-T / P2.5-T / P3-T 待真机 |
 | 媒体 | Images/Stains **真 API**；Study WordCard 含 image/stain |
 
-**已打通导航：** 今日 ↔ 学习 / 测验 / 最近组；词书 → CustomGroup / 导入；分组详情 → 学习 / 测验；登录 ↔ 注册 ↔ **找回密码**。
+**已打通导航：** 今日 ↔ 学习 / 测验 / 最近组；词书 → 详情 / CustomGroup / 导入；分组详情 → 学习 / 测验；登录 ↔ 注册 ↔ **找回密码**。
 
 ---
 
@@ -210,12 +212,13 @@
 
 ### P0-B 后端 · 词书导入
 
-- [ ] P0-B20 `BookImportService`：解析 JSON 格式
-- [ ] P0-B21 解析 CSV / TXT 多分隔符（REQ-BOOK-6）
-- [ ] P0-B22 `POST /books/import/preview` → Redis previewToken 15min
-- [ ] P0-B23 `POST /books/import` confirm → books + book_words + selection + lexicon upsert
-- [ ] P0-B24 `DELETE /books/{bookId}` 仅 imported；已入组词保留
-- [ ] P0-B25 导入限流 Redis `rl:import:{userId}`
+- [x] P0-B20 `BookImportService`：解析 JSON 格式
+- [x] P0-B21 解析 CSV / TXT 多分隔符（REQ-BOOK-6）
+- [x] P0-B22 `POST /books/import/preview` → Redis previewToken 15min
+- [x] P0-B23 `POST /books/import` confirm → books + book_words + selection + lexicon upsert
+- [x] P0-B24 `DELETE /books/{bookId}` 仅 imported；已入组词保留
+- [x] P0-B25 导入限流 Redis `rl:import:{userId}`
+- [x] P0-B26 `GET /books/{bookId}` + `GET /books/{bookId}/words` 只读详情/词条分页
 
 ### P0-B 后端 · Groups
 
@@ -246,8 +249,8 @@
 - [x] P0-A12 勾选切换 + 底部分组大小 10/20/30/50
 - [x] P0-A13 汇总行：distinct 词数 · 每组 N · 约 M 组
 - [x] P0-A14 「保存设置」调用 PUT /settings；Toast 成功 — UI + Mock 已完成；真 API 见 P0-A1A
-- [x] P0-A15 「导入单词书」文件选择 → preview → confirm 流程 — OpenDocument + 本地解析 + BottomSheet Mock
-- [x] P0-A16 删除 imported 词书确认对话框 — Mock 已完成，待接 DELETE API
+- [x] P0-A15 「导入单词书」文件选择 → preview → confirm 流程 — 真 API multipart
+- [x] P0-A16 删除 imported 词书确认对话框 — 真 API DELETE；已入组词保留
 - [x] P0-A17 「手动添加分组」入口 → CustomGroup 页 — 词书页导航至 custom_group 子页
 - [x] P0-A18 `core-network`：`BooksApi` + `SettingsApi`；`core-model` 补齐 `BookListResponse`、`SaveBooksSettingsRequest/Response`、`AppendedGroups`
 - [x] P0-A19 `BooksSettingsRepository` + `NetworkModule` 装配（仿 `AuthRepository`）
@@ -255,6 +258,7 @@
 - [x] P0-A1B Gson 小写 enum 适配（`BookSource`、`ThemeMode`）
 - [x] P0-A1C Token 401/403 联调：TokenStore 内存缓存 + `TokenAuthenticator` 403 触发 Refresh
 - [x] P0-A1D 词书/分组 Tab 静默刷新（已有 Content 时不闪全屏 Loading）
+- [x] P0-A1E Hub「系统词书 / 我的导入」分区 + `book_detail` 词条浏览 + 加入学习跳转导导
 
 ### P0-A Android · 分组
 
@@ -383,6 +387,61 @@
 - [x] P2.5-A02 今日最近学习组直达测验；设置「测验与热力」
 - [ ] P2.5-T01 真机：默写/选择分别升权；组测；最近组；热力展示模式
 
+---
+
+## §P-LEX 词库结构化（质量优先）
+
+**里程碑**：Headword 1—n Sense 1—n Example；清洗工具（规则+LLM）；测验/详情只用合格 primary。  
+**计划全文**：[docs/wordflip/plans/lexicon-restructure.md](docs/wordflip/plans/lexicon-restructure.md)
+
+### P-LEX-0 计划与索引
+
+- [x] P-LEX-00 撰写 `plans/lexicon-restructure.md`；更新 STRUCTURE / docs 索引 / AGENTS / 权威文档指针
+
+### P-LEX-A 契约（Phase A）
+
+- [ ] P-LEX-A01 修订 `requirements.md`：字段职责、多义 1:n、测验 primary、导入清洗
+- [ ] P-LEX-A02 修订 `database-design.md`：`dict_words` / `dict_senses` / `dict_examples`；book_words 演进
+- [ ] P-LEX-A03 修订 `api-modules.md` + `architecture.md` §4.6
+- [ ] P-LEX-A04 修订 `openapi.yaml`：`Sense` / `Example`；WordSummary/WordCard 扩展
+- [ ] P-LEX-A05 修订 `android-ui-spec.md`：背面 primary、详情多义项
+
+### P-LEX-B 清洗工具（Phase B）
+
+- [ ] P-LEX-B01 创建 `tools/word-lexicon-cleaner/` 脚手架 + README
+- [ ] P-LEX-B02 规则引擎 + ok/uncertain/reject 分流 + 报告
+- [ ] P-LEX-B03 黄金样例 ≥30 条单测
+- [ ] P-LEX-B04 LLM 适配器（可配置；无 Key 可跳过）
+- [ ] P-LEX-B05 对现有 ~14k book_words 跑通规则并归档产物
+
+### P-LEX-C 表与灌数（Phase C）
+
+- [ ] P-LEX-C01 Flyway 建 `dict_*` 表
+- [ ] P-LEX-C02 灌入清洗结果；保证 ok 词有唯一 primary
+- [ ] P-LEX-C03 同步 `user_word_lexicon` primary 冗余字段
+
+### P-LEX-D 服务端读路径（Phase D）
+
+- [ ] P-LEX-D01 `WordLookupService` 读 dict + 兼容 WordSummary
+- [ ] P-LEX-D02 `QuizService` 出题池过滤 reject/无 primary；干扰项用 primary.cn
+- [ ] P-LEX-D03 `BookImportService` 导入拆 sense（规则优先）
+- [ ] P-LEX-D04 相关单测通过
+
+### P-LEX-E Android（Phase E）
+
+- [ ] P-LEX-E01 core-model 扩展 senses
+- [ ] P-LEX-E02 卡片背面 primary；详情多义 + 例句
+
+### P-LEX-F 收敛（Phase F）
+
+- [ ] P-LEX-F01 降级/收敛 `WordSenseNormalizer`；文档与 TASK 勾选验收
+
+### P-LEX 验收
+
+- [ ] P-LEX-T01 随机 50 题无脏选项；多义词详情正确；reject 不出题；旧进度仍在
+
+---
+
 ## §P3 卡拍 + 图片 + 污渍
 
 **里程碑**：能拍照/选图编辑保存；污渍生成与隐藏；学习页展示。
@@ -508,6 +567,8 @@ flowchart TD
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
+| 2026-07-10 | v3.2 | **P-LEX**：词库结构化计划落盘；文档指针与 TASK 轨道；焦点转词库质量 |
+| 2026-07-10 | v3.1 | 词书库：Hub 分区 + 详情词条；导入/删除真 API（P0-B20~26、A1E） |
 | 2026-07-09 | v3.0 | 稳定性热力 S + P2.5 双轨 skill/组测/设置；P3 媒体全栈；修复 `word_skill_progress.stage` JPA 校验；真机验收清单 |
 | 2026-07-09 | v2.9 | P3 全栈：Images/Stains MinIO API、Study WordCard 聚合、Android WordMediaRepository 去 Mock；P2 真机验收清单 |
 | 2026-07-09 | v2.8 | P2 全栈：B01~B10 Quiz API + applyQuizResult；Android QuizRepository + 组内全词数测验；Q-01 applyQuizResult 单测 |
@@ -536,4 +597,5 @@ flowchart TD
 
 - [STRUCTURE.md](STRUCTURE.md) — 代码放哪  
 - [docs/wordflip/architecture.md](docs/wordflip/architecture.md) §11 — MVP 分期  
+- [docs/wordflip/plans/lexicon-restructure.md](docs/wordflip/plans/lexicon-restructure.md) — **词库结构化改造计划**  
 - [wordflip-api/openapi.yaml](wordflip-api/openapi.yaml) — 端点清单  

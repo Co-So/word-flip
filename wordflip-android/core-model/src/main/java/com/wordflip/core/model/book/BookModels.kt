@@ -135,3 +135,12 @@ data class SaveBooksResult(
     val settings: UserSettingsResponse,
     val appendedGroupCount: Int,
 )
+
+/** 词书词条分页，对齐 openapi `BookWordsResponse` */
+data class BookWordsResponse(
+    val page: Int = 0,
+    val size: Int = 0,
+    val totalElements: Long = 0,
+    val totalPages: Int = 0,
+    val words: List<com.wordflip.core.model.study.WordSummary> = emptyList(),
+)

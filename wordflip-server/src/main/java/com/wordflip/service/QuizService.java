@@ -37,6 +37,7 @@ import com.wordflip.repository.QuizSessionRepository;
 import com.wordflip.repository.TodayQueryRepository;
 import com.wordflip.repository.UserRecentGroupRepository;
 import com.wordflip.util.UserTimeZoneUtil;
+import com.wordflip.util.WordSenseNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +46,8 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -133,9 +136,21 @@ public class QuizService {
             }
         }
 
-        List<String> pool = buildPool(userId, source, groupId, groupIds, zoneId);
-        if (pool.isEmpty()) {
+        List<String> rawPool = buildPool(userId, source, groupId, groupIds, zoneId);
+        if (rawPool.isEmpty()) {
             throw new WordflipException("EMPTY_POOL", "无题可出");
+        }
+
+        // 先解析并清洗释义，再过滤不可出题词（无汉字释义 / 短语拆坏虚词）
+        Map<String, WordSummary> poolSummaries = normalizeSummaries(
+                wordLookupService.resolveWordSummaries(userId, rawPool)
+        );
+        List<String> pool = rawPool.stream()
+                .filter(k -> WordSenseNormalizer.isQuizEligible(
+                        poolSummaries.getOrDefault(k, fallbackSummary(k))))
+                .collect(Collectors.toCollection(ArrayList::new));
+        if (pool.isEmpty()) {
+            throw new WordflipException("EMPTY_POOL", "词库释义未清洗完成，暂无合格题目");
         }
 
         List<String> shuffled = new ArrayList<>(pool);
@@ -146,8 +161,11 @@ public class QuizService {
         List<QuestionType> requestedTypes = parseQuestionTypes(request.getQuestionTypes());
         List<QuestionType> assignedTypes = assignQuestionTypes(total, launchMode, requestedTypes);
 
-        Map<String, WordSummary> summaries = wordLookupService.resolveWordSummaries(userId, selected);
-        // 干扰项从用户全部已入组词抽取
+        Map<String, WordSummary> summaries = new java.util.HashMap<>();
+        for (String key : selected) {
+            summaries.put(key, poolSummaries.getOrDefault(key, fallbackSummary(key)));
+        }
+        // 干扰项从用户全部已入组词抽取（后续再按词性/标签去重筛选）
         List<String> distractorPool = new ArrayList<>(groupWordRepository.findWordKeysByUserId(userId));
 
         String sessionId = UUID.randomUUID().toString();
@@ -174,17 +192,26 @@ public class QuizService {
             entity.setSessionId(sessionId);
             entity.setQuestionIndex(i);
             entity.setWordKey(wordKey);
-            entity.setQuestionType(type);
             entity.setExpectedEn(summary.en());
+            // 题干/选项一律用清洗后的 cn（词性只走 pos 字段）
             entity.setPromptCn(summary.cn() != null ? summary.cn() : "");
             entity.setPromptPos(summary.pos());
             entity.setPromptPh(summary.ph());
 
-            // 选择题：同用户词库抽 3 个干扰项，correctKey 用正确 wordKey
+            // 选择题：优质干扰项；若无法凑出互异 label，降级为默写
             if (type != QuestionType.dictation) {
-                List<QuizOptionDto> options = buildChoiceOptions(userId, wordKey, type, summary, distractorPool, summaries);
-                entity.setOptionsJson(toJsonOrNull(options));
-                entity.setCorrectKey(wordKey);
+                List<QuizOptionDto> options = buildChoiceOptions(
+                        userId, wordKey, type, summary, distractorPool, summaries, poolSummaries);
+                if (options.size() < 2 || !hasDistinctLabels(options)) {
+                    type = QuestionType.dictation;
+                    entity.setQuestionType(type);
+                } else {
+                    entity.setQuestionType(type);
+                    entity.setOptionsJson(toJsonOrNull(options));
+                    entity.setCorrectKey(wordKey);
+                }
+            } else {
+                entity.setQuestionType(type);
             }
 
             questionEntities.add(entity);
@@ -307,7 +334,9 @@ public class QuizService {
         }
 
         String feedback = correct ? "correct" : "wrong";
+        // 答错：expectedEn 供巩固默写；expectedAnswer 按题型展示（英选中=中文）
         String expectedEn = correct ? null : question.getExpectedEn();
+        String expectedAnswer = correct ? null : resolveExpectedAnswer(question, questionType);
         MasteryUpdateDto masteryUpdate = new MasteryUpdateDto(question.getWordKey(), before, after);
         QuizSessionProgressDto sessionProgress = new QuizSessionProgressDto(
                 completed ? QuizSessionStatus.completed.name() : QuizSessionStatus.in_progress.name(),
@@ -316,7 +345,8 @@ public class QuizService {
                 session.getTotalQuestions(),
                 nextQuestion
         );
-        return new AnswerResultResponse(correct, expectedEn, feedback, masteryUpdate, sessionProgress);
+        return new AnswerResultResponse(
+                correct, expectedEn, expectedAnswer, feedback, masteryUpdate, sessionProgress);
     }
 
     /** GET /quiz/sessions/{sessionId}/result */
@@ -431,44 +461,144 @@ public class QuizService {
         return assigned;
     }
 
-    /** 选择题选项：正确项 + 最多 3 个干扰项，打乱顺序 */
+    /**
+     * 选择题选项：正确项 + 最多 3 个优质干扰项。
+     * 业界实践：同词性优先、label 互异、长度相近、排除无释义/同义重复（University of Waterloo / TELRP）。
+     */
     private List<QuizOptionDto> buildChoiceOptions(
             Long userId,
             String correctWordKey,
             QuestionType type,
             WordSummary correctSummary,
             List<String> distractorPool,
-            Map<String, WordSummary> knownSummaries
+            Map<String, WordSummary> knownSummaries,
+            Map<String, WordSummary> poolSummaries
     ) {
-        List<String> candidates = distractorPool.stream()
-                .filter(k -> !k.equals(correctWordKey))
-                .collect(Collectors.toCollection(ArrayList::new));
-        Collections.shuffle(candidates);
-        List<String> distractors = candidates.stream().limit(3).toList();
+        QuizOptionDto correctOption = toOption(correctWordKey, correctSummary, type);
+        String correctLabelKey = WordSenseNormalizer.labelKey(correctOption.label());
+        if (correctLabelKey.isEmpty() || "（无释义）".equals(correctOption.label())) {
+            return List.of(correctOption);
+        }
 
-        List<String> needLookup = distractors.stream()
-                .filter(k -> !knownSummaries.containsKey(k))
+        String targetFamily = WordSenseNormalizer.posFamily(correctSummary.pos());
+        int targetLen = correctOption.label().length();
+
+        // 先打乱再取样解析，避免全库 lookup
+        List<String> sampleKeys = new ArrayList<>(distractorPool);
+        Collections.shuffle(sampleKeys);
+        List<String> needLookup = sampleKeys.stream()
+                .filter(k -> !k.equals(correctWordKey))
+                .filter(k -> !knownSummaries.containsKey(k) && !poolSummaries.containsKey(k))
+                .limit(64)
                 .toList();
         if (!needLookup.isEmpty()) {
-            knownSummaries.putAll(wordLookupService.resolveWordSummaries(userId, needLookup));
+            knownSummaries.putAll(normalizeSummaries(wordLookupService.resolveWordSummaries(userId, needLookup)));
+        }
+
+        List<ScoredDistractor> scored = new ArrayList<>();
+        Set<String> seenLabels = new HashSet<>();
+        seenLabels.add(correctLabelKey);
+
+        for (String key : sampleKeys) {
+            if (key.equals(correctWordKey)) {
+                continue;
+            }
+            WordSummary summary = knownSummaries.get(key);
+            if (summary == null) {
+                summary = poolSummaries.get(key);
+            }
+            if (summary == null) {
+                continue;
+            }
+            summary = WordSenseNormalizer.normalizeSummary(summary);
+            if (!WordSenseNormalizer.isQuizEligible(summary)) {
+                continue;
+            }
+            QuizOptionDto option = toOption(key, summary, type);
+            String labelKey = WordSenseNormalizer.labelKey(option.label());
+            if (labelKey.isEmpty() || "（无释义）".equals(option.label()) || !seenLabels.add(labelKey)) {
+                continue;
+            }
+            int score = 0;
+            if (WordSenseNormalizer.posFamily(summary.pos()).equals(targetFamily)) {
+                score += 100;
+            }
+            int lenDiff = Math.abs(option.label().length() - targetLen);
+            score += Math.max(0, 40 - lenDiff);
+            scored.add(new ScoredDistractor(score, option));
+            if (scored.size() >= 40) {
+                break;
+            }
+        }
+
+        scored.sort(Comparator.comparingInt(ScoredDistractor::score).reversed());
+        int topN = Math.min(12, scored.size());
+        if (topN > 1) {
+            Collections.shuffle(scored.subList(0, topN));
         }
 
         List<QuizOptionDto> options = new ArrayList<>();
-        options.add(toOption(correctWordKey, correctSummary, type));
-        for (String key : distractors) {
-            WordSummary summary = knownSummaries.getOrDefault(key, fallbackSummary(key));
-            options.add(toOption(key, summary, type));
+        options.add(correctOption);
+        for (ScoredDistractor d : scored) {
+            if (options.size() >= 4) {
+                break;
+            }
+            options.add(d.option());
         }
         Collections.shuffle(options);
         return options;
     }
 
     private static QuizOptionDto toOption(String wordKey, WordSummary summary, QuestionType type) {
-        // choice_en_cn：选项为中文；choice_cn_en：选项为英文；key 统一用 wordKey
-        String label = type == QuestionType.choice_en_cn
-                ? (summary.cn() != null && !summary.cn().isBlank() ? summary.cn() : wordKey)
-                : (summary.en() != null && !summary.en().isBlank() ? summary.en() : wordKey);
+        // choice_en_cn：选项为清洗后中文；choice_cn_en：选项为英文；key 统一用 wordKey
+        if (type == QuestionType.choice_en_cn) {
+            String cn = WordSenseNormalizer.cleanDisplayCn(summary.cn());
+            String label = (WordSenseNormalizer.hasHan(cn) && !cn.equalsIgnoreCase(wordKey))
+                    ? cn
+                    : "（无释义）";
+            return new QuizOptionDto(wordKey, label);
+        }
+        String en = summary.en();
+        String label = (en != null && !en.isBlank()) ? en : wordKey;
         return new QuizOptionDto(wordKey, label);
+    }
+
+    /** 答错时按题型给出用户可读的正确答案 */
+    private static String resolveExpectedAnswer(QuizQuestion question, QuestionType type) {
+        if (type == QuestionType.choice_en_cn) {
+            String cn = WordSenseNormalizer.cleanDisplayCn(question.getPromptCn());
+            if (WordSenseNormalizer.hasHan(cn)) {
+                return cn;
+            }
+        }
+        return question.getExpectedEn();
+    }
+
+    private static Map<String, WordSummary> normalizeSummaries(Map<String, WordSummary> raw) {
+        Map<String, WordSummary> out = new java.util.HashMap<>();
+        for (Map.Entry<String, WordSummary> e : raw.entrySet()) {
+            out.put(e.getKey(), WordSenseNormalizer.normalizeSummary(e.getValue()));
+        }
+        return out;
+    }
+
+    private static boolean hasDistinctLabels(List<QuizOptionDto> options) {
+        Set<String> keys = new HashSet<>();
+        for (QuizOptionDto o : options) {
+            String k = WordSenseNormalizer.labelKey(o.label());
+            if (k.isEmpty() || !keys.add(k)) {
+                return false;
+            }
+        }
+        return keys.size() >= 2;
+    }
+
+    private record ScoredDistractor(int score, QuizOptionDto option) {
+    }
+
+    /** 缺词义时 en 回退 wordKey，cn 留空（避免选择题把英文当中文选项） */
+    private static WordSummary fallbackSummary(String wordKey) {
+        return new WordSummary(wordKey, wordKey, "", null, null);
     }
 
     /** 会话完成时 upsert 最近学习组（groupId 或 groupIds） */
@@ -572,10 +702,6 @@ public class QuizService {
     private static int normalizeLimit(Integer limit) {
         int value = limit != null ? limit : 10;
         return Math.min(Math.max(value, 1), 50);
-    }
-
-    private static WordSummary fallbackSummary(String wordKey) {
-        return new WordSummary(wordKey, wordKey, wordKey, null, null);
     }
 
     /** 解析 options_json 为 DTO；dictation 无选项 */

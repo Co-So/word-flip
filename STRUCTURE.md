@@ -104,6 +104,8 @@ docs/
     ├── user-design.md           # 账号与登录
     ├── android-ui-spec.md       # Android UI/UX
     ├── coding-standards.md      # 代码中文注释规范
+    ├── plans/                   # 跨模块实施计划（定稿前/实施中）
+    │   └── lexicon-restructure.md
     └── design-system/
         └── MASTER.md            # Natural Sage 设计 tokens
 ```
@@ -111,6 +113,7 @@ docs/
 | 规则 | 说明 |
 |------|------|
 | 新增设计文档 | 放在 `docs/wordflip/`，Markdown 格式，版本号写在文首 |
+| 跨模块大改计划 | 放在 `docs/wordflip/plans/`；实施完成后结论并入定稿文档，计划文件可保留作历史 |
 | PRD 修订 | **不**直接改 `docs/prd/WordFlip-PRD.md` 作为实施依据；变更写入 `requirements.md` |
 | 禁止 | 在 `docs/` 放源码、SQL 迁移脚本（迁移放 `wordflip-server/.../db/migration/`） |
 | 交叉引用 | 文档间用相对路径；OpenAPI 引用 `../../wordflip-api/openapi.yaml` |
@@ -320,22 +323,42 @@ docker/
 
 ---
 
-## 12. 文件放置速查
+## 12. `tools/` — 离线工具（不参与 App 构建）
+
+```
+tools/
+└── word-lexicon-cleaner/        # 词库规则清洗 + LLM 兜底
+    ├── README.md
+    └── …
+```
+
+| 规则 | 说明 |
+|------|------|
+| 用途 | 批处理、ETL、词库建设；**不**打进 Android/Server 运行时热路径 |
+| 计划 | [docs/wordflip/plans/lexicon-restructure.md](docs/wordflip/plans/lexicon-restructure.md) |
+| 密钥 | LLM API Key 仅本机环境变量 / 本地 `.env`（gitignore） |
+| 产物 | JSONL / 报告；灌库 SQL 经审阅后放入 `wordflip-server/.../db/migration/` |
+
+---
+
+## 13. 文件放置速查
 
 | 我要放… | 放在 |
 |---------|------|
 | 产品需求变更 | `docs/wordflip/requirements.md` |
+| 跨模块实施计划 | `docs/wordflip/plans/*.md` |
 | 新 REST 端点 | `wordflip-api/openapi.yaml` |
 | 数据库表变更 | `wordflip-server/.../db/migration/V{n}__*.sql` + 更新 `database-design.md` |
 | Android 新页面 | `wordflip-android/feature-*/` |
 | 设计 token / 颜色 | `docs/wordflip/design-system/MASTER.md` |
+| 词库清洗工具 | `tools/word-lexicon-cleaner/` |
 | 新的 HTML 原型 | `prototypes/wordflip-v{N}.html` |
 | 本地 compose | `docker/docker-compose.yml` |
 | 密钥、Token | **不得入库**；用 `.env`（gitignore）或 CI Secret |
 
 ---
 
-## 13. 禁止清单（全局）
+## 14. 禁止清单（全局）
 
 - ❌ 根目录散落业务源码、构建产物、用户数据  
 - ❌ 在多个端重复实现掌握度 / SRS / 判题逻辑  
@@ -343,10 +366,11 @@ docker/
 - ❌ 把 `localStorage` 原型逻辑原样搬进 Android 作为主数据源  
 - ❌ 在 `docs/prd/` 当作唯一需求源做开发（以 `requirements.md` v6 为准）  
 - ❌ 提交 `.env`、`application-local.yml`、Keystore、JWT 私钥  
+- ❌ 在 `docs/` 放 SQL 迁移或生产词库大文件（迁移走 Flyway；清洗产物经审阅再入库）  
 
 ---
 
-## 14. 初始化检查清单
+## 15. 初始化检查清单
 
 脚手架搭建完成后，确认：
 
@@ -359,20 +383,22 @@ docker/
 
 ---
 
-## 15. 修订记录
+## 16. 修订记录
 
 | 日期 | 版本 | 说明 |
 |------|------|------|
+| 2026-07-10 | v1.2 | 增加 `docs/wordflip/plans/`、`tools/`；词库结构化计划索引 |
 | 2026-06-30 | v1.0 | 初版：Monorepo 标准结构（当前 + 脚手架目标） |
 | 2026-06-30 | v1.1 | 关联 [TASK.md](TASK.md) 任务清单 |
 
 ---
 
-## 16. 相关文档
+## 17. 相关文档
 
 - [README.md](README.md) — 快速入门  
 - [TASK.md](TASK.md) — **可打勾任务清单（开发用）**  
 - [AGENTS.md](AGENTS.md) — **AI Agent 指令（Cursor 自动读取）**  
 - [docs/wordflip/coding-standards.md](docs/wordflip/coding-standards.md) — **代码中文注释规范**  
+- [docs/wordflip/plans/lexicon-restructure.md](docs/wordflip/plans/lexicon-restructure.md) — 词库结构化改造计划  
 - [docs/wordflip/architecture.md](docs/wordflip/architecture.md) — 技术架构与 MVP 分期  
 - [docs/wordflip/requirements.md](docs/wordflip/requirements.md) — 产品需求定稿  

@@ -11,6 +11,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -20,6 +23,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.wordflip.feature.books.BookDetailScreen
 import com.wordflip.feature.books.BooksScreen
 import com.wordflip.feature.groups.CustomGroupScreen
 import com.wordflip.feature.groups.GroupDetailScreen
@@ -42,6 +46,7 @@ fun MainScreen(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route?.substringBefore("?")
     val showBottomBar = currentRoute in MainRoutes.tabRoutes
+    var joinLearningBookId by remember { mutableStateOf<Long?>(null) }
 
     Scaffold(
         modifier = modifier,
@@ -100,6 +105,11 @@ fun MainScreen(
                     onNavigateToCustomGroup = {
                         navController.navigate(MainRoutes.CUSTOM_GROUP)
                     },
+                    onNavigateToBookDetail = { bookId ->
+                        navController.navigate(MainRoutes.bookDetailRoute(bookId))
+                    },
+                    joinLearningBookId = joinLearningBookId,
+                    onJoinLearningConsumed = { joinLearningBookId = null },
                 )
             }
             composable(MainRoutes.GROUPS) {
@@ -279,6 +289,20 @@ fun MainScreen(
                     onNavigateBack = { navController.popBackStack() },
                     onSaved = {
                         navController.popBackStack()
+                    },
+                )
+            }
+            composable(
+                route = MainRoutes.BOOK_DETAIL,
+                arguments = listOf(
+                    navArgument("bookId") { type = NavType.LongType },
+                ),
+            ) {
+                BookDetailScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onJoinLearning = { bookId ->
+                        joinLearningBookId = bookId
+                        navController.popBackStack(MainRoutes.BOOKS, inclusive = false)
                     },
                 )
             }

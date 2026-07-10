@@ -3,7 +3,7 @@ package com.wordflip.feature.today
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.wordflip.core.model.navigation.StudyNavigation
-import com.wordflip.core.model.today.RecommendedStudy
+import com.wordflip.core.model.today.RecentGroup
 import com.wordflip.core.model.today.TodayTask
 import com.wordflip.core.network.today.TodayRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,13 +53,12 @@ class TodayViewModel @Inject constructor(
         }
     }
 
-    /** REQ-TODAY-7：底部 CTA 目标分组 */
-    fun resolveStudyNavigation(recommended: RecommendedStudy?): StudyNavigation? {
-        recommended ?: return null
+    /** 最近学习组主点击 → 卡片学习（REQ-TODAY-13） */
+    fun resolveRecentStudyNavigation(group: RecentGroup): StudyNavigation {
         return StudyNavigation(
-            groupId = recommended.groupId,
-            groupName = recommended.groupName,
-            wordCount = recommended.wordCount,
+            groupId = group.groupId,
+            groupName = group.name,
+            wordCount = 0,
         )
     }
 
@@ -71,12 +70,6 @@ class TodayViewModel @Inject constructor(
             groupName = source.groupName,
             wordCount = source.count,
         )
-    }
-
-    /** 组装 CTA 文案：「开始学习 · 第3组 · 20 词」 */
-    fun buildStartStudyLabel(recommended: RecommendedStudy?): String {
-        recommended ?: return "开始学习"
-        return "开始学习 · ${recommended.groupName} · ${recommended.wordCount} 词"
     }
 
     /**
