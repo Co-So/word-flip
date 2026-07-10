@@ -9,6 +9,7 @@ from pathlib import Path
 from . import emit as emit_mod
 from . import export_mysql
 from . import llm as llm_mod
+from . import overlay_ecdict
 from . import report as report_mod
 from .io_jsonl import dump_cleaned, load_cleaned, load_raw
 from .models import CleanedWord
@@ -78,6 +79,17 @@ def _cmd_emit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_overlay_ecdict(args: argparse.Namespace) -> int:
+    argv = ["--db", args.db, "--keys-from", args.keys_from, "-o", args.output]
+    if args.raw:
+        argv.extend(["--raw", args.raw])
+    if args.sql:
+        argv.extend(["--sql", args.sql])
+    if args.report:
+        argv.extend(["--report", args.report])
+    return overlay_ecdict.main(argv)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="word-lexicon-cleaner")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -113,6 +125,15 @@ def build_parser() -> argparse.ArgumentParser:
     em.add_argument("-o", "--output", default="out/V13__dict_seed_draft.sql")
     em.add_argument("--all", action="store_true", help="包含非 ok（不推荐）")
     em.set_defaults(func=_cmd_emit)
+
+    ov = sub.add_parser("overlay-ecdict", help="用 ECDICT 覆盖词书词头（推荐）")
+    ov.add_argument("--db", default="data/ecdict-sqlite/stardict.db")
+    ov.add_argument("--keys-from", choices=["mysql", "raw-jsonl"], default="mysql")
+    ov.add_argument("--raw", default="out/raw.jsonl")
+    ov.add_argument("-o", "--output", default="out/cleaned_ecdict.jsonl")
+    ov.add_argument("--sql", default=None)
+    ov.add_argument("--report", default="out/report_ecdict.md")
+    ov.set_defaults(func=_cmd_overlay_ecdict)
 
     return p
 

@@ -2,7 +2,7 @@
 
 > 版本：v1.0  
 > 日期：2026-07-10  
-> 状态：**Phase A–C 完成**；下一步 Phase D 服务端读路径切 dict  
+> 状态：**Phase A–C + ECDICT 纠偏完成**；下一步 Phase D 服务端读路径切 dict  
 > 关联：[requirements.md](../requirements.md) · [database-design.md](../database-design.md) · [api-modules.md](../api-modules.md) · [architecture.md](../architecture.md) · [TASK.md](../../../TASK.md)
 
 ---
@@ -230,3 +230,4 @@ CLI 形态：`rules` → `llm` → `merge` → `emit` → `report`。
 | 2026-07-10 | v1.1 | Phase A 完成：权威文档与 openapi Sense/Example 已写入；状态改为推进 B |
 | 2026-07-10 | v1.2 | Phase B：`tools/word-lexicon-cleaner` 规则+LLM+报告；去重词 ok≈99.7% |
 | 2026-07-10 | v1.3 | Phase C：V13–V15 dict 建表灌数 + lexicon primary 同步 |
+| 2026-07-10 | v1.4 | **纠偏**：放弃「脏词书正则=词典」；ECDICT 覆盖 dict（V16）；be/have/to 等核心词可用 |

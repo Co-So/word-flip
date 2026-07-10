@@ -7,7 +7,7 @@
 
 本文档为 WordFlip MVP 的 **MySQL 8 逻辑模型** 与 **Redis 辅助存储** 设计。业务规则以 `requirements.md` / `api-modules.md` / `openapi.yaml` 为准；Flyway 脚本应与本设计一一对应（含 `V10__word_skill_progress.sql`）。
 
-> **词库结构化：** `dict_words` / `dict_senses` / `dict_examples` 见 §6.0；Flyway `V13` 建表、`V14` 灌数、`V15` 同步 lexicon primary。`book_words` 扁平列仍保留作过渡只读。
+> **词库结构化：** `dict_*` 释义真相为 **ECDICT 覆盖**（V16）；V13 建表、V14 曾用规则灌数（已被 V16 取代）、V15/V17 同步 lexicon primary。`book_words` 扁平列过渡只读，词书职责趋近「成员列表」。
 
 ---
 
@@ -194,7 +194,8 @@ erDiagram
 
 内置词书共享的全局词典；释义真相来源。进度键仍为 `word_key`，不按义项拆。
 
-**Flyway：** `V13__create_dict_tables.sql` → `V14__seed_dict_from_cleaner.sql`（由 `tools/word-lexicon-cleaner` 生成）→ `V15__sync_lexicon_primary_from_dict.sql`。
+**Flyway：** `V13` 建表 → `V14` 规则灌数（历史）→ `V15` 同步 → **`V16` ECDICT 重建** → `V17` 再同步 lexicon。  
+**建设原则：** 词书只提供 word_key 集合；释义/音标/义项来自 ECDICT（见 `tools/word-lexicon-cleaner overlay-ecdict`）。
 
 #### 6.0.1 `dict_words`（Headword）
 
@@ -871,6 +872,7 @@ achievement_definitions → user_achievements
 | 2026-07-09 | v1.1 | 增加 word_skill_progress / user_recent_groups；测验题型与设置列；对齐 openapi v1.1 |
 | 2026-07-10 | v1.2 | Phase A：`dict_words` / `dict_senses` / `dict_examples`；book_words / lexicon primary 冗余演进 |
 | 2026-07-10 | v1.3 | Phase C：V13–V15 建表灌数与 lexicon 同步落地 |
+| 2026-07-10 | v1.4 | 释义真相改为 ECDICT 覆盖（V16/V17）；规则清洗降级为导入兜底 |
 
 ---
 

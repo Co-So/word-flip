@@ -1,6 +1,6 @@
 # word-lexicon-cleaner
 
-离线词库清洗工具（规则优先 + 可选 LLM）。**不**进入 Android / Server 运行时热路径。
+离线词库建设工具：**ECDICT 覆盖（推荐）** + 规则/LLM 兜底（用户导入）。**不**进入 Android / Server 运行时热路径。
 
 计划：[docs/wordflip/plans/lexicon-restructure.md](../../docs/wordflip/plans/lexicon-restructure.md)
 
@@ -28,19 +28,22 @@ raw JSONL → rules → (llm) → merge → emit / report
 | `llm` | 仅处理 `uncertain`（无 Key 则跳过并原样写出） |
 | `merge` | 合并 rules + llm 产物 |
 | `report` | 统计报告（Markdown + JSON） |
-| `emit` | 生成 `dict_*` upsert SQL 草稿（供 Phase C 审阅） |
-| `gen_flyway_seed` | 从 `cleaned.jsonl` 生成正式 `V14__seed_dict_from_cleaner.sql` |
+| `overlay-ecdict` | **推荐**：用 ECDICT SQLite 覆盖词书词头 → cleaned + 可选 V16 SQL |
+| `gen_flyway_seed` | 从 cleaned.jsonl 生成 INSERT 段 |
 
-示例：
+### ECDICT 覆盖（释义真相）
+
+1. 下载 [ecdict-sqlite-28.zip](https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip) 解压到 `data/ecdict-sqlite/stardict.db`（目录已 gitignore）
+2. 运行：
 
 ```bash
-python -m word_lexicon_cleaner export-mysql -o out/raw.jsonl
-python -m word_lexicon_cleaner rules -i out/raw.jsonl -o out/rules.jsonl
-python -m word_lexicon_cleaner llm -i out/rules.jsonl -o out/llm.jsonl
-python -m word_lexicon_cleaner merge -r out/rules.jsonl -l out/llm.jsonl -o out/cleaned.jsonl
-python -m word_lexicon_cleaner report -i out/cleaned.jsonl -o out/report.md
-python -m word_lexicon_cleaner.gen_flyway_seed -i out/cleaned.jsonl -o ../../wordflip-server/src/main/resources/db/migration/V14__seed_dict_from_cleaner.sql
+python -m word_lexicon_cleaner overlay-ecdict --keys-from mysql -o out/cleaned_ecdict.jsonl \
+  --sql ../../wordflip-server/src/main/resources/db/migration/V16__rebuild_dict_from_ecdict.sql
 ```
+
+3. Flyway migrate（V16 清空并重灌 dict_*；V17 同步 lexicon）
+
+规则清洗（`rules`）仅作**用户导入**兜底，不再作为内置词书释义真相。
 
 ## 测试
 

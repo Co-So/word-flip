@@ -14,6 +14,10 @@ def has_han(text: str | None) -> bool:
     return bool(text and _HAN.search(text))
 
 
+# 供外部复用
+__all__ = ["has_han", "validate_sense_cn", "ensure_primary"]
+
+
 def validate_sense_cn(cn: str, en: str, word_key: str) -> tuple[bool, str]:
     """返回 (ok, reason)。"""
     text = (cn or "").strip()
@@ -26,9 +30,7 @@ def validate_sense_cn(cn: str, en: str, word_key: str) -> tuple[bool, str]:
     if text.lower() == (word_key or "").strip().lower():
         return False, "cn_eq_key"
     # 禁止词性尾巴残留
-    if _TRAILING_POS_TAIL.search(text) and re.search(
-        r"\((?i)n|v|vt|vi|adj|adv|prep)\.?\)\s*$", text
-    ):
+    if re.search(r"(?i)\((?:n|v|vt|vi|adj|adv|prep)\.?\)\s*$", text):
         return False, "pos_in_cn"
     # 整段几乎全是拉丁（英文充中文）
     han_count = len(_HAN.findall(text))

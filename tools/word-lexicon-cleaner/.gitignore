@@ -6,9 +6,12 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+data/
 out/*.jsonl
 out/*draft.sql
 out/raw.*
+out/cleaned*.jsonl
 !out/.gitkeep
 !out/report.md
 !out/report.json
+!out/report_ecdict.md
