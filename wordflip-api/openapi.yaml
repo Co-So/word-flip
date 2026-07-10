@@ -1,18 +1,19 @@
 openapi: 3.0.3
 info:
   title: WordFlip API
-  version: 1.1.0
+  version: 1.2.0
   description: |
     WordFlip 单词卡片学习应用 REST API（MVP）。
 
-    **业务文档：** [requirements.md](../docs/wordflip/requirements.md) · [api-modules.md](../docs/wordflip/api-modules.md)
+    **业务文档：** [requirements.md](../docs/wordflip/requirements.md) · [api-modules.md](../docs/wordflip/api-modules.md) · [plans/lexicon-restructure.md](../docs/wordflip/plans/lexicon-restructure.md)
 
     **核心规则：**
     - 队列三态（unlearned/fuzzy/unknown）与稳定性权值 `stability`（S）**仅**经测验 `POST /quiz/sessions/{id}/answer` 变更
     - **skill 双轨：** `dictation` / `choice` 各一套热力 S 与 SRS；题型 `dictation`→dictation skill，`choice_en_cn`/`choice_cn_en`→choice skill
     - 组详情主展示按 `heatDisplayMode` 聚合的 `displayHeatLevel`；单 skill 快照含 `heatLevel`；三态用于今日排队与薄弱角标
     - 词书 `PUT /settings` 触发**增量追加分组**，不重建已有分组
-    - 单词唯一键 `wordKey` = `en.trim().toLowerCase()`
+    - 单词唯一键 `wordKey` = `en.trim().toLowerCase()`；进度绑 wordKey，不按义项拆
+    - **释义：** 一词多义；`WordSummary.cn` / `pos` / `ph` = **primary** sense；完整义项见 `senses`；测验只用合格 primary；reject / 无 primary 不出题
     - SRS 间隔（天）：`INTERVALS = [1, 2, 4, 7, 15, 30]`，stage 0..5；答对后 `nextReviewAt = 用户时区当日结束 + INTERVALS[newStage]` 天（按 skill 独立）
     - **时区：** 服务端存 UTC；「当日」由 `X-Timezone` 请求头（缺省 `Asia/Shanghai`）或用户 profile 决定
     - **已掌握统计：** `stability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（REQ-EBBING-7）
@@ -911,19 +912,84 @@ components:
     WordSummary:
       type: object
       required: [wordKey, en, cn]
+      description: |
+        词条摘要。顶层 `cn` / `pos` / `ph` 恒为 **primary** sense（干净释义），兼容旧客户端。
+        多义详情见可选 `senses`；测验与卡片背面只用 primary。
       properties:
         wordKey:
           type: string
+          description: en.trim().toLowerCase()
         en:
           type: string
+          description: 英文词头
         cn:
           type: string
+          description: primary 纯中文释义（不含词性）
         pos:
           type: string
           nullable: true
+          description: primary 词性
         ph:
           type: string
           nullable: true
+          description: 词头音标
+        senses:
+          type: array
+          description: 全部义项（详情抽屉）；缺省时客户端仅用顶层 primary 字段
+          items:
+            $ref: '#/components/schemas/Sense'
+
+    Sense:
+      type: object
+      required: [cn]
+      description: 义项（词性 + 中文释义）；例句挂在本对象下
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+          description: dict_senses.id；过渡期可空
+        pos:
+          type: string
+          nullable: true
+          description: 词性；不得写入 cn
+        cn:
+          type: string
+          description: 纯中文释义（须含汉字）
+        primary:
+          type: boolean
+          description: 是否为主义项（API 字段名 primary，对应库列 is_primary）
+          default: false
+        quality:
+          type: string
+          enum: [ok, uncertain, reject]
+          description: 清洗质量；仅 ok 的 primary 可入测验池
+          default: ok
+        sortOrder:
+          type: integer
+          minimum: 0
+          default: 0
+        examples:
+          type: array
+          items:
+            $ref: '#/components/schemas/Example'
+
+    Example:
+      type: object
+      required: [en]
+      description: 挂在义项下的例句
+      properties:
+        en:
+          type: string
+          description: 英文例句
+        cn:
+          type: string
+          nullable: true
+          description: 中文翻译
+        sortOrder:
+          type: integer
+          minimum: 0
+          default: 0
 
     ImageTransform:
       type: object
@@ -1009,6 +1075,9 @@ components:
             detail:
               type: object
               nullable: true
+              description: |
+                过渡期详情块。优先使用 WordSummary.senses[].examples；
+                本字段保留兼容旧客户端（meaning≈primary.cn，examples 为扁平字符串列表）。
               properties:
                 meaning:
                   type: string

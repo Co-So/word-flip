@@ -2,7 +2,7 @@
 
 > 版本：v1.0  
 > 日期：2026-07-10  
-> 状态：**已定稿待实施**（先文档与工具，再表结构与读写路径）  
+> 状态：**Phase A 契约已落地**；下一步 Phase B 清洗工具 → C 建表灌数  
 > 关联：[requirements.md](../requirements.md) · [database-design.md](../database-design.md) · [api-modules.md](../api-modules.md) · [architecture.md](../architecture.md) · [TASK.md](../../../TASK.md)
 
 ---
@@ -52,7 +52,7 @@ Headword (word_key / en / 音标)
 
 ## 3. 需要修改的文档清单（完整）
 
-> 实施 Phase A 起按下表逐项改；本计划落盘时已在权威文档加「待修订」指针。
+> Phase A 已完成：下表契约文档与 openapi 已写入正式条款（不再仅「待修订」指针）。
 
 ### 3.1 必须修改（契约与行为）
 
@@ -227,3 +227,4 @@ CLI 形态：`rules` → `llm` → `merge` → `emit` → `report`。
 | 日期 | 版本 | 说明 |
 |------|------|------|
 | 2026-07-10 | v1.0 | 初版定稿：模型、文档清单、工具、阶段、验收；写入 `docs/wordflip/plans/` |
+| 2026-07-10 | v1.1 | Phase A 完成：权威文档与 openapi Sense/Example 已写入；状态改为推进 B |

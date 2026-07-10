@@ -31,6 +31,7 @@ Base URL：`/api/v1`
 - `PUT /settings` 触发增量 append；`PATCH /settings/preferences` 不 append  
 - 导入：`POST /books/import/preview` → `POST /books/import`  
 - `wordKey` 路径参数需 URL encode  
+- **释义：** `WordSummary.cn/pos/ph` = primary；多义见 `senses`（`Sense` / `Example`）；测验只用合格 primary  
 
 ## 校验
 

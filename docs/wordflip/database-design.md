@@ -1,13 +1,13 @@
 # WordFlip 数据库设计
 
-> 版本：v1.1  
-> 日期：2026-07-09  
-> 状态：**已定稿（MVP）**  
-> 关联：[requirements.md](./requirements.md) · [architecture.md](./architecture.md) · [api-modules.md](./api-modules.md) · [openapi.yaml](../../wordflip-api/openapi.yaml)
+> 版本：v1.2  
+> 日期：2026-07-10  
+> 状态：**已定稿（MVP + 词库结构化契约）**  
+> 关联：[requirements.md](./requirements.md) · [architecture.md](./architecture.md) · [api-modules.md](./api-modules.md) · [openapi.yaml](../../wordflip-api/openapi.yaml) · [plans/lexicon-restructure.md](./plans/lexicon-restructure.md)
 
 本文档为 WordFlip MVP 的 **MySQL 8 逻辑模型** 与 **Redis 辅助存储** 设计。业务规则以 `requirements.md` / `api-modules.md` / `openapi.yaml` 为准；Flyway 脚本应与本设计一一对应（含 `V10__word_skill_progress.sql`）。
 
-> **待修订（词库结构化）：** 将新增 `dict_words` / `dict_senses` / `dict_examples`；`book_words` 演进为词表引用。详见 [plans/lexicon-restructure.md](./plans/lexicon-restructure.md)。在 Phase C 落地前，本节 `book_words` / `user_word_lexicon` 扁平列仍为现行 schema。
+> **词库结构化：** 目标表 `dict_words` / `dict_senses` / `dict_examples` 见 §6.0；Flyway 建表与灌数在 Phase C。在此之前 `book_words` / `user_word_lexicon` 扁平列仍为现行物理 schema，但语义上 `cn/pos/ph` 视为 **primary 冗余**。
 
 ---
 
@@ -17,6 +17,7 @@
 |------|------|
 | 服务端权威 | 掌握度、SRS、分组增量规则仅存 MySQL，Redis 仅缓存/会话 |
 | 用户域 wordKey | `word_key = LOWER(TRIM(en))`；学习进度、图片、污渍、掌握度均绑定 `(user_id, word_key)` |
+| 释义真相 | 全局 `dict_senses`；展示/测验默认 `is_primary=1` 且 `quality=ok`；`cn` 不含词性 |
 | 一词一组 | `group_words.UNIQUE(user_id, word_key)` |
 | 掌握度仅测验写 | 无 mastery 手动 PATCH；仅 `applyQuizResult` 按 skill 写入 `word_skill_progress` |
 | 分组增量追加 | `PUT /settings` 只 INSERT 新组，不 DELETE/重建已有 `groups` |
@@ -34,8 +35,8 @@
 |------|---------|-------------|-------|
 | **Auth** | AuthService | `users` | Refresh Token、黑名单、登录限流 |
 | **Settings** | SettingsService | `user_settings` | — |
-| **Books** | BookService, BookImportService | `books`, `book_words`, `user_book_selection` | 导入 preview payload、导入限流 |
-| **Words** | GroupService | `book_words`, `user_book_selection`, `group_words`, `user_word_lexicon` | — |
+| **Books** | BookService, BookImportService | `books`, `book_words`, `user_book_selection`, `dict_*` | 导入 preview payload、导入限流 |
+| **Words** | GroupService, WordLookupService | `book_words`, `user_book_selection`, `group_words`, `user_word_lexicon`, `dict_*` | — |
 | **Groups** | GroupService | `groups`, `group_words` | — |
 | **Study** | StudyService | `groups`, `group_words`, `user_word_lexicon`, `word_learning_state`* | — |
 | **Today** | ReviewService | `group_words`, `word_skill_progress`, `user_recent_groups` | `today:{userId}:{yyyyMMdd}` |
@@ -50,6 +51,7 @@
 
 ```
 【Auth / Settings】  users, user_settings
+【Dict（目标）】     dict_words, dict_senses, dict_examples
 【Books / Lexicon】   books, book_words, user_book_selection, user_word_lexicon
 【Groups】           groups, group_words, user_recent_groups
 【SRS / Quiz】       word_skill_progress, word_mastery*, review_plans*, quiz_sessions, quiz_questions, quiz_answers
@@ -59,6 +61,7 @@
 ```
 
 \* `word_mastery` / `review_plans` 为历史表；V10 起权威进度在 `word_skill_progress`（按 skill 合并三态+S+SRS）。
+\* `dict_*` 由 Phase C Flyway 落地；落地前释义仍读 `book_words` / `user_word_lexicon` 扁平列。
 ---
 
 ## 3. 总体 ER 图
@@ -80,6 +83,10 @@ erDiagram
   users ||--o{ study_logs : logs
   users ||--o{ quiz_sessions : quizzes
   users ||--o{ user_achievements : unlocks
+
+  dict_words ||--o{ dict_senses : senses
+  dict_senses ||--o{ dict_examples : examples
+  dict_words ||--o{ book_words : referenced_by
 
   books ||--o{ book_words : contains
   books ||--o{ user_book_selection : selected_by
@@ -131,8 +138,8 @@ erDiagram
 
 | architecture.md | 本设计 | 说明 |
 |-----------------|--------|------|
-| `words` | **`book_words`** | 词书词条，语义更清晰 |
-| `canonical_words` | **`user_word_lexicon`** | 用户学习域词典 |
+| `words` | **`book_words`** | 词书词条；目标引用 `dict_words` |
+| `canonical_words` | **`dict_words` + `user_word_lexicon`** | 全局词头 + 用户域 primary 冗余 |
 | — | **`quiz_questions`** | 新增：会话题面快照 |
 | — | **`achievement_definitions`** | 新增：成就定义 seed |
 
@@ -183,6 +190,54 @@ erDiagram
 
 ## 6. Books / Lexicon 模块
 
+### 6.0 全局词典 `dict_*`（目标 schema，Phase C）
+
+内置词书共享的全局词典；释义真相来源。进度键仍为 `word_key`，不按义项拆。
+
+#### 6.0.1 `dict_words`（Headword）
+
+| 列 | 类型 | NULL | 默认 | 说明 |
+|----|------|------|------|------|
+| `word_key` | VARCHAR(191) | NO | — | PK；`LOWER(TRIM(en))` |
+| `en` | VARCHAR(191) | NO | — | 展示原文 |
+| `ph` | VARCHAR(64) | YES | NULL | 音标（英式或通用） |
+| `ph_us` | VARCHAR(64) | YES | NULL | 美音（可选） |
+| `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
+| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
+
+#### 6.0.2 `dict_senses`（义项）
+
+| 列 | 类型 | NULL | 默认 | 说明 |
+|----|------|------|------|------|
+| `id` | BIGINT UNSIGNED | NO | — | PK |
+| `word_key` | VARCHAR(191) | NO | — | FK → dict_words |
+| `pos` | VARCHAR(32) | YES | NULL | 词性；**禁止**写入 cn |
+| `cn` | VARCHAR(512) | NO | — | 纯中文释义；须含汉字 |
+| `is_primary` | TINYINT(1) | NO | 0 | 主义项；合格词恰好一条为 1 |
+| `sort_order` | INT UNSIGNED | NO | 0 | 展示序 |
+| `quality` | ENUM('ok','uncertain','reject') | NO | ok | 清洗质量 |
+| `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
+
+**索引：** `idx_dict_senses_word (word_key, sort_order)` · 应用层保证：每个 `word_key` 至多一个 `(is_primary=1 AND quality='ok')`。
+
+**约束（应用 + 尽量 DB）：**
+- `cn` 不得含词性尾巴如 `(n.)`；词性只在 `pos`
+- `quality=reject` 或无合格 primary → 该词**禁止入测验池**（REQ-LEX-4）
+
+#### 6.0.3 `dict_examples`（例句）
+
+| 列 | 类型 | NULL | 默认 | 说明 |
+|----|------|------|------|------|
+| `id` | BIGINT UNSIGNED | NO | — | PK |
+| `sense_id` | BIGINT UNSIGNED | NO | — | FK → dict_senses ON DELETE CASCADE |
+| `en` | VARCHAR(512) | NO | — | 英文例句 |
+| `cn` | VARCHAR(512) | YES | NULL | 中文翻译 |
+| `sort_order` | INT UNSIGNED | NO | 0 | |
+
+**索引：** `idx_dict_examples_sense (sense_id, sort_order)`
+
+MVP 允许例句为空；详情抽屉无例句时展示「暂无例句」。
+
 ### 6.1 `books`
 
 | 列 | 类型 | NULL | 默认 | 说明 |
@@ -210,16 +265,22 @@ erDiagram
 | `book_id` | BIGINT UNSIGNED | NO | — | FK → books |
 | `word_key` | VARCHAR(191) | NO | — | normalize(en) |
 | `en` | VARCHAR(191) | NO | — | 展示原文 |
-| `cn` | VARCHAR(512) | NO | — | |
-| `pos` | VARCHAR(32) | YES | NULL | |
-| `ph` | VARCHAR(64) | YES | NULL | |
-| `detail_json` | JSON | YES | NULL | 例句、词根（REQ-STUDY 抽屉） |
+| `cn` | VARCHAR(512) | NO | — | **过渡期**：primary 冗余；目标只读后废弃展示职责 |
+| `pos` | VARCHAR(32) | YES | NULL | 过渡期 primary 词性冗余 |
+| `ph` | VARCHAR(64) | YES | NULL | 过渡期音标冗余 |
+| `detail_json` | JSON | YES | NULL | 过渡期例句等；目标改由 `dict_examples` |
 | `sort_order` | INT UNSIGNED | NO | 0 | 书内顺序 |
 | `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
 
 **索引：** `UNIQUE uk_book_words_book_key (book_id, word_key)` · `idx_book_words_word_key (word_key)`
 
 **FK：** `book_id → books(id) ON DELETE CASCADE`
+
+**演进：**
+| 阶段 | 形态 |
+|------|------|
+| 过渡（现行→Phase C） | 保留 `cn/pos/ph/detail_json`；灌 `dict_*` 后读路径可切 dict |
+| 目标 | 语义为 `(book_id, word_key, sort_order)` 引用 `dict_words`；旧释义列只读或后续迁移删除 |
 
 ### 6.2.1 `word_freq_ranks`
 
@@ -260,7 +321,7 @@ WHERE ubs.user_id = :userId;
 
 ### 6.4 `user_word_lexicon`
 
-用户学习域词典：测验判题、卡片展示、图片/污渍绑定的 **cn/en 真相来源**。
+用户学习域词典：按 `(user_id, word_key)` 绑定；`cn/pos/ph` 为 **primary 冗余缓存**（由 `dict_*` 同步，避免旧客户端空窗）。多义详情以 `dict_senses` / API `senses` 为准。
 
 | 列 | 类型 | NULL | 默认 | 说明 |
 |----|------|------|------|------|
@@ -268,10 +329,10 @@ WHERE ubs.user_id = :userId;
 | `user_id` | BIGINT UNSIGNED | NO | — | FK → users |
 | `word_key` | VARCHAR(191) | NO | — | |
 | `en` | VARCHAR(191) | NO | — | 判题标准英文 |
-| `cn` | VARCHAR(512) | NO | — | |
-| `pos` | VARCHAR(32) | YES | NULL | |
-| `ph` | VARCHAR(64) | YES | NULL | |
-| `detail_json` | JSON | YES | NULL | |
+| `cn` | VARCHAR(512) | NO | — | primary.cn 冗余 |
+| `pos` | VARCHAR(32) | YES | NULL | primary.pos 冗余 |
+| `ph` | VARCHAR(64) | YES | NULL | 词头音标冗余 |
+| `detail_json` | JSON | YES | NULL | 过渡期；目标可空 |
 | `source_book_id` | BIGINT UNSIGNED | YES | NULL | 首次来源书 |
 | `updated_at` | DATETIME(3) | NO | ON UPDATE | |
 
@@ -282,8 +343,9 @@ WHERE ubs.user_id = :userId;
 1. `POST /books/import` confirm — 批量 upsert 该书词条  
 2. `PUT /settings` append 前 — 对 delta wordKeys upsert  
 3. `POST /groups/custom` — 对选中 keys upsert  
+4. Phase C 灌数后 — 从 `dict_senses` primary 回填/刷新 `cn/pos/ph`
 
-**合并策略（定稿）：** 已存在 `(user_id, word_key)` **不覆盖** cn/en（保留首次学习语义）；导入 confirm 仅插入新 key。
+**合并策略（定稿）：** 已存在 `(user_id, word_key)` **不覆盖** `en`（保留首次学习语义）；`cn/pos/ph` 在 dict 同步任务中可按 primary 刷新。导入 confirm 仅插入新 key。
 
 ### 6.5 导入 Preview（Redis 为主）
 
@@ -805,6 +867,7 @@ achievement_definitions → user_achievements
 |------|------|------|
 | 2026-06-30 | v1.0 | 初版：22 表 + Redis + 评审闭合；对齐 openapi v1.0 / api-modules v1.1 |
 | 2026-07-09 | v1.1 | 增加 word_skill_progress / user_recent_groups；测验题型与设置列；对齐 openapi v1.1 |
+| 2026-07-10 | v1.2 | Phase A：`dict_words` / `dict_senses` / `dict_examples`；book_words / lexicon primary 冗余演进 |
 
 ---
 

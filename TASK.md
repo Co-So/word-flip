@@ -19,7 +19,7 @@
 | **P1** | 今日 + 学习 + SRS 读 | 28 / 28 |
 | **P2** | 默写测验 + 掌握度写 | 22 / 24 |
 | **P2.5** | 多题型独立权重 + 组测 | 7 / 8 |
-| **P-LEX** | 词库结构化（1:n sense + 清洗工具） | 1 / 18 |
+| **P-LEX** | 词库结构化（1:n sense + 清洗工具） | 6 / 18 |
 | **P3** | 卡拍 + 图片 + 污渍 | 19 / 22 |
 | **P4** | 统计 + 设置完善 | 8 / 14 |
 | **Q** | 联调、测试、发布准备 | 3 / 12 |
@@ -31,8 +31,8 @@
 
 | 轨道 | 任务 ID | 状态 |
 |------|---------|------|
-| P-LEX | 计划落盘 + 文档指针 | ✅ 本提交 |
-| P-LEX | A～F 实施项 | ⬜ 见下方 §P-LEX |
+| P-LEX | 计划落盘 + Phase A 契约 | ✅ A01–A05 完成 |
+| P-LEX | 下一步 Phase B 清洗工具 | ⬜ P-LEX-B01 起 |
 | 待你勾选 | P0-T03、P2-T*、P2.5-T01、P3-T* | 真机验收（可与 P-LEX 并行，但测验质量依赖 P-LEX） |
 
 #### 真机验收清单（本地勾选后把 TASK 项标 `[x]`）
@@ -400,11 +400,11 @@
 
 ### P-LEX-A 契约（Phase A）
 
-- [ ] P-LEX-A01 修订 `requirements.md`：字段职责、多义 1:n、测验 primary、导入清洗
-- [ ] P-LEX-A02 修订 `database-design.md`：`dict_words` / `dict_senses` / `dict_examples`；book_words 演进
-- [ ] P-LEX-A03 修订 `api-modules.md` + `architecture.md` §4.6
-- [ ] P-LEX-A04 修订 `openapi.yaml`：`Sense` / `Example`；WordSummary/WordCard 扩展
-- [ ] P-LEX-A05 修订 `android-ui-spec.md`：背面 primary、详情多义项
+- [x] P-LEX-A01 修订 `requirements.md`：字段职责、多义 1:n、测验 primary、导入清洗
+- [x] P-LEX-A02 修订 `database-design.md`：`dict_words` / `dict_senses` / `dict_examples`；book_words 演进
+- [x] P-LEX-A03 修订 `api-modules.md` + `architecture.md` §4.6
+- [x] P-LEX-A04 修订 `openapi.yaml`：`Sense` / `Example`；WordSummary/WordCard 扩展
+- [x] P-LEX-A05 修订 `android-ui-spec.md`：背面 primary、详情多义项
 
 ### P-LEX-B 清洗工具（Phase B）
 

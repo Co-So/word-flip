@@ -1,13 +1,13 @@
 # WordFlip 技术选型与架构设计
 
-> 版本：v1.6  
-> 日期：2026-06-30  
+> 版本：v1.8  
+> 日期：2026-07-10  
 > 状态：**已定稿（MVP 阶段）**  
 > 关联文档：[requirements.md](./requirements.md) · [user-design.md](./user-design.md) · [android-ui-spec.md](./android-ui-spec.md) · [api-modules.md](./api-modules.md) · [database-design.md](./database-design.md) · [openapi.yaml](../../wordflip-api/openapi.yaml) · [STRUCTURE.md](../../STRUCTURE.md) · [WordFlip-PRD.md](../prd/WordFlip-PRD.md) · 原型 [wordflip-v5.html](../../prototypes/wordflip-v5.html)
 
 本文档汇总 WordFlip 从 MVP 到全端扩展的**技术选型、系统架构、模块边界与基础设施设计**。业务行为以 `requirements.md` 为准；本文档只描述技术实现层面。
 
-> **待修订（词库结构化）：** §4.6 单词模型将改为 Headword 1—n Sense 1—n Example；离线清洗工具见 `tools/`。计划：[plans/lexicon-restructure.md](./plans/lexicon-restructure.md)。
+> **词库结构化：** §4.6 为 Headword 1—n Sense 1—n Example；离线清洗工具见 `tools/word-lexicon-cleaner/`。计划：[plans/lexicon-restructure.md](./plans/lexicon-restructure.md)。
 
 ---
 
@@ -271,20 +271,33 @@ wordflip-server/
 
 **约束：** `UNIQUE(user_id, word_key)` on `group_words` — 一词一组。
 
-### 4.6 单词唯一键（wordKey）
+### 4.6 单词模型与唯一键（wordKey）
 
-多本词书可能含相同英文；用户维度学习进度、图片、污渍、掌握度均绑定 **wordKey**（`en.trim().toLowerCase()`）或 `canonical_words.id`。
+多本词书可能含相同英文；用户维度学习进度、图片、污渍、掌握度均绑定 **wordKey**（`en.trim().toLowerCase()`）。释义为 **一词多义**：
 
 ```
-canonical_words (全局或用户级)
-  id, en_normalized, cn_primary, pos, ph, detail_json
+dict_words (Headword)
+  word_key PK, en, ph, ph_us?
+    └─ dict_senses[]     (pos, cn, is_primary, quality, sort_order)
+         └─ dict_examples[]  (en, cn, sort_order)
 
-book_words (词书词条)
-  id, book_id, word_key / en_normalized
+book_words (词书成员)
+  book_id, word_key, sort_order
+  + 过渡期 cn/pos/ph/detail_json（primary 冗余，只读演进）
 
-user_word_lexicon (用户学习域，见 database-design.md §6.4)
-  user_id, word_key, en, cn, ...
+user_word_lexicon (用户域)
+  user_id, word_key, en
+  + cn/pos/ph = primary 冗余缓存（由 dict 同步）
 ```
+
+| 用途 | 数据 |
+|------|------|
+| 卡片背面 / 测验题干与选项 | primary sense（`quality=ok`） |
+| 详情抽屉 | 全部 senses + examples |
+| 判题键 / 进度 / 媒体 | `wordKey`（不按义项拆） |
+| reject / 无 primary | 可浏览，禁止入测验池 |
+
+离线建设：`tools/word-lexicon-cleaner/`（规则 + 可选 LLM）→ Flyway 灌 `dict_*`。运行时不调用 LLM。
 
 MinIO 路径：`card-images/{userId}/{wordKey}.webp`
 
@@ -301,8 +314,9 @@ MinIO 路径：`card-images/{userId}/{wordKey}.webp`
 | `users` | 账号：`email`/`phone` 至少一项，密码哈希，状态 |
 | `user_settings` | 自动发音、groupSize、**theme_mode**、提醒开关等 |
 | `books` | 词书；`source=builtin\|imported`；imported 含 `user_id` |
-| `book_words` | 词书词条，关联 `book_id`，`word_key` 书内唯一 |
-| `user_word_lexicon` | 用户学习域词典（判题/展示真相来源） |
+| `dict_words` / `dict_senses` / `dict_examples` | 全局词头 / 义项 / 例句（Phase C） |
+| `book_words` | 词书词条成员；过渡期含 primary 冗余列 |
+| `user_word_lexicon` | 用户域 primary 冗余缓存 |
 | `user_book_selection` | 用户勾选的词书 |
 | `groups` | `user_id`, `name`, `source(auto\|custom)`, `status`, `sort_order` |
 | `group_words` | `group_id`, `word_key`；**UNIQUE(user_id, word_key)** |
@@ -625,6 +639,7 @@ Spring Boot 使用 `application-dev.yml` 连接本地三件套；启动时 Flywa
 | 2026-06-30 | v1.5 | Monorepo 目录整理：prototypes/、docs/prd/、assets/、脚手架占位目录 |
 | 2026-06-30 | v1.6 | 新增根目录 [STRUCTURE.md](../../STRUCTURE.md) 目录结构规范 |
 | 2026-06-30 | v1.7 | 关联 [TASK.md](../../TASK.md) 任务清单 |
+| 2026-07-10 | v1.8 | Phase A：§4.6 Headword→Sense→Example；dict_* 与清洗工具 |
 
 ---
 

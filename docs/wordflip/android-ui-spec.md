@@ -1,13 +1,13 @@
 # WordFlip Android UI/UX 规格说明
 
-> 版本：v1.1  
-> 日期：2026-06-30  
+> 版本：v1.2  
+> 日期：2026-07-10  
 > 平台：Kotlin · Jetpack Compose · Material 3  
-> 关联：[design-system/MASTER.md](./design-system/MASTER.md) · [requirements.md](./requirements.md) · [architecture.md](./architecture.md) · [user-design.md](./user-design.md)
+> 关联：[design-system/MASTER.md](./design-system/MASTER.md) · [requirements.md](./requirements.md) · [architecture.md](./architecture.md) · [user-design.md](./user-design.md) · [plans/lexicon-restructure.md](./plans/lexicon-restructure.md)
 
 本文档规定 WordFlip **Android 客户端**的界面结构、交互、组件与双主题行为。业务逻辑以 `requirements.md` v6 为准；视觉 token 以 `design-system/MASTER.md` 为准。
 
-> **待修订（词库结构化）：** 卡片背面展示 primary 释义；详情抽屉展示多义项 + 例句。见 [plans/lexicon-restructure.md](./plans/lexicon-restructure.md) Phase E。
+> **词库结构化 UI：** 卡片背面 = **primary** 释义；详情抽屉 = 全部义项 + 各义项例句（REQ-LEX / REQ-STUDY-16）。模型扩展见 Phase E；契约已定。
 
 ---
 
@@ -118,14 +118,19 @@ flowchart TB
 ### 5.6 卡片学习
 
 - 网格：Compact 2 列；宽高比 **3:4.2**
-- `FlipCard`：spring 翻转；正面污渍；背面释义/用户图
+- `FlipCard`：spring 翻转；正面污渍；**背面 = primary 释义**（`cn` + `pos` + `ph`）或用户图
 - 工具栏：打乱、全翻；顶栏：测验入口
 - 长按 500ms → `ModalBottomSheet`（详情、发音、卡拍、污渍）
+  - 详情：**全部 senses**（每项词性 + 中文；primary 可弱标注）+ 各义项例句；无例句显示「暂无例句」
+  - 兼容：若响应仅有顶层 `cn/pos` 无 `senses`，详情退化为单义展示
 - 首次引导：「长按卡片查看详细释义」
 
 ### 5.7 默写测验
 
 - 一题一屏；进度条 + 题号 + 得分
+- 题干：默写展示 **primary.cn**（及 pos/ph）；选择项均为各词 primary 干净文案
+- 答错巩固：展示的正确答案须与正确选项一致（服务端 `expectedAnswer`）
+- 无合格 primary 的词不应出现在本场题目中（服务端过滤）
 - 判题 1.4s 反馈；对/错更新服务端三态
 - 结果页：评价 + 统计 + 再来一次 / 返回
 
@@ -358,3 +363,4 @@ wordflip-android/
 |------|------|------|
 | 2026-06-30 | v1.0 | 初版：Compose 全屏规格；Natural Sage 主色；Light/Dark 双主题 |
 | 2026-06-30 | v1.1 | 新增 §8 图标设计：Material Symbols、Launcher 概念、全量映射表 |
+| 2026-07-10 | v1.2 | Phase A：卡片背面 primary；详情多义 + 例句；测验题干对齐 primary |
