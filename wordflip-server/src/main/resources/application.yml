@@ -39,3 +39,6 @@ wordflip:
     refresh-expiration-days: 7
   minio:
     bucket: wordflip
+  # 释义读源：dict=dict_* primary（默认）；legacy=仅 lexicon/book_words
+  lexicon:
+    source: ${WORDFLIP_LEXICON_SOURCE:dict}

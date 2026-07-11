@@ -1,5 +1,6 @@
 package com.wordflip.domain;
 
+import com.wordflip.domain.DictionaryIds;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -62,6 +63,10 @@ public class UserSettings {
 
     @Column(name = "default_question_limit", nullable = false, columnDefinition = "TINYINT UNSIGNED")
     private int defaultQuestionLimit = 10;
+
+    /** 当前词典（REQ-LEX-9） */
+    @Column(name = "active_dict_id", nullable = false, length = 32)
+    private String activeDictId = DictionaryIds.CURATED;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();

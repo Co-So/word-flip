@@ -1,13 +1,19 @@
 # WordFlip local development stack — MySQL 8 + Redis 7 + MinIO
 # Usage: copy .env.example → .env, then `docker compose up -d`
+#
+# 宿主机访问（Navicat / 浏览器）：端口显式绑定 0.0.0.0，本机与局域网均可连。
+#   MySQL          → localhost:3306
+#   MinIO API      → http://localhost:9000
+#   MinIO Console  → http://localhost:9001
 
 services:
   mysql:
     image: mysql:8.0
     container_name: wordflip-mysql
     restart: unless-stopped
+    # 0.0.0.0 = 允许宿主机 Navicat / 其它工具连接（不仅限容器内网）
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "0.0.0.0:${MYSQL_PORT:-3306}:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-wordflip}
@@ -18,6 +24,8 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --default-time-zone=+00:00
+      # 监听全部网卡，供宿主机映射端口接入
+      - --bind-address=0.0.0.0
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD || exit 1"]
       interval: 10s
@@ -30,7 +38,7 @@ services:
     container_name: wordflip-redis
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "0.0.0.0:${REDIS_PORT:-6379}:6379"
     volumes:
       - wordflip-redis-data:/data
     command: >
@@ -47,15 +55,19 @@ services:
     image: minio/minio:latest
     container_name: wordflip-minio
     restart: unless-stopped
+    # API + Console 均对宿主机开放
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "0.0.0.0:${MINIO_API_PORT:-9000}:9000"
+      - "0.0.0.0:${MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # 浏览器打开 Console 时使用的对外地址（宿主机访问）
+      MINIO_SERVER_URL: ${MINIO_SERVER_URL:-http://localhost:9000}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-http://localhost:9001}
     volumes:
       - wordflip-minio-data:/data
-    command: server /data --console-address ":9001"
+    command: server /data --console-address ":9001" --address ":9000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 15s

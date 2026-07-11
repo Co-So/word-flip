@@ -2,6 +2,7 @@ package com.wordflip.dto.group;
 
 import com.wordflip.dto.common.PageMeta;
 import com.wordflip.dto.word.MasterySnapshot;
+import com.wordflip.dto.word.SenseDto;
 import com.wordflip.dto.word.WordProgressSnapshot;
 import com.wordflip.dto.word.WordSummary;
 
@@ -23,7 +24,7 @@ public record GroupWordsResponse(
     }
 
     /**
-     * 组内单词项：mastery 保留 dictation 兼容；progress 为双 skill + 展示热力。
+     * 组内单词项：mastery 保留 dictation 兼容；progress 为双 skill + 展示热力；senses 供详情。
      */
     public record GroupWordItem(
             String wordKey,
@@ -31,9 +32,19 @@ public record GroupWordsResponse(
             String cn,
             String pos,
             String ph,
+            String enGloss,
+            List<SenseDto> senses,
             MasterySnapshot mastery,
             WordProgressSnapshot progress
     ) {
+        public GroupWordItem {
+            if (senses == null) {
+                senses = List.of();
+            } else {
+                senses = List.copyOf(senses);
+            }
+        }
+
         public static GroupWordItem from(WordSummary summary, WordProgressSnapshot progress) {
             MasterySnapshot mastery = progress != null
                     ? progress.dictation()
@@ -44,6 +55,8 @@ public record GroupWordsResponse(
                     summary.cn(),
                     summary.pos(),
                     summary.ph(),
+                    summary.enGloss(),
+                    summary.senses(),
                     mastery,
                     progress
             );

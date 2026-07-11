@@ -69,6 +69,7 @@ data class UserSettingsResponse(
     val heatDisplayMode: String = "combined",
     val quizLaunchMode: String = "mixed",
     val defaultQuestionLimit: Int = 10,
+    val activeDictId: String = "wordflip_curated",
     val summary: BooksSummary,
 )
 
@@ -81,6 +82,19 @@ data class PreferencesPatchRequest(
     val heatDisplayMode: String? = null,
     val quizLaunchMode: String? = null,
     val defaultQuestionLimit: Int? = null,
+    val activeDictId: String? = null,
+)
+
+/**
+ * GET /dicts 词典目录项。
+ */
+data class DictionaryItem(
+    val id: String,
+    val name: String,
+    val locale: String,
+    val licenseNote: String? = null,
+    val builtin: Boolean = true,
+    val sortOrder: Int = 0,
 )
 
 /**

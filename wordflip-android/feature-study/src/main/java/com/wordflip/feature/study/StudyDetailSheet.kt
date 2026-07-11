@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.wordflip.core.model.media.StainType
+import com.wordflip.core.model.study.Sense
 import com.wordflip.core.model.study.WordCard
 import com.wordflip.core.ui.component.FlipCard
 import com.wordflip.core.ui.component.FlowingSyllableWord
@@ -102,7 +103,7 @@ fun StudyDetailSheet(
                 )
             }
             Text(
-                text = word.cn,
+                text = word.displayMeaning(),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
@@ -161,41 +162,8 @@ fun StudyDetailSheet(
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = "词义",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = word.detail?.meaning ?: word.cn,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    text = "例句",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                val examples = word.detail?.examples.orEmpty()
-                if (examples.isEmpty()) {
-                    Text(text = "暂无例句", style = MaterialTheme.typography.bodyMedium)
-                } else {
-                    examples.forEach { example ->
-                        Text(text = "• $example", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-                word.detail?.etymology?.let { etymology ->
-                    Text(
-                        text = "词根词缀",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(text = etymology, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
+            // REQ-LEX / REQ-STUDY-16：详情按义项展示；无 senses 时退化为单义
+            SenseDetailSection(word = word)
 
             // REQ-STUDY-18~19：污渍/照片收进小按钮 + 下拉菜单，避免占满抽屉高度
             HorizontalDivider()
@@ -364,6 +332,116 @@ private fun DetailQuickActionRow(
             )
         }
         trailingContent?.invoke()
+    }
+}
+
+/** REQ-LEX / android-ui-spec：义项列表；无 senses 时 sensesForDetail 合成单义 */
+@Composable
+private fun SenseDetailSection(word: WordCard) {
+    val senses = word.sensesForDetail()
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = if (senses.size > 1) "义项" else "词义",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        if (senses.isEmpty()) {
+            Text(
+                text = word.displayMeaning().ifBlank { "暂无释义" },
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        } else {
+            senses.forEachIndexed { index, sense ->
+                SenseBlock(
+                    index = index + 1,
+                    sense = sense,
+                    showIndex = senses.size > 1,
+                )
+            }
+        }
+        word.detail?.etymology?.takeIf { it.isNotBlank() }?.let { etymology ->
+            Text(
+                text = "词根词缀",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(text = etymology, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun SenseBlock(
+    index: Int,
+    sense: Sense,
+    showIndex: Boolean,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (showIndex) {
+                Text(
+                    text = "$index.",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            sense.pos?.takeIf { it.isNotBlank() }?.let { pos ->
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Text(
+                        text = pos,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+            if (sense.primary) {
+                Text(
+                    text = "主",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        Text(
+            text = sense.displayMeaning().ifBlank { "暂无释义" },
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        val examples = sense.examples.sortedBy { it.sortOrder }
+        if (examples.isEmpty()) {
+            Text(
+                text = "暂无例句",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            examples.forEach { example ->
+                val line = if (!example.cn.isNullOrBlank()) {
+                    "${example.en} — ${example.cn}"
+                } else {
+                    example.en
+                }
+                Text(
+                    text = "• $line",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

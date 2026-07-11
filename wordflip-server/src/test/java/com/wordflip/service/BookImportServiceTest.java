@@ -6,9 +6,12 @@ import com.wordflip.domain.BookSource;
 import com.wordflip.dto.book.BookImportPreviewResponse;
 import com.wordflip.dto.book.BookListResponse;
 import com.wordflip.dto.book.BookWordsResponse;
+import com.wordflip.dto.word.WordSummary;
 import com.wordflip.exception.WordflipException;
 import com.wordflip.repository.BookRepository;
 import com.wordflip.repository.BookWordRepository;
+import com.wordflip.repository.DictSenseRepository;
+import com.wordflip.repository.DictWordRepository;
 import com.wordflip.repository.GroupWordRepository;
 import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserWordLexiconRepository;
@@ -32,6 +35,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -54,6 +58,10 @@ class BookImportServiceTest {
     @Mock
     private UserWordLexiconRepository userWordLexiconRepository;
     @Mock
+    private DictWordRepository dictWordRepository;
+    @Mock
+    private DictSenseRepository dictSenseRepository;
+    @Mock
     private GroupWordRepository groupWordRepository;
     @Mock
     private StringRedisTemplate redisTemplate;
@@ -72,6 +80,8 @@ class BookImportServiceTest {
                 bookWordRepository,
                 userBookSelectionRepository,
                 userWordLexiconRepository,
+                dictWordRepository,
+                dictSenseRepository,
                 redisTemplate,
                 objectMapper
         );
@@ -190,5 +200,48 @@ class BookImportServiceTest {
                 .isInstanceOf(WordflipException.class)
                 .extracting(ex -> ((WordflipException) ex).getCode())
                 .isEqualTo("NOT_FOUND");
+    }
+
+    @Test
+    void confirm_upsertsDictOnlyWhenMissing() throws Exception {
+        when(valueOperations.increment(anyString())).thenReturn(1L);
+        String redisJson = """
+                {"userId":1,"suggestedName":"demo","deduplicatedCount":0,"words":[\
+                {"wordKey":"neo","en":"neo","cn":"新的 (adj.)","pos":"adj.","ph":null,"senses":[]},\
+                {"wordKey":"be","en":"be","cn":"是","pos":"v.","ph":null,"senses":[]}\
+                ]}
+                """;
+        when(valueOperations.get(anyString())).thenReturn(redisJson);
+        when(bookRepository.existsByUserIdAndName(1L, "我的词书")).thenReturn(false);
+
+        Book saved = new Book();
+        saved.setId(10L);
+        saved.setSource(BookSource.imported);
+        saved.setUserId(1L);
+        saved.setName("我的词书");
+        saved.setWordCount(2);
+        when(bookRepository.save(any(Book.class))).thenReturn(saved);
+        when(userBookSelectionRepository.existsByIdUserIdAndIdBookId(1L, 10L)).thenReturn(false);
+        when(userWordLexiconRepository.findExistingWordKeys(eq(1L), any())).thenReturn(Set.of());
+        when(dictWordRepository.existsByDictIdAndWordKey(eq("wordflip_curated"), eq("neo"))).thenReturn(false);
+        when(dictWordRepository.existsByDictIdAndWordKey(eq("wordflip_curated"), eq("be"))).thenReturn(true);
+        when(dictSenseRepository.findPrimariesByDictIdAndWordKeyInAndQuality(any(), any(), any()))
+                .thenReturn(List.of());
+
+        importService.confirm(1L, "token-x", "我的词书");
+
+        ArgumentCaptor<com.wordflip.domain.DictWord> headCap =
+                ArgumentCaptor.forClass(com.wordflip.domain.DictWord.class);
+        verify(dictWordRepository).save(headCap.capture());
+        assertThat(headCap.getValue().getWordKey()).isEqualTo("neo");
+
+        ArgumentCaptor<com.wordflip.domain.DictSense> senseCap =
+                ArgumentCaptor.forClass(com.wordflip.domain.DictSense.class);
+        verify(dictSenseRepository).save(senseCap.capture());
+        assertThat(senseCap.getValue().getCn()).isEqualTo("新的");
+        assertThat(senseCap.getValue().isPrimary()).isTrue();
+        // be 已在 ECDICT：exists=true → 不 save 第二次
+        verify(dictWordRepository, org.mockito.Mockito.times(1)).save(any());
+        verify(dictSenseRepository, org.mockito.Mockito.times(1)).save(any());
     }
 }

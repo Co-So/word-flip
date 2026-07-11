@@ -5,6 +5,7 @@ import com.wordflip.domain.UserSettings;
 import com.wordflip.dto.settings.AppendedGroups;
 import com.wordflip.dto.settings.BooksSummary;
 import com.wordflip.dto.settings.SaveBooksSettingsRequest;
+import com.wordflip.repository.DictionaryRepository;
 import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserSettingsRepository;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,8 @@ class SettingsServiceTest {
     private UserSettingsRepository userSettingsRepository;
     @Mock
     private UserBookSelectionRepository userBookSelectionRepository;
+    @Mock
+    private DictionaryRepository dictionaryRepository;
     @Mock
     private BookService bookService;
     @Mock

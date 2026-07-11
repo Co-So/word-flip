@@ -84,13 +84,30 @@ sh minio/init-bucket.sh
 docker compose run --rm minio-init
 ```
 
-## 连接信息（Spring Boot dev 参考）
+### Navicat 连接 MySQL（宿主机）
+
+| 项 | 值 |
+|----|-----|
+| 主机 | `127.0.0.1` 或 `localhost` |
+| 端口 | `3306`（或 `.env` 的 `MYSQL_PORT`） |
+| 用户 | `root` |
+| 密码 | `.env` 的 `MYSQL_ROOT_PASSWORD`（默认示例为 `root`） |
+| 数据库 | `wordflip` |
+| 字符集 | `utf8mb4` |
+
+连接串示例：`jdbc:mysql://127.0.0.1:3306/wordflip?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC`
+
+> `docker-compose.yml` 已将端口绑定到 `0.0.0.0`，并设置 MySQL `--bind-address=0.0.0.0`。改完后执行：
+> `docker compose up -d`（必要时 `docker compose up -d --force-recreate mysql minio`）。
+
+## 连接信息（Spring Boot / 工具参考）
 
 | 组件 | 地址 |
 |------|------|
-| MySQL | `jdbc:mysql://localhost:3306/wordflip?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC` |
+| MySQL（Navicat） | `127.0.0.1:3306` / 库 `wordflip` / 用户见 `.env` |
 | Redis | `localhost:6379` |
-| MinIO API | `http://localhost:9000` |
+| MinIO API | [http://localhost:9000](http://localhost:9000) |
+| MinIO Console | [http://localhost:9001](http://localhost:9001) |
 | MinIO Bucket | `wordflip` |
 
 ## 数据持久化

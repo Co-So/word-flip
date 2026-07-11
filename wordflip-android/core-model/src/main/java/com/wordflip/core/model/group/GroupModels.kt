@@ -1,6 +1,7 @@
 package com.wordflip.core.model.group
 
 import com.wordflip.core.model.study.MasterySnapshot
+import com.wordflip.core.model.study.Sense
 import com.wordflip.core.model.study.WordProgressSnapshot
 import com.wordflip.core.model.study.WordSummary
 
@@ -68,14 +69,24 @@ data class GroupListResponse(
 data class GroupWordItemDto(
     val wordKey: String,
     val en: String,
-    val cn: String,
+    val cn: String? = null,
     val pos: String? = null,
     val ph: String? = null,
+    val enGloss: String? = null,
+    val senses: List<Sense> = emptyList(),
     val mastery: MasterySnapshot,
     val progress: WordProgressSnapshot? = null,
 ) {
     fun toGroupWordItem(): GroupWordItem = GroupWordItem(
-        summary = WordSummary(wordKey = wordKey, en = en, cn = cn, pos = pos, ph = ph),
+        summary = WordSummary(
+            wordKey = wordKey,
+            en = en,
+            cn = cn.orEmpty(),
+            pos = pos,
+            ph = ph,
+            enGloss = enGloss,
+            senses = senses,
+        ),
         mastery = mastery,
         progress = progress,
     )

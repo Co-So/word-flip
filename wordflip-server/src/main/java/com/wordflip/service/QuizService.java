@@ -3,6 +3,7 @@ package com.wordflip.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wordflip.domain.DictionaryLocale;
 import com.wordflip.domain.GroupWord;
 import com.wordflip.domain.QuestionType;
 import com.wordflip.domain.QuizAnswer;
@@ -141,7 +142,7 @@ public class QuizService {
             throw new WordflipException("EMPTY_POOL", "无题可出");
         }
 
-        // 先解析并清洗释义，再过滤不可出题词（无汉字释义 / 短语拆坏虚词）
+        // 解析 WordSummary（dict primary 优先）；再过滤 reject/无合格释义
         Map<String, WordSummary> poolSummaries = normalizeSummaries(
                 wordLookupService.resolveWordSummaries(userId, rawPool)
         );
@@ -150,7 +151,7 @@ public class QuizService {
                         poolSummaries.getOrDefault(k, fallbackSummary(k))))
                 .collect(Collectors.toCollection(ArrayList::new));
         if (pool.isEmpty()) {
-            throw new WordflipException("EMPTY_POOL", "词库释义未清洗完成，暂无合格题目");
+            throw new WordflipException("EMPTY_POOL", "无合格释义可出题（需 dict primary quality=ok）");
         }
 
         List<String> shuffled = new ArrayList<>(pool);
@@ -160,6 +161,10 @@ public class QuizService {
 
         List<QuestionType> requestedTypes = parseQuestionTypes(request.getQuestionTypes());
         List<QuestionType> assignedTypes = assignQuestionTypes(total, launchMode, requestedTypes);
+        // 英英词典（WordNet）：全部降级为默写（REQ-LEX-10）
+        if (wordLookupService.resolveActiveLocale(userId) == DictionaryLocale.en) {
+            assignedTypes = new ArrayList<>(Collections.nCopies(total, QuestionType.dictation));
+        }
 
         Map<String, WordSummary> summaries = new java.util.HashMap<>();
         for (String key : selected) {
@@ -193,8 +198,8 @@ public class QuizService {
             entity.setQuestionIndex(i);
             entity.setWordKey(wordKey);
             entity.setExpectedEn(summary.en());
-            // 题干/选项一律用清洗后的 cn（词性只走 pos 字段）
-            entity.setPromptCn(summary.cn() != null ? summary.cn() : "");
+            // 题干：英汉用 cn，英英用 enGloss（写入 prompt_cn 列）
+            entity.setPromptCn(WordSenseNormalizer.displayPrompt(summary));
             entity.setPromptPos(summary.pos());
             entity.setPromptPh(summary.ph());
 
@@ -550,9 +555,9 @@ public class QuizService {
     }
 
     private static QuizOptionDto toOption(String wordKey, WordSummary summary, QuestionType type) {
-        // choice_en_cn：选项为清洗后中文；choice_cn_en：选项为英文；key 统一用 wordKey
+        // choice_en_cn：选项为 primary 中文；choice_cn_en：选项为英文；key 统一用 wordKey
         if (type == QuestionType.choice_en_cn) {
-            String cn = WordSenseNormalizer.cleanDisplayCn(summary.cn());
+            String cn = WordSenseNormalizer.displayCn(summary);
             String label = (WordSenseNormalizer.hasHan(cn) && !cn.equalsIgnoreCase(wordKey))
                     ? cn
                     : "（无释义）";
@@ -566,6 +571,7 @@ public class QuizService {
     /** 答错时按题型给出用户可读的正确答案 */
     private static String resolveExpectedAnswer(QuizQuestion question, QuestionType type) {
         if (type == QuestionType.choice_en_cn) {
+            // 题干已存 primary.cn；legacy 脏串再清洗一次
             String cn = WordSenseNormalizer.cleanDisplayCn(question.getPromptCn());
             if (WordSenseNormalizer.hasHan(cn)) {
                 return cn;
@@ -574,6 +580,7 @@ public class QuizService {
         return question.getExpectedEn();
     }
 
+    /** dict 合格词原样保留；仅 legacy 扁平 cn 走正则清洗 */
     private static Map<String, WordSummary> normalizeSummaries(Map<String, WordSummary> raw) {
         Map<String, WordSummary> out = new java.util.HashMap<>();
         for (Map.Entry<String, WordSummary> e : raw.entrySet()) {

@@ -10,6 +10,8 @@ data class SettingsContent(
     val heatDisplayMode: HeatDisplayMode = HeatDisplayMode.COMBINED,
     val quizLaunchMode: QuizLaunchMode = QuizLaunchMode.MIXED,
     val defaultQuestionLimit: Int = 10,
+    val activeDictId: String = "wordflip_curated",
+    val dictionaries: List<com.wordflip.core.model.book.DictionaryItem> = emptyList(),
 )
 
 sealed interface SettingsUiState {

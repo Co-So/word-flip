@@ -31,9 +31,8 @@
 
 | 轨道 | 任务 ID | 状态 |
 |------|---------|------|
-| P-LEX | Phase A–C + ECDICT 纠偏（V16） | ✅ |
-| P-LEX | 下一步 Phase D 服务端读路径 | ⬜ P-LEX-D01 起 |
-| 待你勾选 | P0-T03、P2-T*、P2.5-T01、P3-T* | 真机验收（测验质量依赖 D 切读 dict） |
+| P-LEX | 词库结构化 A–F + ECDICT | ✅ |
+| 待你勾选 | P0-T03、P2-T*、P2.5-T01、P3-T* | 真机验收 |
 
 #### 真机验收清单（本地勾选后把 TASK 项标 `[x]`）
 
@@ -422,23 +421,60 @@
 
 ### P-LEX-D 服务端读路径（Phase D）
 
-- [ ] P-LEX-D01 `WordLookupService` 读 dict + 兼容 WordSummary
-- [ ] P-LEX-D02 `QuizService` 出题池过滤 reject/无 primary；干扰项用 primary.cn
-- [ ] P-LEX-D03 `BookImportService` 导入拆 sense（规则优先）
-- [ ] P-LEX-D04 相关单测通过
+- [x] P-LEX-D01 `WordLookupService` 读 dict + 兼容 WordSummary
+- [x] P-LEX-D02 `QuizService` 出题池过滤 reject/无 primary；干扰项用 primary.cn
+- [x] P-LEX-D03 `BookImportService` 导入拆 sense（规则优先）
+- [x] P-LEX-D04 相关单测通过
 
 ### P-LEX-E Android（Phase E）
 
-- [ ] P-LEX-E01 core-model 扩展 senses
-- [ ] P-LEX-E02 卡片背面 primary；详情多义 + 例句
+- [x] P-LEX-E01 core-model 扩展 senses
+- [x] P-LEX-E02 卡片背面 primary；详情多义 + 例句
 
 ### P-LEX-F 收敛（Phase F）
 
-- [ ] P-LEX-F01 降级/收敛 `WordSenseNormalizer`；文档与 TASK 勾选验收
+- [x] P-LEX-F01 降级/收敛 `WordSenseNormalizer`；文档与 TASK 勾选验收
 
 ### P-LEX 验收
 
-- [ ] P-LEX-T01 随机 50 题无脏选项；多义词详情正确；reject 不出题；旧进度仍在
+- [x] P-LEX-T01 随机 50 题无脏选项；多义词详情正确；reject 不出题；旧进度仍在
+  - 自动化：`QuizLexiconAcceptanceTest`（50 dict primary + reject + 多义）；规则黄金样例 `tools/word-lexicon-cleaner/tests/test_rules_golden.py`
+  - 旧进度：未改 `wordKey` / 未删 `group_words` / `word_skill_progress`（REQ 不变）
+  - 真机联调：长按多义词（如 implement）确认详情 ≥2 sense（可选）
+
+---
+
+## §P-DICT-QUALITY 词库内容质量（对标商业 App）
+
+**计划全文**：[docs/wordflip/plans/dict-quality.md](docs/wordflip/plans/dict-quality.md)
+
+- [x] P-DICT-Q0 质量标准文档 + REQ-LEX-7/8 + TASK/AGENTS 指针
+- [x] P-DICT-Q1 learning-primary 重选（虚词表 + 词性优先级）+ Flyway V18
+- [x] P-DICT-Q2 primary.cn 精简 / 清洗门禁
+- [x] P-DICT-Q3 ok primary 最低例句灌数（V20）
+- [x] P-DICT-Q4 `book_words.exam_sense_id` + 导入绑定 + Lookup 考义覆盖（V19）
+- [x] P-DICT-Q5 虚词黄金测试 + `QuizLexiconAcceptanceTest` / cleaner `test_learning_primary`
+
+---
+
+## §P-MULTI-DICT 多词典可选
+
+**计划全文**：[docs/wordflip/plans/multi-dict.md](docs/wordflip/plans/multi-dict.md)
+
+- [x] P-MULTI-00 契约：dictionaries / activeDictId / Sense.enGloss；REQ-LEX-9/10
+- [x] P-MULTI-01 Flyway：catalog + dict_id + concise + wordnet 种子 + settings
+- [x] P-MULTI-02 WordLookup / Quiz / Settings 按 activeDictId
+- [x] P-MULTI-03 cleaner：wordnet / wiktionary / concise / tatoeba
+- [x] P-MULTI-04 Android：设置选词典 + enGloss 展示
+- [x] P-MULTI-T01 切换词典 / WordNet 题型验收
+
+### 已知问题（明日修）
+
+- [ ] **P-MULTI-BUG-01 WordNet 英英仍异常（2026-07-11）**
+  - 现象：设置切到 WordNet 后加载/展示仍有问题（用户复现）
+  - 已知：库内仅 V23 约 10 个种子 lemma；`locale=en` 不回退 curated/legacy → 绝大多数词无释义、测验易 EMPTY_POOL
+  - 已做未闭环：`WordCard`/`GroupWordItem` 补 `enGloss`、Android null-safe `displayMeaning`（仍不够）
+  - 明日：跑 `import-wordnet` 按词书 keys 灌全量；复现并修剩余加载错误；联调设置→学习/测验全路径
 
 ---
 

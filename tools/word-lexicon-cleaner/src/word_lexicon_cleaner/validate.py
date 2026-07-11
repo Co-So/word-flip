@@ -39,7 +39,14 @@ def validate_sense_cn(cn: str, en: str, word_key: str) -> tuple[bool, str]:
         return False, "latin_only"
     if latin_count >= 8 and han_count <= 2:
         return False, "mostly_latin"
+    # 过长释义：门禁仍算 ok，但标记 reason 供 report（调用方可降级）
+    if len(text) > 40:
+        return True, "cn_too_long"
     return True, "ok"
+
+
+def is_cn_too_long(cn: str, max_len: int = 40) -> bool:
+    return len((cn or "").strip()) > max_len
 
 
 def ensure_primary(senses: list[Sense]) -> None:

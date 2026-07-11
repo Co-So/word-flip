@@ -191,6 +191,7 @@ fun FlipCard(
                 ) {
                     CardBackContent(
                         cn = cn,
+                        pos = pos,
                         ph = ph,
                         hasImage = hasImage,
                         imageUrl = imageUrl,
@@ -204,10 +205,11 @@ fun FlipCard(
     }
 }
 
-/** 背面：无图时居中中文+音标；有图时黑底 + 底部 overlay（对齐 v5 .fc-back） */
+/** 背面：无图时 primary 释义（cn + pos + ph）；有图时黑底 + 底部 overlay */
 @Composable
 private fun CardBackContent(
     cn: String,
+    pos: String?,
     ph: String?,
     hasImage: Boolean,
     imageUrl: String?,
@@ -247,6 +249,15 @@ private fun CardBackContent(
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (!pos.isNullOrBlank()) {
+                Text(
+                    text = pos,
+                    modifier = Modifier.padding(top = 4.dp),
+                    fontSize = 12.sp,
+                    color = SageStudyCardBackPh,
+                    textAlign = TextAlign.Center,
+                )
+            }
             if (!ph.isNullOrBlank()) {
                 Text(
                     text = ph,

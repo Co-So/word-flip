@@ -106,6 +106,45 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     item {
+                        SettingsSectionTitle("词典")
+                        SettingsCard {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    text = "学习释义来源（REQ-LEX-9）",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    val dicts = state.content.dictionaries.ifEmpty {
+                                        listOf(
+                                            com.wordflip.core.model.book.DictionaryItem(
+                                                "wordflip_curated", "WordFlip 精校", "zh",
+                                            ),
+                                            com.wordflip.core.model.book.DictionaryItem(
+                                                "wordnet", "WordNet 英英", "en",
+                                            ),
+                                        )
+                                    }
+                                    dicts.forEach { dict ->
+                                        FilterChip(
+                                            selected = state.content.activeDictId == dict.id,
+                                            onClick = {
+                                                viewModel.setActiveDictId(dict.id, dict.name)
+                                            },
+                                            label = { Text(dict.name) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    item {
                         SettingsSectionTitle("学习体验")
                         SettingsCard {
                             SettingsToggleRow(

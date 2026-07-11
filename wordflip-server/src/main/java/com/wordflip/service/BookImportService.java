@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wordflip.domain.Book;
 import com.wordflip.domain.BookSource;
 import com.wordflip.domain.BookWord;
+import com.wordflip.domain.DictSense;
+import com.wordflip.domain.DictSenseQuality;
+import com.wordflip.domain.DictWord;
+import com.wordflip.domain.DictionaryIds;
 import com.wordflip.domain.UserBookSelection;
 import com.wordflip.domain.UserWordLexicon;
 import com.wordflip.dto.book.BookImportConfirmResponse;
@@ -15,6 +19,8 @@ import com.wordflip.dto.word.WordSummary;
 import com.wordflip.exception.WordflipException;
 import com.wordflip.repository.BookRepository;
 import com.wordflip.repository.BookWordRepository;
+import com.wordflip.repository.DictSenseRepository;
+import com.wordflip.repository.DictWordRepository;
 import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserWordLexiconRepository;
 import com.wordflip.util.WordSenseNormalizer;
@@ -35,6 +41,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * 词书导入两阶段：preview（Redis 15min）→ confirm 入库；不自动 append 分组。
@@ -56,6 +63,8 @@ public class BookImportService {
     private final BookWordRepository bookWordRepository;
     private final UserBookSelectionRepository userBookSelectionRepository;
     private final UserWordLexiconRepository userWordLexiconRepository;
+    private final DictWordRepository dictWordRepository;
+    private final DictSenseRepository dictSenseRepository;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -64,6 +73,8 @@ public class BookImportService {
             BookWordRepository bookWordRepository,
             UserBookSelectionRepository userBookSelectionRepository,
             UserWordLexiconRepository userWordLexiconRepository,
+            DictWordRepository dictWordRepository,
+            DictSenseRepository dictSenseRepository,
             StringRedisTemplate redisTemplate,
             ObjectMapper objectMapper
     ) {
@@ -71,6 +82,8 @@ public class BookImportService {
         this.bookWordRepository = bookWordRepository;
         this.userBookSelectionRepository = userBookSelectionRepository;
         this.userWordLexiconRepository = userWordLexiconRepository;
+        this.dictWordRepository = dictWordRepository;
+        this.dictSenseRepository = dictSenseRepository;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
     }
@@ -164,13 +177,32 @@ public class BookImportService {
 
         List<BookWord> entities = new ArrayList<>(payload.words().size());
         int order = 0;
+        // 批量取已有 dict primary，导入时绑定 exam_sense（REQ-LEX-7）
+        List<String> importKeys = payload.words().stream()
+                .map(WordSummary::wordKey)
+                .filter(k -> k != null && !k.isBlank())
+                .toList();
+        Map<String, DictSense> primaryByKey = dictSenseRepository
+                .findPrimariesByDictIdAndWordKeyInAndQuality(
+                        DictionaryIds.CURATED, importKeys, DictSenseQuality.ok)
+                .stream()
+                .collect(Collectors.toMap(DictSense::getWordKey, s -> s, (a, b) -> a));
+
         for (WordSummary word : payload.words()) {
             BookWord bw = new BookWord();
             bw.setBookId(book.getId());
             bw.setWordKey(word.wordKey());
             bw.setEn(word.en());
-            bw.setCn(word.cn());
-            bw.setPos(word.pos());
+            DictSense dictPrimary = primaryByKey.get(word.wordKey());
+            if (dictPrimary != null) {
+                // 全局词典优先：词书仅 membership + 考义绑定
+                bw.setCn(dictPrimary.getCn());
+                bw.setPos(dictPrimary.getPos());
+                bw.setExamSenseId(dictPrimary.getId());
+            } else {
+                bw.setCn(word.cn());
+                bw.setPos(word.pos());
+            }
             bw.setPh(word.ph());
             bw.setSortOrder(order++);
             bw.setCreatedAt(Instant.now());
@@ -183,6 +215,10 @@ public class BookImportService {
             userBookSelectionRepository.save(new UserBookSelection(userId, book.getId()));
         }
         upsertLexiconForImport(userId, book.getId(), payload.words());
+        // 仅对 dict 中尚不存在的词头补 primary sense；不覆盖 ECDICT
+        upsertDictForMissingKeys(payload.words());
+        // 补完 dict 后回填仍缺 exam_sense 的词条
+        bindExamSenseForBook(book.getId(), payload.words());
 
         redisTemplate.delete(previewKey(previewToken));
         return new BookImportConfirmResponse(BookListResponse.BookItem.from(book, true));
@@ -223,6 +259,81 @@ public class BookImportService {
             lexicon.setSourceBookId(bookId);
             lexicon.setUpdatedAt(now);
             userWordLexiconRepository.save(lexicon);
+        }
+    }
+
+    /**
+     * 导入后回填 exam_sense_id：对新写入的 dict primary 绑定到本书词条。
+     */
+    private void bindExamSenseForBook(Long bookId, List<WordSummary> words) {
+        List<String> keys = words.stream()
+                .map(WordSummary::wordKey)
+                .filter(k -> k != null && !k.isBlank())
+                .toList();
+        if (keys.isEmpty()) {
+            return;
+        }
+        Map<String, DictSense> primaryByKey = dictSenseRepository
+                .findPrimariesByDictIdAndWordKeyInAndQuality(
+                        DictionaryIds.CURATED, keys, DictSenseQuality.ok)
+                .stream()
+                .collect(Collectors.toMap(DictSense::getWordKey, s -> s, (a, b) -> a));
+        if (primaryByKey.isEmpty()) {
+            return;
+        }
+        List<BookWord> rows = bookWordRepository.findByBookIdsAndWordKeys(List.of(bookId), keys);
+        for (BookWord row : rows) {
+            if (row.getExamSenseId() != null) {
+                continue;
+            }
+            DictSense primary = primaryByKey.get(row.getWordKey());
+            if (primary == null) {
+                continue;
+            }
+            row.setExamSenseId(primary.getId());
+            row.setCn(primary.getCn());
+            row.setPos(primary.getPos());
+        }
+        bookWordRepository.saveAll(rows);
+    }
+
+    /**
+     * 导入补 dict：仅 word_key 不存在时写入词头 + 规则清洗后的 primary sense。
+     * 已有 ECDICT 条目一律跳过，禁止覆盖。
+     */
+    private void upsertDictForMissingKeys(List<WordSummary> words) {
+        Instant now = Instant.now();
+        for (WordSummary word : words) {
+            if (word.wordKey() == null || word.wordKey().isBlank()) {
+                continue;
+            }
+            if (dictWordRepository.existsByDictIdAndWordKey(DictionaryIds.CURATED, word.wordKey())) {
+                continue;
+            }
+            String cleanedCn = WordSenseNormalizer.cleanDisplayCn(word.cn());
+            // 无汉字释义不入 dict（测验池会过滤）；避免污染全局词典
+            if (!WordSenseNormalizer.hasHan(cleanedCn)) {
+                continue;
+            }
+            DictWord head = new DictWord();
+            head.setDictId(DictionaryIds.CURATED);
+            head.setWordKey(word.wordKey());
+            head.setEn(word.en() != null && !word.en().isBlank() ? word.en() : word.wordKey());
+            head.setPh(word.ph());
+            head.setCreatedAt(now);
+            head.setUpdatedAt(now);
+            dictWordRepository.save(head);
+
+            DictSense sense = new DictSense();
+            sense.setDictId(DictionaryIds.CURATED);
+            sense.setWordKey(word.wordKey());
+            sense.setPos(word.pos());
+            sense.setCn(cleanedCn);
+            sense.setPrimary(true);
+            sense.setSortOrder(0);
+            sense.setQuality(DictSenseQuality.ok);
+            sense.setCreatedAt(now);
+            dictSenseRepository.save(sense);
         }
     }
 

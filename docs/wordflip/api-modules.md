@@ -27,7 +27,7 @@
 **Base URL：** `/api/v1`  
 **认证：** JWT Bearer（除 Auth 外全部必需）
 
-> **释义真相：** WordLookup / Study / Quiz 以 `dict_senses` 的 **primary（quality=ok）** 为默认释义；openapi `Sense` / `Example` 见契约。过渡期可读 lexicon 扁平列，但语义等同 primary。计划：[plans/lexicon-restructure.md](./plans/lexicon-restructure.md)。
+> **释义真相：** WordLookup / Study / Quiz 以 `dict_senses` 的 **primary（quality=ok）** 为默认释义；openapi `Sense` / `Example` 见契约。缺词时可回退 lexicon 扁平列（语义仍应等同 primary）。`WordSenseNormalizer` 仅 legacy/导入兜底。计划：[plans/lexicon-restructure.md](./plans/lexicon-restructure.md)。
 
 ---
 
@@ -84,10 +84,13 @@ POST /quiz/sessions/{id}/answer
 ```
 
 **出题质量（服务端权威，REQ-LEX / REQ-QUIZ-13）：**
-- 字段分清：`wordKey` / `en`（词头）/ primary.`cn`（纯释义）/ primary.`pos` / 词头.`ph`；多义在 `senses[]`。
-- 出题池过滤：无合格 primary（`quality≠ok` 或无 primary）→ **不出题**；过渡期 `WordSenseNormalizer` 仅治标。
-- 选择题：正确项与干扰项均用各词 primary 干净 label；同词性优先、label 互异、长度相近。
-- 答错反馈：`expectedEn` + `expectedAnswer`（按题型：英选中=primary.cn）须与正确项一致。
+- 字段分清：`wordKey` / `en`（词头）/ 展示义.`cn` 或 `enGloss` / `pos` / 词头.`ph`；多义在 `senses[]`。
+- 出题池过滤：无合格 primary → **不出题**（英汉须汉字 cn；英英须 enGloss）。
+- **释义真相** = 用户 `activeDictId` 下 `dict_senses`；已选词书 `exam_sense_id` 若属于当前词典则覆盖展示义（REQ-LEX-7/9）。
+- **WordNet（locale=en）：** 中文选词题降级为默写（REQ-LEX-10）。
+- `WordSenseNormalizer` **已降级**，仅 legacy 缺词 / 导入补 dict 时清洗脏扁平 `cn`。
+- 选择题：正确项与干扰项均用各词展示义干净 label；同词性优先、label 互异、长度相近。
+- 答错反馈：`expectedEn` + `expectedAnswer` 须与正确项一致。
 - 无法凑出 ≥2 个互异选项时降级为默写。
 **不提供** `PATCH /words/{wordKey}/mastery`。学习翻卡不写 S。
 
@@ -164,7 +167,7 @@ DELETE /books/{bookId}
   → 仅 imported；去勾选并删书；已入组词保留（REQ-BOOK-11/20）
 ```
 
-**WordLookup（Study / Groups / Quiz 共用）：** 优先读 `dict_words` + `dict_senses`（及 examples）；兼容填充 `WordSummary.cn/pos/ph` = primary，详情带 `senses`。配置可回退 `lexicon.source=legacy`（仅 Phase D 前）。
+**WordLookup（Study / Groups / Quiz 共用）：** 优先读 `dict_words` + `dict_senses`（及 examples）；兼容填充 `WordSummary.cn/pos/ph` = primary，详情带 `senses`。配置可回退 `lexicon.source=legacy`（应急）。
 
 ### 2.4 污渍默认 seed
 
@@ -232,3 +235,4 @@ flowchart TB
 | 2026-06-30 | v1.1 | 补充 completionPercent 口径；对齐 openapi.yaml v1.0 |
 | 2026-07-09 | v1.2 | skill 双轨 dictation/choice；题型与组测/最近组；对齐 openapi v1.1 |
 | 2026-07-10 | v1.3 | Phase A：dict primary 释义真相；Quiz/Import/Lookup 规则；对齐 Sense/Example |
+| 2026-07-10 | v1.4 | Phase F：Normalizer 降级；dict 出题不再二次清洗 |

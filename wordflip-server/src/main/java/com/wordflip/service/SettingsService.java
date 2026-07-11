@@ -9,6 +9,7 @@ import com.wordflip.dto.settings.SaveBooksSettingsRequest;
 import com.wordflip.dto.settings.SaveBooksSettingsResponse;
 import com.wordflip.dto.settings.UserSettingsResponse;
 import com.wordflip.exception.WordflipException;
+import com.wordflip.repository.DictionaryRepository;
 import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserSettingsRepository;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ public class SettingsService {
 
     private final UserSettingsRepository userSettingsRepository;
     private final UserBookSelectionRepository userBookSelectionRepository;
+    private final DictionaryRepository dictionaryRepository;
     private final BookService bookService;
     private final GroupService groupService;
     private final TodayCacheService todayCacheService;
@@ -32,12 +34,14 @@ public class SettingsService {
     public SettingsService(
             UserSettingsRepository userSettingsRepository,
             UserBookSelectionRepository userBookSelectionRepository,
+            DictionaryRepository dictionaryRepository,
             BookService bookService,
             GroupService groupService,
             TodayCacheService todayCacheService
     ) {
         this.userSettingsRepository = userSettingsRepository;
         this.userBookSelectionRepository = userBookSelectionRepository;
+        this.dictionaryRepository = dictionaryRepository;
         this.bookService = bookService;
         this.groupService = groupService;
         this.todayCacheService = todayCacheService;
@@ -117,6 +121,13 @@ public class SettingsService {
                 throw new WordflipException("VALIDATION_ERROR", "defaultQuestionLimit 须在 1–50");
             }
             settings.setDefaultQuestionLimit(limit);
+        }
+        if (request.getActiveDictId() != null) {
+            String dictId = request.getActiveDictId().trim();
+            if (dictId.isEmpty() || !dictionaryRepository.existsById(dictId)) {
+                throw new WordflipException("VALIDATION_ERROR", "未知词典: " + request.getActiveDictId());
+            }
+            settings.setActiveDictId(dictId);
         }
         settings.setUpdatedAt(Instant.now());
         userSettingsRepository.save(settings);

@@ -27,6 +27,7 @@ private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
 private val KEY_HEAT_DISPLAY_MODE = stringPreferencesKey("heat_display_mode")
 private val KEY_QUIZ_LAUNCH_MODE = stringPreferencesKey("quiz_launch_mode")
 private val KEY_DEFAULT_QUESTION_LIMIT = intPreferencesKey("default_question_limit")
+private val KEY_ACTIVE_DICT_ID = stringPreferencesKey("active_dict_id")
 
 /**
  * 用户偏好本地缓存（REQ-SETTINGS-1/2/7）；与 PATCH /settings/preferences 同步。
@@ -57,6 +58,10 @@ class SettingsPreferences(
         (prefs[KEY_DEFAULT_QUESTION_LIMIT] ?: 10).coerceIn(1, 50)
     }
 
+    val activeDictIdFlow: Flow<String> = dataStore.data.map { prefs ->
+        prefs[KEY_ACTIVE_DICT_ID] ?: "wordflip_curated"
+    }
+
     suspend fun setAutoSpeak(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[KEY_AUTO_SPEAK] = enabled
@@ -84,6 +89,12 @@ class SettingsPreferences(
     suspend fun setDefaultQuestionLimit(limit: Int) {
         dataStore.edit { prefs ->
             prefs[KEY_DEFAULT_QUESTION_LIMIT] = limit.coerceIn(1, 50)
+        }
+    }
+
+    suspend fun setActiveDictId(dictId: String) {
+        dataStore.edit { prefs ->
+            prefs[KEY_ACTIVE_DICT_ID] = dictId
         }
     }
 }

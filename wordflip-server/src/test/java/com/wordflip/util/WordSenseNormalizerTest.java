@@ -1,7 +1,10 @@
 package com.wordflip.util;
 
+import com.wordflip.dto.word.SenseDto;
 import com.wordflip.dto.word.WordSummary;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,5 +62,39 @@ class WordSenseNormalizerTest {
         WordSummary cleaned = WordSenseNormalizer.normalizeSummary(raw);
         assertThat(cleaned.cn()).isEqualTo("突然地");
         assertThat(cleaned.pos()).isEqualTo("adv.");
+    }
+
+    @Test
+    void normalizeSummary_preservesSenses() {
+        var sense = new SenseDto(1L, "v.", "是, 表示, 在", true, "ok", 0, List.of());
+        WordSummary raw = new WordSummary("be", "be", "是, 表示, 在 (v.)", "v.", null, List.of(sense));
+        // dict primary ok：不再二次清洗顶层 cn（即使带 (v.) 尾巴也不动）
+        WordSummary cleaned = WordSenseNormalizer.normalizeSummary(raw);
+        assertThat(cleaned).isSameAs(raw);
+        assertThat(cleaned.senses()).hasSize(1);
+        assertThat(cleaned.senses().getFirst().id()).isEqualTo(1L);
+    }
+
+    @Test
+    void displayCn_dictSkipsRegex_legacyCleans() {
+        var sense = new SenseDto(1L, "n.", "时间", true, "ok", 0, List.of());
+        WordSummary dict = new WordSummary("time", "time", "时间", "n.", null, List.of(sense));
+        assertThat(WordSenseNormalizer.displayCn(dict)).isEqualTo("时间");
+        assertThat(WordSenseNormalizer.hasDictPrimaryOk(dict)).isTrue();
+
+        WordSummary legacy = new WordSummary("time", "time", "时间 (n.)", "n.", null);
+        assertThat(WordSenseNormalizer.displayCn(legacy)).isEqualTo("时间");
+        assertThat(WordSenseNormalizer.hasDictPrimaryOk(legacy)).isFalse();
+    }
+
+    @Test
+    void isQuizEligible_withSenses_requiresPrimaryOk() {
+        var ok = new SenseDto(1L, "n.", "时间", true, "ok", 0, List.of());
+        assertThat(WordSenseNormalizer.isQuizEligible(
+                new WordSummary("time", "time", "时间", "n.", null, List.of(ok)))).isTrue();
+
+        var reject = new SenseDto(2L, "n.", "坏", true, "reject", 0, List.of());
+        assertThat(WordSenseNormalizer.isQuizEligible(
+                new WordSummary("junk", "junk", "坏", "n.", null, List.of(reject)))).isFalse();
     }
 }

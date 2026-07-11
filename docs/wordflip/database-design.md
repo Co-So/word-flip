@@ -7,7 +7,7 @@
 
 本文档为 WordFlip MVP 的 **MySQL 8 逻辑模型** 与 **Redis 辅助存储** 设计。业务规则以 `requirements.md` / `api-modules.md` / `openapi.yaml` 为准；Flyway 脚本应与本设计一一对应（含 `V10__word_skill_progress.sql`）。
 
-> **词库结构化：** `dict_*` 释义真相为 **ECDICT 覆盖**（V16）；V13 建表、V14 曾用规则灌数（已被 V16 取代）、V15/V17 同步 lexicon primary。`book_words` 扁平列过渡只读，词书职责趋近「成员列表」。
+> **词库结构化：** `dict_*` 释义真相为 **ECDICT + learning-primary**（V16 灌库，V18 重选 primary）；V19 `exam_sense_id`；V20 例句。`book_words` 趋近 membership + 可选考义。
 
 ---
 
@@ -180,9 +180,10 @@ erDiagram
 | `heat_display_mode` | ENUM('combined','dictation','choice','free') | NO | combined | 组详情热力展示 |
 | `quiz_launch_mode` | ENUM('mixed','free_select') | NO | mixed | 开测模式 |
 | `default_question_limit` | TINYINT UNSIGNED | NO | 10 | 默认测验题数 |
+| `active_dict_id` | VARCHAR(32) | NO | wordflip_curated | 当前词典 FK → dictionaries.id（REQ-LEX-9） |
 | `updated_at` | DATETIME(3) | NO | ON UPDATE | |
 
-**FK：** `user_id → users(id) ON DELETE CASCADE`
+**FK：** `user_id → users(id) ON DELETE CASCADE`；`active_dict_id → dictionaries(id)`
 
 **生命周期：** 注册成功时同事务 INSERT 默认行。
 
@@ -190,41 +191,57 @@ erDiagram
 
 ## 6. Books / Lexicon 模块
 
-### 6.0 全局词典 `dict_*`（V13+）
+### 6.0 全局词典 `dict_*`（V13+，多词典 V21+）
 
-内置词书共享的全局词典；释义真相来源。进度键仍为 `word_key`，不按义项拆。
+内置多本词典共享表结构；释义真相来源为 `(dict_id, word_key)`。进度键仍为 `word_key`。
 
-**Flyway：** `V13` 建表 → `V14` 规则灌数（历史）→ `V15` 同步 → **`V16` ECDICT 重建** → `V17` 再同步 lexicon。  
-**建设原则：** 词书只提供 word_key 集合；释义/音标/义项来自 ECDICT（见 `tools/word-lexicon-cleaner overlay-ecdict`）。
+**Flyway：** V13 建表 → … → V16 ECDICT → V18 learning-primary → V19 exam_sense → V20 例句 → **V21 多词典 catalog + dict_id** → V22 concise → V23 wordnet 种子 → V24 active_dict_id。
+
+#### 6.0.0 `dictionaries`（词典目录）
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| `id` | VARCHAR(32) PK | 如 `wordflip_curated` / `wiktionary_zh` / `wordflip_concise` / `wordnet` |
+| `name` | VARCHAR(64) | 展示名 |
+| `locale` | ENUM('zh','en') | zh=英汉；en=英英 |
+| `license_note` | VARCHAR(512) | 署名/许可摘要 |
+| `is_builtin` | TINYINT(1) | 内置 |
+| `sort_order` | INT UNSIGNED | 列表序 |
 
 #### 6.0.1 `dict_words`（Headword）
 
 | 列 | 类型 | NULL | 默认 | 说明 |
 |----|------|------|------|------|
-| `word_key` | VARCHAR(191) | NO | — | PK；`LOWER(TRIM(en))` |
+| `dict_id` | VARCHAR(32) | NO | — | PK 之一；FK → dictionaries |
+| `word_key` | VARCHAR(191) | NO | — | PK 之一；`LOWER(TRIM(en))` |
 | `en` | VARCHAR(191) | NO | — | 展示原文 |
 | `ph` | VARCHAR(64) | YES | NULL | 音标（英式或通用） |
 | `ph_us` | VARCHAR(64) | YES | NULL | 美音（可选） |
 | `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
 | `updated_at` | DATETIME(3) | NO | ON UPDATE | |
 
+**PK：** `(dict_id, word_key)`
+
 #### 6.0.2 `dict_senses`（义项）
 
 | 列 | 类型 | NULL | 默认 | 说明 |
 |----|------|------|------|------|
 | `id` | BIGINT UNSIGNED | NO | — | PK |
-| `word_key` | VARCHAR(191) | NO | — | FK → dict_words |
+| `dict_id` | VARCHAR(32) | NO | — | 所属词典 |
+| `word_key` | VARCHAR(191) | NO | — | 与 dict_id 组成词头 FK |
 | `pos` | VARCHAR(32) | YES | NULL | 词性；**禁止**写入 cn |
-| `cn` | VARCHAR(512) | NO | — | 纯中文释义；须含汉字 |
-| `is_primary` | TINYINT(1) | NO | 0 | 主义项；合格词恰好一条为 1 |
+| `cn` | VARCHAR(512) | YES | NULL | 纯中文释义；英汉词典须含汉字；WordNet 可空 |
+| `en_gloss` | VARCHAR(512) | YES | NULL | 英英释义（WordNet）；英汉可空 |
+| `is_primary` | TINYINT(1) | NO | 0 | 主义项 |
 | `sort_order` | INT UNSIGNED | NO | 0 | 展示序 |
 | `quality` | ENUM('ok','uncertain','reject') | NO | ok | 清洗质量 |
 | `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
 
-**索引：** `idx_dict_senses_word (word_key, sort_order)` · 应用层保证：每个 `word_key` 至多一个 `(is_primary=1 AND quality='ok')`。
+**索引：** `idx_dict_senses_dict_word (dict_id, word_key, sort_order)` · 应用层保证：每个 `(dict_id, word_key)` 至多一个合格 primary。
 
 **约束（应用 + 尽量 DB）：**
-- `cn` 不得含词性尾巴如 `(n.)`；词性只在 `pos`
+- 英汉：`cn` 不得含词性尾巴；词性只在 `pos`
+- 英英：`en_gloss` 非空即可出默写池（REQ-LEX-10）
 - `quality=reject` 或无合格 primary → 该词**禁止入测验池**（REQ-LEX-4）
 
 #### 6.0.3 `dict_examples`（例句）
@@ -272,18 +289,20 @@ MVP 允许例句为空；详情抽屉无例句时展示「暂无例句」。
 | `pos` | VARCHAR(32) | YES | NULL | 过渡期 primary 词性冗余 |
 | `ph` | VARCHAR(64) | YES | NULL | 过渡期音标冗余 |
 | `detail_json` | JSON | YES | NULL | 过渡期例句等；目标改由 `dict_examples` |
+| `exam_sense_id` | BIGINT UNSIGNED | YES | NULL | 词书考义 → `dict_senses.id`（REQ-LEX-7）；NULL 用全局 primary |
 | `sort_order` | INT UNSIGNED | NO | 0 | 书内顺序 |
 | `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
 
-**索引：** `UNIQUE uk_book_words_book_key (book_id, word_key)` · `idx_book_words_word_key (word_key)`
+**索引：** `UNIQUE uk_book_words_book_key (book_id, word_key)` · `idx_book_words_word_key (word_key)` · `idx_book_words_exam_sense (exam_sense_id)`
 
-**FK：** `book_id → books(id) ON DELETE CASCADE`
+**FK：** `book_id → books(id) ON DELETE CASCADE`；`exam_sense_id → dict_senses(id) ON DELETE SET NULL`
 
 **演进：**
 | 阶段 | 形态 |
 |------|------|
 | 过渡（现行→Phase C） | 保留 `cn/pos/ph/detail_json`；灌 `dict_*` 后读路径可切 dict |
-| 目标 | 语义为 `(book_id, word_key, sort_order)` 引用 `dict_words`；旧释义列只读或后续迁移删除 |
+| 质量（Q4） | 增加 `exam_sense_id`；导入默认绑 learning-primary |
+| 目标 | 语义为 `(book_id, word_key, sort_order[, exam_sense_id])` 引用 dict；旧释义列只读或后续迁移删除 |
 
 ### 6.2.1 `word_freq_ranks`
 

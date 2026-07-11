@@ -243,6 +243,8 @@ def clean_word(raw: RawWord) -> CleanedWord:
                 sort_order=i,
             )
         )
+        if cn_reason == "cn_too_long":
+            reasons.append(f"seg{i}:cn_too_long")
 
     if not senses:
         return CleanedWord(
@@ -300,12 +302,23 @@ def clean_word(raw: RawWord) -> CleanedWord:
         )
 
     ensure_primary(senses)
+    # primary.cn 超过长度建议时截首段（dict-quality Q2）
+    from .learning_primary import shorten_cn
+
+    for s in senses:
+        if s.is_primary:
+            shortened = shorten_cn(s.cn)
+            if shortened and shortened != s.cn:
+                s.cn = shortened
+    word_reason = "rules_ok"
+    if any("cn_too_long" in r for r in reasons):
+        word_reason = "rules_ok|cn_shortened"
     return CleanedWord(
         word_key=word_key,
         en=en,
         ph=ph,
         quality="ok",
-        reason="rules_ok",
+        reason=word_reason,
         senses=senses,
         source="rules",
     )

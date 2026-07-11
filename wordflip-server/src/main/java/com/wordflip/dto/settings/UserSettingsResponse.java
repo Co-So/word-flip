@@ -1,5 +1,6 @@
 package com.wordflip.dto.settings;
 
+import com.wordflip.domain.DictionaryIds;
 import com.wordflip.domain.GroupStrategy;
 import com.wordflip.domain.HeatDisplayMode;
 import com.wordflip.domain.QuizLaunchMode;
@@ -21,6 +22,7 @@ public class UserSettingsResponse {
     private HeatDisplayMode heatDisplayMode;
     private QuizLaunchMode quizLaunchMode;
     private int defaultQuestionLimit;
+    private String activeDictId;
     private BooksSummary summary;
 
     public static UserSettingsResponse of(UserSettings settings, List<Long> bookIds, BooksSummary summary) {
@@ -41,6 +43,9 @@ public class UserSettingsResponse {
         response.defaultQuestionLimit = settings.getDefaultQuestionLimit() > 0
                 ? settings.getDefaultQuestionLimit()
                 : 10;
+        response.activeDictId = settings.getActiveDictId() != null && !settings.getActiveDictId().isBlank()
+                ? settings.getActiveDictId()
+                : DictionaryIds.CURATED;
         response.summary = summary;
         return response;
     }
@@ -75,6 +80,10 @@ public class UserSettingsResponse {
 
     public int getDefaultQuestionLimit() {
         return defaultQuestionLimit;
+    }
+
+    public String getActiveDictId() {
+        return activeDictId;
     }
 
     public BooksSummary getSummary() {

@@ -37,16 +37,23 @@ data class WordProgressSnapshot(
     val heatDisplayMode: String = "combined",
 )
 
-/** 单词摘要字段，对齐 openapi `WordSummary` */
+/** 单词摘要字段，对齐 openapi `WordSummary`；顶层 cn/enGloss/pos/ph = 展示义 */
 data class WordSummary(
     val wordKey: String,
     val en: String,
-    val cn: String,
+    val cn: String = "",
     val pos: String? = null,
     val ph: String? = null,
-)
+    val enGloss: String? = null,
+    /** 全部义项（详情用）；缺省时空列表，客户端退化为顶层展示义 */
+    val senses: List<Sense> = emptyList(),
+) {
+    /** 卡片/详情主释义：中文优先，否则英英 gloss（Gson 可能把 cn 反成 null） */
+    fun displayMeaning(): String =
+        cn.takeIf { !it.isNullOrBlank() } ?: enGloss?.takeIf { it.isNotBlank() }.orEmpty()
+}
 
-/** 详情抽屉内容 */
+/** 详情抽屉内容（过渡期兼容；优先用 [WordCard.senses]） */
 data class WordDetail(
     val meaning: String,
     val examples: List<String> = emptyList(),
@@ -71,19 +78,52 @@ data class WordStainPayload(
 
 /**
  * 学习页单词卡片，对齐 openapi `WordCard`。
- * 学习页网格不展示 mastery Chip（REQ-STUDY-24）。
+ * 学习页网格不展示 mastery Chip（REQ-STUDY-24）；背面 = primary.cn。
  */
 data class WordCard(
     val wordKey: String,
     val en: String,
-    val cn: String,
+    val cn: String = "",
     val pos: String? = null,
     val ph: String? = null,
+    val enGloss: String? = null,
+    val senses: List<Sense> = emptyList(),
     val mastery: MasterySnapshot,
     val detail: WordDetail? = null,
     val image: WordImagePayload = WordImagePayload(),
     val stain: WordStainPayload = WordStainPayload(),
-)
+) {
+    /** 卡片背面/详情主释义：中文优先，否则英英 gloss（Gson 可能把 cn 反成 null） */
+    fun displayMeaning(): String =
+        cn.takeIf { !it.isNullOrBlank() } ?: enGloss?.takeIf { it.isNotBlank() }.orEmpty()
+
+    /**
+     * 详情用义项：有 senses 则按 sortOrder；否则用 detail/顶层释义合成单义。
+     */
+    fun sensesForDetail(): List<Sense> {
+        if (senses.isNotEmpty()) {
+            return senses.sortedBy { it.sortOrder }
+        }
+        val meaning = detail?.meaning?.takeIf { it.isNotBlank() } ?: displayMeaning()
+        if (meaning.isBlank()) {
+            return emptyList()
+        }
+        val flatExamples = detail?.examples.orEmpty().mapIndexed { i, text ->
+            Example(en = text, cn = null, sortOrder = i)
+        }
+        return listOf(
+            Sense(
+                pos = pos,
+                cn = meaning.takeIf { it.any { ch -> ch in '\u4e00'..'\u9fff' } },
+                enGloss = meaning.takeUnless { it.any { ch -> ch in '\u4e00'..'\u9fff' } },
+                primary = true,
+                quality = "ok",
+                sortOrder = 0,
+                examples = flatExamples,
+            ),
+        )
+    }
+}
 
 data class StudyGroupInfo(
     val id: Int,

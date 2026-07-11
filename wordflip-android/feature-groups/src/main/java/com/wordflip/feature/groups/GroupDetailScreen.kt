@@ -406,7 +406,7 @@ private fun GroupWordRow(item: com.wordflip.core.model.group.GroupWordItem) {
                     fontWeight = FontWeight.SemiBold,
                 )
                 val subtitle = buildString {
-                    append(item.summary.cn)
+                    append(item.summary.displayMeaning().ifBlank { "暂无释义" })
                     item.summary.pos?.let { append(" · $it") }
                 }
                 Text(

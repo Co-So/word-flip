@@ -14,6 +14,7 @@ public class PreferencesPatchRequest {
     private HeatDisplayMode heatDisplayMode;
     private QuizLaunchMode quizLaunchMode;
     private Integer defaultQuestionLimit;
+    private String activeDictId;
 
     public Boolean getAutoSpeak() {
         return autoSpeak;
@@ -55,11 +56,20 @@ public class PreferencesPatchRequest {
         this.defaultQuestionLimit = defaultQuestionLimit;
     }
 
+    public String getActiveDictId() {
+        return activeDictId;
+    }
+
+    public void setActiveDictId(String activeDictId) {
+        this.activeDictId = activeDictId;
+    }
+
     public boolean hasAnyField() {
         return autoSpeak != null
                 || themeMode != null
                 || heatDisplayMode != null
                 || quizLaunchMode != null
-                || defaultQuestionLimit != null;
+                || defaultQuestionLimit != null
+                || activeDictId != null;
     }
 }

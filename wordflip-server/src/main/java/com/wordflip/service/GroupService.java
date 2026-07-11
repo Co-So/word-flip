@@ -8,7 +8,6 @@ import com.wordflip.domain.GroupWord;
 import com.wordflip.domain.HeatDisplayMode;
 import com.wordflip.domain.StudyGroup;
 import com.wordflip.domain.UserSettings;
-import com.wordflip.domain.UserWordLexicon;
 import com.wordflip.dto.common.PageMeta;
 import com.wordflip.dto.group.CreateCustomGroupRequest;
 import com.wordflip.dto.group.GroupDetail;
@@ -25,7 +24,6 @@ import com.wordflip.repository.GroupRepository;
 import com.wordflip.repository.GroupWordRepository;
 import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserSettingsRepository;
-import com.wordflip.repository.UserWordLexiconRepository;
 import com.wordflip.repository.WordFreqRankRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -38,7 +36,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -60,10 +57,10 @@ public class GroupService {
     private final GroupWordRepository groupWordRepository;
     private final GroupRepository groupRepository;
     private final UserSettingsRepository userSettingsRepository;
-    private final UserWordLexiconRepository userWordLexiconRepository;
     private final WordFreqRankRepository wordFreqRankRepository;
     private final BookService bookService;
     private final ReviewService reviewService;
+    private final WordLookupService wordLookupService;
 
     public GroupService(
             UserBookSelectionRepository userBookSelectionRepository,
@@ -71,20 +68,20 @@ public class GroupService {
             GroupWordRepository groupWordRepository,
             GroupRepository groupRepository,
             UserSettingsRepository userSettingsRepository,
-            UserWordLexiconRepository userWordLexiconRepository,
             WordFreqRankRepository wordFreqRankRepository,
             BookService bookService,
-            ReviewService reviewService
+            ReviewService reviewService,
+            WordLookupService wordLookupService
     ) {
         this.userBookSelectionRepository = userBookSelectionRepository;
         this.bookWordRepository = bookWordRepository;
         this.groupWordRepository = groupWordRepository;
         this.groupRepository = groupRepository;
         this.userSettingsRepository = userSettingsRepository;
-        this.userWordLexiconRepository = userWordLexiconRepository;
         this.wordFreqRankRepository = wordFreqRankRepository;
         this.bookService = bookService;
         this.reviewService = reviewService;
+        this.wordLookupService = wordLookupService;
     }
 
     /** GET /groups：按 source 过滤、createdAt/name 排序 */
@@ -581,45 +578,9 @@ public class GroupService {
                 .toList();
     }
 
-    /** 优先 lexicon，回退 book_words */
+    /** 统一走 WordLookup：dict primary → lexicon → book_words */
     private Map<String, WordSummary> resolveWordSummaries(Long userId, List<String> wordKeys) {
-        if (wordKeys.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, WordSummary> result = new LinkedHashMap<>();
-        for (UserWordLexicon lexicon : userWordLexiconRepository.findByUserIdAndWordKeyIn(userId, wordKeys)) {
-            result.put(
-                    lexicon.getWordKey(),
-                    new WordSummary(
-                            lexicon.getWordKey(),
-                            lexicon.getEn(),
-                            lexicon.getCn(),
-                            lexicon.getPos(),
-                            lexicon.getPh()
-                    )
-            );
-        }
-        List<String> missing = wordKeys.stream().filter(key -> !result.containsKey(key)).toList();
-        if (missing.isEmpty()) {
-            return result;
-        }
-        List<Long> selectedBookIds = userBookSelectionRepository.findBookIdsByUserId(userId);
-        if (selectedBookIds.isEmpty()) {
-            return result;
-        }
-        for (BookWord bookWord : bookWordRepository.findByBookIdsAndWordKeys(selectedBookIds, missing)) {
-            result.putIfAbsent(
-                    bookWord.getWordKey(),
-                    new WordSummary(
-                            bookWord.getWordKey(),
-                            bookWord.getEn(),
-                            bookWord.getCn(),
-                            bookWord.getPos(),
-                            bookWord.getPh()
-                    )
-            );
-        }
-        return result;
+        return wordLookupService.resolveWordSummaries(userId, wordKeys);
     }
 
     private static boolean matchesQuery(WordSummary summary, String wordKey, String q) {

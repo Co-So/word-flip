@@ -7,18 +7,17 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 词条字段清洗与测验可用性判定。
+ * 词条字段清洗与测验可用性判定（<strong>已降级</strong>）。
  * <p>
- * 一词多字段职责（须分清，禁止混用）：
+ * <b>释义真相源</b>是全局 {@code dict_senses} primary（ECDICT 灌库，REQ-LEX）。
+ * 本类不再充当词典：仅用于
  * <ul>
- *   <li>{@code wordKey} — 归一化键 {@code en.trim().toLowerCase()}，进度/选项 key</li>
- *   <li>{@code en} — 展示与默写标准答案（保留大小写）</li>
- *   <li>{@code cn} — 中文释义正文；不应再夹带词性标记或英文短语碎片</li>
- *   <li>{@code pos} — 词性（n./v./adj. 等），单独字段展示</li>
- *   <li>{@code ph} — 音标</li>
+ *   <li>{@code lexicon.source=legacy} 或 dict 缺词时的 lexicon/book_words 兜底</li>
+ *   <li>词书导入补 dict 前的规则清洗</li>
+ *   <li>测验池 eligibility / 干扰项词性族等辅助判定</li>
  * </ul>
- * 词书 ETL 常把词性写进 cn（如 {@code 突然地 (adv.)}），或把短语拆坏
- * （如 {@code in} → {@code favour (prep.)；为收款人}）。本工具在出题/展示前统一清洗。
+ * 已带合格 dict senses 的 {@link WordSummary}：{@link #normalizeSummary} / {@link #displayCn}
+ * <strong>不再</strong>做正则二次清洗，避免误伤 ECDICT 释义。
  */
 public final class WordSenseNormalizer {
 
@@ -41,7 +40,65 @@ public final class WordSenseNormalizer {
     }
 
     /**
-     * 清洗展示用中文释义：去掉尾部/前导词性、英文短语头，从首个汉字起截取。
+     * 是否已有 dict 合格 primary（英汉 cn 含汉字，或英英 enGloss 非空）。
+     */
+    public static boolean hasDictPrimaryOk(WordSummary summary) {
+        if (summary == null || summary.senses() == null || summary.senses().isEmpty()) {
+            return false;
+        }
+        return summary.senses().stream().anyMatch(s ->
+                s.primary()
+                        && "ok".equalsIgnoreCase(s.quality())
+                        && (
+                        (s.cn() != null && hasHan(s.cn().trim()))
+                                || (s.enGloss() != null && !s.enGloss().isBlank())
+                )
+        );
+    }
+
+    /**
+     * 展示/出题用释义：优先中文；无中文则用 enGloss（WordNet）。
+     */
+    public static String displayPrompt(WordSummary summary) {
+        if (summary == null) {
+            return "";
+        }
+        String cn = displayCn(summary);
+        if (!cn.isBlank()) {
+            return cn;
+        }
+        if (summary.enGloss() != null && !summary.enGloss().isBlank()) {
+            return summary.enGloss().trim();
+        }
+        if (summary.senses() != null) {
+            return summary.senses().stream()
+                    .filter(s -> s.primary())
+                    .map(s -> s.enGloss() != null ? s.enGloss().trim() : "")
+                    .filter(g -> !g.isBlank())
+                    .findFirst()
+                    .orElse("");
+        }
+        return "";
+    }
+
+    /**
+     * 展示/出题用中文：dict primary 直接用顶层 cn；legacy 才走 {@link #cleanDisplayCn}。
+     */
+    public static String displayCn(WordSummary summary) {
+        if (summary == null) {
+            return "";
+        }
+        if (summary.senses() != null && !summary.senses().isEmpty()
+                && summary.senses().stream().anyMatch(s ->
+                s.primary() && "ok".equalsIgnoreCase(s.quality()))) {
+            return summary.cn() != null ? summary.cn().trim() : "";
+        }
+        return cleanDisplayCn(summary.cn());
+    }
+
+    /**
+     * 清洗展示用中文释义（仅 legacy / 导入）。
+     * 去掉尾部/前导词性、英文短语头，从首个汉字起截取。
      */
     public static String cleanDisplayCn(String rawCn) {
         if (rawCn == null) {
@@ -92,7 +149,9 @@ public final class WordSenseNormalizer {
     }
 
     /**
-     * 词是否适合进入测验池：须有英文与可读中文释义，且释义不是 wordKey 本身。
+     * 词是否适合进入测验池（REQ-LEX-4）。
+     * <p>
+     * dict：须 primary + quality=ok + 含汉字；legacy：扁平 cn 清洗后判定。
      */
     public static boolean isQuizEligible(WordSummary summary) {
         if (summary == null) {
@@ -101,6 +160,9 @@ public final class WordSenseNormalizer {
         String en = summary.en();
         if (en == null || en.isBlank()) {
             return false;
+        }
+        if (summary.senses() != null && !summary.senses().isEmpty()) {
+            return hasDictPrimaryOk(summary);
         }
         String cn = cleanDisplayCn(summary.cn());
         if (!hasHan(cn)) {
@@ -119,22 +181,21 @@ public final class WordSenseNormalizer {
         return true;
     }
 
-    /** 返回清洗后的 WordSummary（cn 已规范化；其余字段原样） */
+    /**
+     * legacy 路径规范化 cn；dict 合格 primary 原样返回（不再二次清洗）。
+     */
     public static WordSummary normalizeSummary(WordSummary summary) {
         if (summary == null) {
             return null;
+        }
+        if (hasDictPrimaryOk(summary)) {
+            return summary;
         }
         String cleaned = cleanDisplayCn(summary.cn());
         if (cleaned.equals(summary.cn() == null ? "" : summary.cn().trim())) {
             return summary;
         }
-        return new WordSummary(
-                summary.wordKey(),
-                summary.en(),
-                cleaned,
-                summary.pos(),
-                summary.ph()
-        );
+        return summary.withCn(cleaned);
     }
 
     /**

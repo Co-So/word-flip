@@ -45,6 +45,12 @@ public class BookWord {
     @Column(name = "detail_json", columnDefinition = "json")
     private String detailJson;
 
+    /**
+     * 词书考义：指向 dict_senses.id；测验/卡片展示优先于全局 primary（REQ-LEX-7）。
+     */
+    @Column(name = "exam_sense_id")
+    private Long examSenseId;
+
     @Column(name = "sort_order", nullable = false, columnDefinition = "INT UNSIGNED")
     private int sortOrder = 0;
 

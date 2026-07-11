@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -90,6 +91,20 @@ def _cmd_overlay_ecdict(args: argparse.Namespace) -> int:
     return overlay_ecdict.main(argv)
 
 
+def _cmd_reselect_primary(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from .reselect_mysql import reselect_in_mysql
+
+    stats = reselect_in_mysql(
+        dry_run=args.dry_run,
+        shorten_primary=not args.no_shorten,
+        sql_out=Path(args.sql) if args.sql else None,
+    )
+    print(json.dumps(stats, ensure_ascii=False, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="word-lexicon-cleaner")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -135,7 +150,70 @@ def build_parser() -> argparse.ArgumentParser:
     ov.add_argument("--report", default="out/report_ecdict.md")
     ov.set_defaults(func=_cmd_overlay_ecdict)
 
+    rp = sub.add_parser(
+        "reselect-primary",
+        help="按 learning-primary / 虚词表重选 dict_senses.is_primary",
+    )
+    rp.add_argument("--dry-run", action="store_true", help="只统计/写 SQL，不写库")
+    rp.add_argument("--no-shorten", action="store_true", help="不精简 primary.cn")
+    rp.add_argument(
+        "--sql",
+        default=None,
+        help="写出 Flyway 风格 UPDATE 草稿路径",
+    )
+    rp.set_defaults(func=_cmd_reselect_primary)
+
+    wn = sub.add_parser("import-wordnet", help="WordNet → wordnet SQL")
+    wn.add_argument("-o", "--output", default="out/wordnet_seed.sql")
+    wn.add_argument("--limit", type=int, default=500)
+    wn.set_defaults(func=lambda a: __import__(
+        "word_lexicon_cleaner.import_wordnet", fromlist=["main"]
+    ).main(["-o", a.output, "--limit", str(a.limit)]))
+
+    wk = sub.add_parser("import-wiktionary", help="Kaikki → wiktionary_zh SQL")
+    wk.add_argument("--kaikki", default="data/kaikki-en.jsonl")
+    wk.add_argument("--keys-file", default=None)
+    wk.add_argument("--keys-from-mysql", action="store_true")
+    wk.add_argument("-o", "--output", default="out/wiktionary_zh.sql")
+    wk.add_argument("--limit", type=int, default=2000)
+    wk.set_defaults(func=_cmd_import_wiktionary)
+
+    ec = sub.add_parser("emit-concise", help="简明版说明/入口")
+    ec.add_argument("-o", "--output", default="out/concise_note.sql")
+    ec.set_defaults(func=lambda a: __import__(
+        "word_lexicon_cleaner.emit_concise", fromlist=["main"]
+    ).main(["-o", a.output]))
+
+    tb = sub.add_parser("attach-tatoeba", help="Tatoeba 例句 SQL")
+    tb.add_argument("--pairs", default="data/tatoeba_eng_cmn.tsv")
+    tb.add_argument("-o", "--output", default="out/tatoeba_examples.sql")
+    tb.add_argument("--dict-id", default="wordflip_curated")
+    tb.add_argument("--limit", type=int, default=500)
+    tb.set_defaults(func=_cmd_attach_tatoeba)
+
     return p
+
+
+def _cmd_import_wiktionary(args: argparse.Namespace) -> int:
+    from . import import_wiktionary as m
+
+    argv = ["--kaikki", args.kaikki, "-o", args.output, "--limit", str(args.limit)]
+    if args.keys_file:
+        argv.extend(["--keys-file", args.keys_file])
+    if args.keys_from_mysql:
+        argv.append("--keys-from-mysql")
+    return m.main(argv)
+
+
+def _cmd_attach_tatoeba(args: argparse.Namespace) -> int:
+    from . import attach_tatoeba as m
+
+    return m.main([
+        "--pairs", args.pairs,
+        "-o", args.output,
+        "--dict-id", args.dict_id,
+        "--limit", str(args.limit),
+    ])
 
 
 def main(argv: list[str] | None = None) -> int:

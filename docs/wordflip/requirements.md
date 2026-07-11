@@ -96,6 +96,10 @@ flowchart TB
 - **REQ-LEX-4：** `quality=reject` 或无合格 primary 的词：允许浏览/入组，**禁止进入测验出题池**。
 - **REQ-LEX-5：** 词书导入与内置词灌库须经结构化清洗（规则优先，不确定项可离线 LLM）；入库义项须满足：`cn` 含汉字、词性只在 `pos`、每词至多一个 primary 且 primary 须为 `ok`（否则该词不可测）。
 - **REQ-LEX-6：** 掌握度 / SRS / 稳定性仍按 **wordKey**（整词）计，不按义项拆进度。
+- **REQ-LEX-7：** 词书可绑定 `exam_sense_id`（考义 → `dict_senses.id`）。导入时默认绑当前全局 learning-primary；卡片/测验展示优先考义，缺省回退全局 primary。导入文件本质是 **membership**（wordKey 列表），释义以全局 `dict_*` 为准。
+- **REQ-LEX-8：** learning-primary 按虚词覆盖表 + 词性优先级重选（见 [plans/dict-quality.md](./plans/dict-quality.md)）；primary.cn 建议 ≤40 字。
+- **REQ-LEX-9：** 系统提供多本内置词典（`dictionaries`）；用户经设置选择 `activeDictId`；查词/卡片/测验按所选词典解析（见 [plans/multi-dict.md](./plans/multi-dict.md)）。
+- **REQ-LEX-10：** WordNet 等英英词典：义项以 `enGloss` 为准、`cn` 可空；该词典激活时测验不得出中文选词题（可降级为默写）。
 
 ---
 

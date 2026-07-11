@@ -209,6 +209,8 @@ class GroupDetailViewModel @Inject constructor(
         cn = summary.cn,
         pos = summary.pos,
         ph = summary.ph,
+        enGloss = summary.enGloss,
+        senses = summary.senses,
         mastery = mastery,
     )
 

@@ -2,7 +2,7 @@
 
 > 版本：v1.0  
 > 日期：2026-07-10  
-> 状态：**Phase A–C + ECDICT 纠偏完成**；下一步 Phase D 服务端读路径切 dict  
+> 状态：**Phase A–F + ECDICT 完成**（词库结构化主线收官）  
 > 关联：[requirements.md](../requirements.md) · [database-design.md](../database-design.md) · [api-modules.md](../api-modules.md) · [architecture.md](../architecture.md) · [TASK.md](../../../TASK.md)
 
 ---
@@ -231,3 +231,6 @@ CLI 形态：`rules` → `llm` → `merge` → `emit` → `report`。
 | 2026-07-10 | v1.2 | Phase B：`tools/word-lexicon-cleaner` 规则+LLM+报告；去重词 ok≈99.7% |
 | 2026-07-10 | v1.3 | Phase C：V13–V15 dict 建表灌数 + lexicon primary 同步 |
 | 2026-07-10 | v1.4 | **纠偏**：放弃「脏词书正则=词典」；ECDICT 覆盖 dict（V16）；be/have/to 等核心词可用 |
+| 2026-07-10 | v1.5 | Phase D：WordLookup 读 dict；Quiz 过滤；Import 仅补缺词；`lexicon.source` 可回滚 |
+| 2026-07-10 | v1.6 | Phase E：Android Sense/Example；卡片背面 primary；详情多义；API WordCard/GroupWord 带 senses |
+| 2026-07-10 | v1.7 | Phase F：Normalizer 降级为 legacy/导入兜底；T01 自动化验收；文档收口 |

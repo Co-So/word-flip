@@ -13,7 +13,7 @@ info:
     - 组详情主展示按 `heatDisplayMode` 聚合的 `displayHeatLevel`；单 skill 快照含 `heatLevel`；三态用于今日排队与薄弱角标
     - 词书 `PUT /settings` 触发**增量追加分组**，不重建已有分组
     - 单词唯一键 `wordKey` = `en.trim().toLowerCase()`；进度绑 wordKey，不按义项拆
-    - **释义：** 一词多义；`WordSummary.cn` / `pos` / `ph` = **primary** sense；完整义项见 `senses`；测验只用合格 primary；reject / 无 primary 不出题
+    - **释义：** 一词多义；展示义 = 用户 `activeDictId` 下 primary（或 exam_sense）；`Sense.enGloss` 用于英英；测验只用合格 primary；英英词典中文选词降级为默写
     - SRS 间隔（天）：`INTERVALS = [1, 2, 4, 7, 15, 30]`，stage 0..5；答对后 `nextReviewAt = 用户时区当日结束 + INTERVALS[newStage]` 天（按 skill 独立）
     - **时区：** 服务端存 UTC；「当日」由 `X-Timezone` 请求头（缺省 `Asia/Shanghai`）或用户 profile 决定
     - **已掌握统计：** `stability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（REQ-EBBING-7）
@@ -27,7 +27,9 @@ tags:
   - name: Auth
     description: 注册、登录、Token
   - name: Settings
-    description: 词书勾选、分组大小、用户偏好
+    description: 词书勾选、分组大小、用户偏好（含 activeDictId）
+  - name: Dicts
+    description: 内置词典目录
   - name: Books
     description: 词书列表与导入
   - name: Words
@@ -193,6 +195,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserSettingsResponse'
+
+  /dicts:
+    get:
+      tags: [Dicts]
+      summary: 列出内置词典
+      description: |
+        返回可切换的词典目录（wordflip_curated / wiktionary_zh / wordflip_concise / wordnet）。
+        许可署名见各条目 `licenseNote`（REQ-LEX-9）。
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DictionaryItem'
 
   /books:
     get:
@@ -911,10 +929,10 @@ components:
 
     WordSummary:
       type: object
-      required: [wordKey, en, cn]
+      required: [wordKey, en]
       description: |
-        词条摘要。顶层 `cn` / `pos` / `ph` 恒为 **primary** sense（干净释义），兼容旧客户端。
-        多义详情见可选 `senses`；测验与卡片背面只用 primary。
+        词条摘要。顶层 `cn` / `enGloss` / `pos` / `ph` 为展示义：用户 `activeDictId` 下 primary，
+        或已选词书 `exam_sense_id`（须属当前词典）。英汉用 cn；英英用 enGloss。
       properties:
         wordKey:
           type: string
@@ -924,7 +942,8 @@ components:
           description: 英文词头
         cn:
           type: string
-          description: primary 纯中文释义（不含词性）
+          nullable: true
+          description: 展示义中文（英英可空）
         pos:
           type: string
           nullable: true
@@ -933,37 +952,42 @@ components:
           type: string
           nullable: true
           description: 词头音标
+        enGloss:
+          type: string
+          nullable: true
+          description: 英英展示义（WordNet）
         senses:
           type: array
-          description: 全部义项（详情抽屉）；缺省时客户端仅用顶层 primary 字段
+          description: 全部义项（详情抽屉）；缺省时客户端仅用顶层字段
           items:
             $ref: '#/components/schemas/Sense'
 
     Sense:
       type: object
-      required: [cn]
-      description: 义项（词性 + 中文释义）；例句挂在本对象下
+      description: 义项；英汉填 cn，英英填 enGloss（可同时存在）
       properties:
         id:
           type: integer
           format: int64
           nullable: true
-          description: dict_senses.id；过渡期可空
+          description: dict_senses.id
         pos:
           type: string
           nullable: true
-          description: 词性；不得写入 cn
         cn:
           type: string
-          description: 纯中文释义（须含汉字）
+          nullable: true
+          description: 纯中文释义
+        enGloss:
+          type: string
+          nullable: true
+          description: 英英释义（REQ-LEX-10）
         primary:
           type: boolean
-          description: 是否为主义项（API 字段名 primary，对应库列 is_primary）
           default: false
         quality:
           type: string
           enum: [ok, uncertain, reject]
-          description: 清洗质量；仅 ok 的 primary 可入测验池
           default: ok
         sortOrder:
           type: integer
@@ -973,6 +997,28 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Example'
+
+    DictionaryItem:
+      type: object
+      required: [id, name, locale]
+      properties:
+        id:
+          type: string
+          description: dictionaries.id
+        name:
+          type: string
+        locale:
+          type: string
+          enum: [zh, en]
+        licenseNote:
+          type: string
+          nullable: true
+        builtin:
+          type: boolean
+          default: true
+        sortOrder:
+          type: integer
+          minimum: 0
 
     Example:
       type: object
@@ -1187,7 +1233,7 @@ components:
 
     UserSettingsResponse:
       type: object
-      required: [bookIds, groupSize, groupStrategy, autoSpeak, themeMode, summary]
+      required: [bookIds, groupSize, groupStrategy, autoSpeak, themeMode, activeDictId, summary]
       properties:
         bookIds:
           type: array
@@ -1211,6 +1257,10 @@ components:
           minimum: 1
           maximum: 50
           description: 默认测验题数
+        activeDictId:
+          type: string
+          description: 当前词典 dictionaries.id（REQ-LEX-9）
+          default: wordflip_curated
         summary:
           $ref: '#/components/schemas/BooksSummary'
 
@@ -1272,6 +1322,9 @@ components:
           type: integer
           minimum: 1
           maximum: 50
+        activeDictId:
+          type: string
+          description: 切换当前词典（须为 GET /dicts 返回的 id）
 
     BooksSummary:
       type: object

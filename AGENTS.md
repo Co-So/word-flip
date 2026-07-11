@@ -10,7 +10,7 @@
 
 | 项 | 说明 |
 |----|------|
-| 当前阶段 | 脚手架已就绪；**P-LEX 词库结构化**为当前质量优先项（见 [TASK.md](TASK.md) / [plans/lexicon-restructure.md](docs/wordflip/plans/lexicon-restructure.md)） |
+| 当前阶段 | **P-MULTI-DICT 多词典可选**（见 [TASK.md](TASK.md) / [plans/multi-dict.md](docs/wordflip/plans/multi-dict.md)） |
 | MVP 范围 | P0 登录/词书/分组 → P1 今日/学习 → P2 测验 → P3 卡拍/图片/污渍 → P4 统计/设置 |
 | 不在 MVP | iOS、React Web（二期）、云备份、推送提醒、微服务拆分 |
 
@@ -50,7 +50,7 @@
 | 规则 | 说明 |
 |------|------|
 | **掌握度仅测验写入** | 队列三态 `unlearned` / `fuzzy` / `unknown` + 稳定性 `stability`（S）；**按 skill 双轨**（`dictation` / `choice`）各一套热力与 SRS；唯一入口 `ReviewService.applyQuizResult`，由 `QuizService` 调用。**禁止** `PATCH /words/{wordKey}/mastery` 或客户端/local 改态 |
-| **释义真相** | 全局 `dict_senses`（**ECDICT 覆盖灌库**）；展示/测验默认 **primary**（`quality=ok`）；`cn` 不含词性。词书只挂 `word_key`。进度仍绑 `wordKey`。见 [plans/lexicon-restructure.md](docs/wordflip/plans/lexicon-restructure.md) |
+| **释义真相** | 用户所选词典 `dict_id` 下的 `dict_senses`；默认 `wordflip_curated`；可绑 `exam_sense_id`。见 [plans/multi-dict.md](docs/wordflip/plans/multi-dict.md) |
 | **学习翻转不改态** | 卡片浏览、`POST /study/sessions` 不更新三态与稳定性 S |
 | **分组增量追加** | `PUT /settings` 仅对未入组词 append 新 groups；**禁止** DELETE/重建已有 groups |
 | **一词一组** | `UNIQUE(user_id, word_key)` on `group_words` |

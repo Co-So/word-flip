@@ -16,6 +16,7 @@ import com.wordflip.core.network.api.GroupsApi
 import com.wordflip.core.network.api.ImagesApi
 import com.wordflip.core.network.api.QuizApi
 import com.wordflip.core.network.api.SettingsApi
+import com.wordflip.core.network.api.DictsApi
 import com.wordflip.core.network.api.StainsApi
 import com.wordflip.core.network.api.StudyApi
 import com.wordflip.core.network.api.TodayApi
@@ -170,6 +171,11 @@ object NetworkModule {
     @Singleton
     fun provideSettingsApi(retrofit: Retrofit): SettingsApi =
         retrofit.create(SettingsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideDictsApi(retrofit: Retrofit): DictsApi =
+        retrofit.create(DictsApi::class.java)
 
     @Provides
     @Singleton
