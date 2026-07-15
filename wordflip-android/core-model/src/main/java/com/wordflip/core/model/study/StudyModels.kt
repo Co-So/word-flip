@@ -41,7 +41,7 @@ data class WordProgressSnapshot(
 data class WordSummary(
     val wordKey: String,
     val en: String,
-    val cn: String = "",
+    val cn: String? = null,
     val pos: String? = null,
     val ph: String? = null,
     val enGloss: String? = null,
@@ -50,7 +50,7 @@ data class WordSummary(
 ) {
     /** 卡片/详情主释义：中文优先，否则英英 gloss（Gson 可能把 cn 反成 null） */
     fun displayMeaning(): String =
-        cn.takeIf { !it.isNullOrBlank() } ?: enGloss?.takeIf { it.isNotBlank() }.orEmpty()
+        cn?.takeIf { it.isNotBlank() } ?: enGloss?.takeIf { it.isNotBlank() }.orEmpty()
 }
 
 /** 详情抽屉内容（过渡期兼容；优先用 [WordCard.senses]） */
@@ -83,7 +83,7 @@ data class WordStainPayload(
 data class WordCard(
     val wordKey: String,
     val en: String,
-    val cn: String = "",
+    val cn: String? = null,
     val pos: String? = null,
     val ph: String? = null,
     val enGloss: String? = null,
@@ -95,7 +95,7 @@ data class WordCard(
 ) {
     /** 卡片背面/详情主释义：中文优先，否则英英 gloss（Gson 可能把 cn 反成 null） */
     fun displayMeaning(): String =
-        cn.takeIf { !it.isNullOrBlank() } ?: enGloss?.takeIf { it.isNotBlank() }.orEmpty()
+        cn?.takeIf { it.isNotBlank() } ?: enGloss?.takeIf { it.isNotBlank() }.orEmpty()
 
     /**
      * 详情用义项：有 senses 则按 sortOrder；否则用 detail/顶层释义合成单义。

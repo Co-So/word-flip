@@ -16,6 +16,7 @@ import com.wordflip.domain.UserWordLexicon;
 import com.wordflip.dto.study.WordDetailDto;
 import com.wordflip.dto.word.ExampleDto;
 import com.wordflip.dto.word.SenseDto;
+import com.wordflip.dto.word.WordLookupResponse;
 import com.wordflip.dto.word.WordSummary;
 import com.wordflip.repository.BookWordRepository;
 import com.wordflip.repository.DictExampleRepository;
@@ -75,6 +76,70 @@ public class WordLookupService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 按指定词典查询单个单词释义（详情抽屉临时切换，不影响全局 activeDictId）。
+     *
+     * @param userId  当前用户 ID
+     * @param wordKey 单词键
+     * @param dictId  词典 ID，null 时用用户 activeDictId
+     * @return 该词典下的完整释义；词典不存在时回退到 curated
+     */
+    public WordLookupResponse lookupWord(Long userId, String wordKey, String dictId) {
+        String effectiveDictId = (dictId != null && !dictId.isBlank()) ? dictId : resolveActiveDictId(userId);
+
+        // 先尝试指定词典
+        Map<String, WordSummary> result = resolveFromDict(effectiveDictId, List.of(wordKey));
+
+        // 缺词回退：任何 locale 缺词时均回退 curated
+        if (result.isEmpty() && !DictionaryIds.CURATED.equals(effectiveDictId)) {
+            result = resolveFromDict(DictionaryIds.CURATED, List.of(wordKey));
+            effectiveDictId = DictionaryIds.CURATED;
+        }
+
+        // 仍缺词回退 legacy
+        if (result.isEmpty()) {
+            result = resolveFromLegacy(userId, List.of(wordKey));
+            effectiveDictId = DictionaryIds.CURATED; // legacy 视为 curated
+        }
+
+        WordSummary summary = result.get(wordKey);
+        if (summary == null) {
+            // 所有来源均无此词，返回空壳（理论上不应发生，因为入组词必存在）
+            Dictionary dict = dictionaryRepository.findById(effectiveDictId).orElse(null);
+            return new WordLookupResponse(
+                    wordKey, wordKey, "", null, null, null,
+                    List.of(), effectiveDictId,
+                    dict != null ? dict.getName() : "WordFlip 精校",
+                    dict != null ? dict.getLocale().name() : "zh"
+            );
+        }
+
+        // 应用考义覆盖（仅当 exam_sense 属于当前查询词典时）
+        if (userId != null && lexiconProperties.useDict()) {
+            Map<String, WordSummary> overlayMap = new LinkedHashMap<>();
+            overlayMap.put(wordKey, summary);
+            applyExamSenseOverlay(userId, effectiveDictId, overlayMap);
+            summary = overlayMap.get(wordKey);
+        }
+
+        Dictionary dict = dictionaryRepository.findById(effectiveDictId).orElse(null);
+        String dictName = dict != null ? dict.getName() : "WordFlip 精校";
+        String dictLocale = dict != null ? dict.getLocale().name() : "zh";
+
+        return new WordLookupResponse(
+                summary.wordKey(),
+                summary.en(),
+                summary.cn(),
+                summary.pos(),
+                summary.ph(),
+                summary.enGloss(),
+                summary.senses(),
+                effectiveDictId,
+                dictName,
+                dictLocale
+        );
+    }
+
     /** 解析用户当前词典 ID；缺省精校。 */
     public String resolveActiveDictId(Long userId) {
         if (userId == null) {
@@ -110,15 +175,13 @@ public class WordLookupService {
         if (lexiconProperties.useDict()) {
             result.putAll(resolveFromDict(dictId, wordKeys));
             List<String> missing = wordKeys.stream().filter(k -> !result.containsKey(k)).toList();
-            // 仅同 locale 回退 curated（英英不回退中文）
-            if (!missing.isEmpty()
-                    && locale == DictionaryLocale.zh
-                    && !DictionaryIds.CURATED.equals(dictId)) {
+            // 回退：任何 locale 缺词时均回退 curated（V23 WordNet 仅 10 词种子，全量灌数前须兼容）
+            if (!missing.isEmpty() && !DictionaryIds.CURATED.equals(dictId)) {
                 result.putAll(resolveFromDict(DictionaryIds.CURATED, missing));
             }
         }
         List<String> stillMissing = wordKeys.stream().filter(key -> !result.containsKey(key)).toList();
-        if (!stillMissing.isEmpty() && locale == DictionaryLocale.zh) {
+        if (!stillMissing.isEmpty()) {
             result.putAll(resolveFromLegacy(userId, stillMissing));
         }
         Map<String, WordSummary> ordered = new LinkedHashMap<>();

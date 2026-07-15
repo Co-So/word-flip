@@ -67,7 +67,7 @@ private val FlipEasing = CubicBezierEasing(0.34f, 1.05f, 0.64f, 1f)
 @Composable
 fun FlipCard(
     en: String,
-    cn: String,
+    cn: String?,
     ph: String?,
     pos: String?,
     stainSeed: Long,
@@ -208,7 +208,7 @@ fun FlipCard(
 /** 背面：无图时 primary 释义（cn + pos + ph）；有图时黑底 + 底部 overlay */
 @Composable
 private fun CardBackContent(
-    cn: String,
+    cn: String?,
     pos: String?,
     ph: String?,
     hasImage: Boolean,
@@ -217,10 +217,11 @@ private fun CardBackContent(
     imageFilters: ImageFilters?,
     showCnOnImage: Boolean,
 ) {
+    val displayCn = cn ?: ""
     if (hasImage && !imageUrl.isNullOrBlank()) {
         WordImageBack(
             imageUri = imageUrl,
-            cn = cn,
+            cn = displayCn,
             transform = imageTransform,
             filters = imageFilters,
             showCnOnImage = showCnOnImage,
@@ -240,7 +241,7 @@ private fun CardBackContent(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = cn,
+                text = displayCn,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = SageStudyCardBackText,

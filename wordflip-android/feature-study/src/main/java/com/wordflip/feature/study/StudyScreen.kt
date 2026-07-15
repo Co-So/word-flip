@@ -180,6 +180,8 @@ fun StudyScreen(
                             visible = state.detailWordKey != null && !isEditorOpen,
                             speechRate = displayRate,
                             isDetailSpeaking = isDetailSpeaking,
+                            dictionaries = state.dictionaries,
+                            dictLookup = state.dictLookup,
                             onDismiss = viewModel::closeDetail,
                             onSpeak = {
                                 viewModel.detailWord()?.let { tts.speakForDetail(it.en) }
@@ -192,6 +194,7 @@ fun StudyScreen(
                                 tts.adjustDetailRate(0.25f)
                                 displayRate = tts.detailRate
                             },
+                            onSwitchDict = viewModel::switchDictInDetail,
                             onChangeStain = viewModel::changeStain,
                             onToggleStainVisibility = viewModel::toggleStainVisibility,
                             onToggleShowCnOnImage = viewModel::toggleShowCnOnImage,

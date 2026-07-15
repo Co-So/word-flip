@@ -155,6 +155,10 @@ GET /books/{bookId}/words?page&size
   → 只读详情与词条分页；不改勾选、不改 group_words
   → 词条 WordSummary：顶层 cn/pos/ph = primary；可选 senses
 
+GET /words/{wordKey}?dictId={dictId}
+  → 详情抽屉临时按词典查看完整义项；缺省 dictId 时使用 activeDictId
+  → 不修改用户全局词典设置；缺词按服务端词典回退规则处理
+
 POST /books/import/preview  (multipart file)
   → 解析 JSON/CSV/TXT，规则拆 sense（REQ-LEX-5），Redis 暂存 previewToken（TTL 15min）
   → 限流 rl:import:{userId}
@@ -167,7 +171,7 @@ DELETE /books/{bookId}
   → 仅 imported；去勾选并删书；已入组词保留（REQ-BOOK-11/20）
 ```
 
-**WordLookup（Study / Groups / Quiz 共用）：** 优先读 `dict_words` + `dict_senses`（及 examples）；兼容填充 `WordSummary.cn/pos/ph` = primary，详情带 `senses`。配置可回退 `lexicon.source=legacy`（应急）。
+**WordLookup（Study / Groups / Quiz 共用）：** 优先读 `dict_words` + `dict_senses`（及 examples）；兼容填充 `WordSummary.cn/pos/ph` = primary，详情带 `senses`。`GET /words/{wordKey}` 仅临时查询指定词典，不写 `activeDictId`。配置可回退 `lexicon.source=legacy`（应急）。
 
 ### 2.4 污渍默认 seed
 

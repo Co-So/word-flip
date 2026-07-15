@@ -34,7 +34,7 @@ import com.wordflip.core.ui.theme.SageStudyCardBack
 @Composable
 fun CardImagePreview(
     imageUri: String,
-    cn: String,
+    cn: String?,
     transform: ImageTransform,
     filters: ImageFilters,
     showCnOnImage: Boolean,
@@ -61,7 +61,7 @@ fun CardImagePreview(
             ) {
                 WordImageBack(
                     imageUri = imageUri,
-                    cn = cn,
+                    cn = cn ?: "",
                     transform = transform,
                     filters = filters,
                     showCnOnImage = showCnOnImage,

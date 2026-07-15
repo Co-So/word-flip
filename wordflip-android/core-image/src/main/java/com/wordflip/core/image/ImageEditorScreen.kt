@@ -55,7 +55,7 @@ import com.wordflip.core.ui.image.CardImagePreview
 @Composable
 fun ImageEditorScreen(
     wordEn: String,
-    cn: String,
+    cn: String?,
     imageUri: String,
     initialTransform: ImageTransform,
     initialFilters: ImageFilters,

@@ -20,7 +20,7 @@ enum class QuizSource {
 
 /** 题目提示，对齐 openapi `QuizQuestion.prompt` */
 data class QuizPrompt(
-    val cn: String,
+    val cn: String? = null,
     val pos: String? = null,
     val ph: String? = null,
     /** choice_en_cn（英→中）题干英文；服务端仅该题型填充 */
@@ -73,7 +73,7 @@ data class QuizAnswerFeedback(
 data class QuizWrongWord(
     val wordKey: String,
     val en: String,
-    val cn: String,
+    val cn: String? = null,
     val userAnswer: String,
 )
 

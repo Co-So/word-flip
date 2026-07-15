@@ -11,8 +11,10 @@ import com.wordflip.core.model.media.StainType
 import com.wordflip.core.model.study.WordCard
 import com.wordflip.core.model.study.WordImagePayload
 import com.wordflip.core.model.study.WordStainPayload
+import com.wordflip.core.network.api.DictsApi
 import com.wordflip.core.network.media.WordMediaRepository
 import com.wordflip.core.network.study.StudyRepository
+import com.wordflip.core.network.word.WordLookupRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -34,6 +36,8 @@ class StudyViewModel @Inject constructor(
     @ApplicationContext appContext: Context,
     private val studyRepository: StudyRepository,
     private val wordMediaRepository: WordMediaRepository,
+    private val wordLookupRepository: WordLookupRepository,
+    private val dictsApi: DictsApi,
 ) : ViewModel() {
 
     private val groupId: Int = checkNotNull(savedStateHandle["groupId"])
@@ -64,6 +68,20 @@ class StudyViewModel @Inject constructor(
                 .onSuccess { payload ->
                     val guideDismissed = guidePreferences.isGuideDismissed()
                     val words = payload.words.map { it.withPendingLocalPreview() }
+                    val defaults = listOf(
+                        com.wordflip.core.model.book.DictionaryItem(
+                            "wordflip_curated", "WordFlip 精校", "zh",
+                        ),
+                        com.wordflip.core.model.book.DictionaryItem(
+                            "wiktionary_zh", "维基词典", "zh",
+                        ),
+                        com.wordflip.core.model.book.DictionaryItem(
+                            "wordflip_concise", "简明学习版", "zh",
+                        ),
+                        com.wordflip.core.model.book.DictionaryItem(
+                            "wordnet", "WordNet 英英", "en",
+                        ),
+                    )
                     _uiState.value = StudyUiState.Content(
                         payload = payload.copy(words = words),
                         orderedWords = words,
@@ -72,10 +90,24 @@ class StudyViewModel @Inject constructor(
                         detailWordKey = null,
                         showGuide = !guideDismissed,
                         allFlippedToBack = false,
+                        dictionaries = defaults,
                     )
+                    // 异步加载服务端词典列表
+                    loadDictionariesFromServer()
                 }
                 .onFailure { error ->
                     _uiState.value = StudyUiState.Error(error.message ?: "加载学习数据失败")
+                }
+        }
+    }
+
+    private fun loadDictionariesFromServer() {
+        viewModelScope.launch {
+            runCatching { dictsApi.listDictionaries() }
+                .onSuccess { dicts ->
+                    if (dicts.isNotEmpty()) {
+                        updateContent { it.copy(dictionaries = dicts) }
+                    }
                 }
         }
     }
@@ -249,11 +281,69 @@ class StudyViewModel @Inject constructor(
     }
 
     fun openDetail(wordKey: String) {
-        updateContent { it.copy(detailWordKey = wordKey) }
+        updateContent { it.copy(detailWordKey = wordKey, dictLookup = DictLookupState.Idle) }
     }
 
     fun closeDetail() {
-        updateContent { it.copy(detailWordKey = null) }
+        updateContent { it.copy(detailWordKey = null, dictLookup = DictLookupState.Idle) }
+    }
+
+    /**
+     * 详情抽屉内切换词典查看释义（不影响全局 activeDictId）。
+     * 切换时异步加载指定词典的释义，加载中展示骨架屏。
+     */
+    fun switchDictInDetail(dictId: String) {
+        val state = _uiState.value as? StudyUiState.Content ?: return
+        val wordKey = state.detailWordKey ?: return
+        val currentWord = currentWord(wordKey) ?: return
+
+        // 切回默认词典（与当前卡片一致）时直接清空，展示原始释义
+        val defaultDictId = state.dictionaries
+            .find { it.id == dictId }
+            ?.let { dictId }
+            ?: currentWord.senses.firstOrNull()?.let { "wordflip_curated" }
+            ?: "wordflip_curated"
+
+        // 如果选的是当前卡片默认词典，直接展示原始释义
+        val originalDict = state.dictionaries.find { it.id == currentWord.senses.firstOrNull()?.let { "wordflip_curated" } }
+            ?: state.dictionaries.firstOrNull { it.id == "wordflip_curated" }
+
+        updateContent { it.copy(dictLookup = DictLookupState.Loading) }
+
+        viewModelScope.launch {
+            wordLookupRepository.lookupWord(wordKey, dictId)
+                .onSuccess { result ->
+                    updateContent {
+                        it.copy(
+                            dictLookup = DictLookupState.Success(
+                                dictId = result.dictId,
+                                dictName = result.dictName,
+                                cn = result.cn,
+                                pos = result.pos,
+                                ph = result.ph,
+                                enGloss = result.enGloss,
+                                senses = result.senses,
+                                requestedDictId = dictId,
+                            ),
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    updateContent {
+                        it.copy(
+                            dictLookup = DictLookupState.Error(
+                                error.message ?: "加载释义失败",
+                            ),
+                        )
+                    }
+                    _events.emit(StudyUiEvent.Toast(error.message ?: "加载释义失败"))
+                }
+        }
+    }
+
+    /** 设置可用词典列表（从设置页传入或初始化时加载） */
+    fun setDictionaries(dictionaries: List<com.wordflip.core.model.book.DictionaryItem>) {
+        updateContent { it.copy(dictionaries = dictionaries) }
     }
 
     fun dismissGuide() {

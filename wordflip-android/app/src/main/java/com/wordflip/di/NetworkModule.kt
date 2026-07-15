@@ -20,6 +20,8 @@ import com.wordflip.core.network.api.DictsApi
 import com.wordflip.core.network.api.StainsApi
 import com.wordflip.core.network.api.StudyApi
 import com.wordflip.core.network.api.TodayApi
+import com.wordflip.core.network.api.WordsApi
+import com.wordflip.core.network.word.WordLookupRepository
 import com.wordflip.core.network.auth.AuthRepository
 import com.wordflip.core.network.auth.TokenRefresher
 import com.wordflip.core.network.interceptor.AuthInterceptor
@@ -203,6 +205,18 @@ object NetworkModule {
         groupsApi: GroupsApi,
         apiErrorParser: ApiErrorParser,
     ): GroupsRepository = GroupsRepository(groupsApi, apiErrorParser)
+
+    @Provides
+    @Singleton
+    fun provideWordsApi(retrofit: Retrofit): WordsApi =
+        retrofit.create(WordsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideWordLookupRepository(
+        wordsApi: WordsApi,
+        apiErrorParser: ApiErrorParser,
+    ): WordLookupRepository = WordLookupRepository(wordsApi, apiErrorParser)
 
     @Provides
     @Singleton

@@ -146,9 +146,15 @@ public class QuizService {
         Map<String, WordSummary> poolSummaries = normalizeSummaries(
                 wordLookupService.resolveWordSummaries(userId, rawPool)
         );
+        DictionaryLocale activeLocale = wordLookupService.resolveActiveLocale(userId);
         List<String> pool = rawPool.stream()
-                .filter(k -> WordSenseNormalizer.isQuizEligible(
-                        poolSummaries.getOrDefault(k, fallbackSummary(k))))
+                .filter(k -> {
+                    WordSummary s = poolSummaries.getOrDefault(k, fallbackSummary(k));
+                    if (WordSenseNormalizer.isQuizEligible(s)) return true;
+                    // WordNet 最小 fallback：en 非空即允许默写（全量灌数前兼容）
+                    return activeLocale == DictionaryLocale.en
+                            && s.en() != null && !s.en().isBlank();
+                })
                 .collect(Collectors.toCollection(ArrayList::new));
         if (pool.isEmpty()) {
             throw new WordflipException("EMPTY_POOL", "无合格释义可出题（需 dict primary quality=ok）");

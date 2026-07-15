@@ -470,11 +470,13 @@
 
 ### 已知问题（明日修）
 
-- [ ] **P-MULTI-BUG-01 WordNet 英英仍异常（2026-07-11）**
+- [x] **P-MULTI-BUG-01 WordNet 英英仍异常（2026-07-11）**
   - 现象：设置切到 WordNet 后加载/展示仍有问题（用户复现）
-  - 已知：库内仅 V23 约 10 个种子 lemma；`locale=en` 不回退 curated/legacy → 绝大多数词无释义、测验易 EMPTY_POOL
-  - 已做未闭环：`WordCard`/`GroupWordItem` 补 `enGloss`、Android null-safe `displayMeaning`（仍不够）
-  - 明日：跑 `import-wordnet` 按词书 keys 灌全量；复现并修剩余加载错误；联调设置→学习/测验全路径
+  - 根因：`resolveWordSummaries` 对 `locale=en` 不回退 curated/legacy；客户端 DTO `cn` 为 `String` 非空，Gson null 时传参崩溃；测验过滤后 EMPTY_POOL
+  - 修复：服务端去掉 locale 限制回退 curated + cn null-safe + Quiz 过滤 fallback；Android `cn` 全链路改为 `String?`；新增 `tools/import-wordnet/` 灌数工具
+  - 验证：切 WordNet → 学习/详情/测验全路径可用；回退 curated 中文释义兜底；测验仅 dictation
+
+### 已知问题（已修复 ✅）
 
 ---
 

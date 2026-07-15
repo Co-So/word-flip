@@ -323,9 +323,9 @@ private fun QuizWordHeader(
                 // 英选中答错：优先展示中文正确答案，避免用户以为「答案是另一个英文」
                 val type = state.question.type.lowercase()
                 val displayAnswerText = state.feedback?.expectedAnswer
-                    ?.takeIf { it.isNotBlank() }
-                    ?: state.question.prompt.cn
-                if (type == "choice_en_cn" && displayAnswerText.isNotBlank()) {
+                    ?.takeIf { !it.isNullOrBlank() }
+                    ?: state.question.prompt.cn ?: ""
+                if (type == "choice_en_cn" && !displayAnswerText.isNullOrBlank()) {
                     Text(
                         text = displayAnswerText,
                         style = MaterialTheme.typography.titleLarge,
@@ -861,8 +861,12 @@ fun parseQuizSource(value: String): QuizSource {
  * 词书 cn 常以英文搭配开头（如 `favour (prep.)；为收款人`）。
  * 中选英题干从首个汉字截取，避免题干看起来像英文、再配英文选项形成「英文选英文」。
  */
-internal fun preferChinesePrompt(cn: String): String {
-    if (cn.isBlank()) return cn
+/**
+ * 词书 cn 常以英文搭配开头（如 `favour (prep.)；为收款人`）。
+ * 中选英题干从首个汉字截取，避免题干看起来像英文、再配英文选项形成「英文选英文」。
+ */
+internal fun preferChinesePrompt(cn: String?): String {
+    if (cn.isNullOrBlank()) return cn ?: ""
     val index = cn.indexOfFirst { it in '\u4e00'..'\u9fff' }
     return if (index > 0) cn.substring(index) else cn
 }

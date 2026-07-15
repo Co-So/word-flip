@@ -266,7 +266,7 @@ private fun BookDetailContent(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = word.cn,
+                    text = word.cn ?: "",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

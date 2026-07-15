@@ -366,6 +366,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/UnassignedWordsResponse'
 
+  /words/{wordKey}:
+    get:
+      tags: [Words]
+      summary: 按词典查询单词详情
+      description: |
+        返回指定 `dictId` 下的完整义项，用于学习详情抽屉临时切换词典（REQ-LEX-9）。
+        未传 `dictId` 时使用用户 `activeDictId`；查询不修改全局词典设置。
+        指定词典缺词时按服务端词典回退规则返回可用释义。
+      parameters:
+        - $ref: '#/components/parameters/WordKey'
+        - name: dictId
+          in: query
+          required: false
+          description: 要临时查看的词典 ID；缺省使用 activeDictId
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WordLookupResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /groups:
     get:
       tags: [Groups]
@@ -961,6 +986,45 @@ components:
           description: 全部义项（详情抽屉）；缺省时客户端仅用顶层字段
           items:
             $ref: '#/components/schemas/Sense'
+
+    WordLookupResponse:
+      type: object
+      required: [wordKey, en, senses, dictId, dictName, dictLocale]
+      description: |
+        按词典查询的单词详情。顶层字段为该词典展示义，`senses` 为全部义项；
+        `dictId` / `dictName` / `dictLocale` 表示服务端实际命中（或回退）的词典。
+      properties:
+        wordKey:
+          type: string
+          description: en.trim().toLowerCase()
+        en:
+          type: string
+          description: 英文词头
+        cn:
+          type: string
+          nullable: true
+          description: 展示义中文（英英可空）
+        pos:
+          type: string
+          nullable: true
+        ph:
+          type: string
+          nullable: true
+        enGloss:
+          type: string
+          nullable: true
+          description: 英英展示义
+        senses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sense'
+        dictId:
+          type: string
+        dictName:
+          type: string
+        dictLocale:
+          type: string
+          enum: [zh, en]
 
     Sense:
       type: object
