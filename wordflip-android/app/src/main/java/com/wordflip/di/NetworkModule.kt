@@ -6,6 +6,7 @@ import com.wordflip.core.network.books.BooksSettingsRepository
 import com.wordflip.core.network.groups.GroupsRepository
 import com.wordflip.core.network.quiz.QuizRepository
 import com.wordflip.core.network.media.WordMediaRepository
+import com.wordflip.core.network.learning.LearningRepository
 import com.wordflip.core.network.study.StudyRepository
 import com.wordflip.core.network.today.TodayRepository
 import com.wordflip.core.network.gson.WordFlipGson
@@ -14,14 +15,13 @@ import com.wordflip.core.network.api.AuthApi
 import com.wordflip.core.network.api.BooksApi
 import com.wordflip.core.network.api.GroupsApi
 import com.wordflip.core.network.api.ImagesApi
+import com.wordflip.core.network.api.LearningCardsApi
+import com.wordflip.core.network.api.LearningPlansApi
 import com.wordflip.core.network.api.QuizApi
 import com.wordflip.core.network.api.SettingsApi
-import com.wordflip.core.network.api.DictsApi
 import com.wordflip.core.network.api.StainsApi
 import com.wordflip.core.network.api.StudyApi
 import com.wordflip.core.network.api.TodayApi
-import com.wordflip.core.network.api.WordsApi
-import com.wordflip.core.network.word.WordLookupRepository
 import com.wordflip.core.network.auth.AuthRepository
 import com.wordflip.core.network.auth.TokenRefresher
 import com.wordflip.core.network.interceptor.AuthInterceptor
@@ -176,16 +176,12 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideDictsApi(retrofit: Retrofit): DictsApi =
-        retrofit.create(DictsApi::class.java)
-
-    @Provides
-    @Singleton
     fun provideBooksSettingsRepository(
         booksApi: BooksApi,
-        settingsApi: SettingsApi,
+        plansApi: LearningPlansApi,
+        cardsApi: LearningCardsApi,
         apiErrorParser: ApiErrorParser,
-    ): BooksSettingsRepository = BooksSettingsRepository(booksApi, settingsApi, apiErrorParser)
+    ): BooksSettingsRepository = BooksSettingsRepository(booksApi, plansApi, cardsApi, apiErrorParser)
 
     @Provides
     @Singleton
@@ -208,15 +204,21 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideWordsApi(retrofit: Retrofit): WordsApi =
-        retrofit.create(WordsApi::class.java)
+    fun provideLearningPlansApi(retrofit: Retrofit): LearningPlansApi =
+        retrofit.create(LearningPlansApi::class.java)
 
     @Provides
     @Singleton
-    fun provideWordLookupRepository(
-        wordsApi: WordsApi,
+    fun provideLearningCardsApi(retrofit: Retrofit): LearningCardsApi =
+        retrofit.create(LearningCardsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideLearningRepository(
+        plansApi: LearningPlansApi,
+        cardsApi: LearningCardsApi,
         apiErrorParser: ApiErrorParser,
-    ): WordLookupRepository = WordLookupRepository(wordsApi, apiErrorParser)
+    ): LearningRepository = LearningRepository(plansApi, cardsApi, apiErrorParser)
 
     @Provides
     @Singleton

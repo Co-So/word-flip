@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.unit.dp
 import com.wordflip.core.ui.component.WordFlipToastHost
 import com.wordflip.core.ui.component.rememberWordFlipToast
 
@@ -127,6 +129,7 @@ fun LoginScreen(
                     TextButton(
                         onClick = onNavigateToForgotPassword,
                         enabled = !isLoading,
+                        modifier = Modifier.heightIn(min = 48.dp),
                     ) {
                         Text("忘记密码？")
                     }

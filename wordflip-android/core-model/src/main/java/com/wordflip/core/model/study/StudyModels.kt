@@ -1,5 +1,6 @@
 package com.wordflip.core.model.study
 
+import com.google.gson.annotations.SerializedName
 import com.wordflip.core.model.media.ImageFilters
 import com.wordflip.core.model.media.ImageTransform
 import com.wordflip.core.model.media.StainConfig
@@ -47,10 +48,14 @@ data class WordSummary(
     val enGloss: String? = null,
     /** 全部义项（详情用）；缺省时空列表，客户端退化为顶层展示义 */
     val senses: List<Sense> = emptyList(),
+    val cardId: Long = 0,
+    val lexemeId: Long = 0,
+    val bookId: Long = 0,
+    val version: Int = 1,
 ) {
     /** 卡片/详情主释义：中文优先，否则英英 gloss（Gson 可能把 cn 反成 null） */
     fun displayMeaning(): String =
-        cn?.takeIf { it.isNotBlank() } ?: enGloss?.takeIf { it.isNotBlank() }.orEmpty()
+        preferredMeaning(cn, enGloss, senses)
 }
 
 /** 详情抽屉内容（过渡期兼容；优先用 [WordCard.senses]） */
@@ -85,17 +90,22 @@ data class WordCard(
     val en: String,
     val cn: String? = null,
     val pos: String? = null,
-    val ph: String? = null,
+    @SerializedName("phonetic") val ph: String? = null,
     val enGloss: String? = null,
     val senses: List<Sense> = emptyList(),
-    val mastery: MasterySnapshot,
     val detail: WordDetail? = null,
     val image: WordImagePayload = WordImagePayload(),
     val stain: WordStainPayload = WordStainPayload(),
+    val cardId: Long = 0,
+    val lexemeId: Long = 0,
+    val bookId: Long = 0,
+    val version: Int = 1,
+    val progress: CardProgress? = null,
+    val sourceMaterials: List<SourceMaterial> = emptyList(),
 ) {
     /** 卡片背面/详情主释义：中文优先，否则英英 gloss（Gson 可能把 cn 反成 null） */
     fun displayMeaning(): String =
-        cn?.takeIf { it.isNotBlank() } ?: enGloss?.takeIf { it.isNotBlank() }.orEmpty()
+        preferredMeaning(cn, enGloss, senses)
 
     /**
      * 详情用义项：有 senses 则按 sortOrder；否则用 detail/顶层释义合成单义。
@@ -134,5 +144,52 @@ data class StudyGroupInfo(
 /** 学习页载荷，对齐 openapi `StudyGroupPayload` */
 data class StudyGroupPayload(
     val group: StudyGroupInfo,
-    val words: List<WordCard>,
+    @SerializedName("cards") val words: List<WordCard>,
 )
+
+/** 服务端权威 FSRS 状态；Android 仅展示，不计算间隔或评分。 */
+data class FsrsMemory(
+    val state: String,
+    val dueAt: String,
+    val stability: Double,
+    val difficulty: Double,
+    val reps: Int,
+    val lapses: Int,
+)
+
+/** 默写和选择题两条互不覆盖的记忆轨。 */
+data class CardProgress(
+    val dictation: FsrsMemory,
+    val choice: FsrsMemory,
+    /** 服务端计算的只读热力档；Android 不复制稳定性阈值。 */
+    val displayHeatLevel: Int,
+)
+
+/** 详情抽屉中的词典来源资料。 */
+data class SourceMaterial(
+    val sourceId: String,
+    val sourceName: String,
+    val revision: String,
+    val licenseNote: String? = null,
+    val rawEntryId: Long,
+    val senses: List<Sense> = emptyList(),
+)
+
+/** 扁平兼容字段缺失时，从词书主考义读取展示文本。 */
+private fun preferredMeaning(
+    cn: String?,
+    enGloss: String?,
+    senses: List<Sense>,
+): String {
+    cn?.takeIf { it.isNotBlank() }?.let { return it }
+    enGloss?.takeIf { it.isNotBlank() }?.let { return it }
+    return senses.asSequence()
+        .sortedBy { it.sortOrder }
+        .firstOrNull { it.primary && it.displayMeaning().isNotBlank() }
+        ?.displayMeaning()
+        ?: senses.asSequence()
+            .sortedBy { it.sortOrder }
+            .map { it.displayMeaning() }
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+}

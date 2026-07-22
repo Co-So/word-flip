@@ -4,7 +4,8 @@ package com.wordflip.core.model.media
  * 卡片图片 API 响应，对齐 openapi WordImageResponse。
  */
 data class WordImageResponse(
-    val wordKey: String,
+    val cardId: Long,
+    val lexemeId: Long,
     val hasImage: Boolean = false,
     val imageUrl: String? = null,
     val storageKey: String? = null,
@@ -16,13 +17,14 @@ data class WordImageResponse(
  * 污渍 API 响应，对齐 openapi WordStainResponse。
  */
 data class WordStainResponse(
-    val wordKey: String,
+    val cardId: Long,
+    val lexemeId: Long,
     val hidden: Boolean = false,
     val config: StainConfig? = null,
 )
 
 /**
- * PUT /words/{wordKey}/stain 请求体。
+ * PUT /learning/cards/{cardId}/stain 请求体。
  */
 data class StainUpdateRequest(
     val action: String,

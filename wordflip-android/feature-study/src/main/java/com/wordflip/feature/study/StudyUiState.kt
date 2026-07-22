@@ -1,26 +1,7 @@
 package com.wordflip.feature.study
 
-import com.wordflip.core.model.study.Sense
 import com.wordflip.core.model.study.StudyGroupPayload
 import com.wordflip.core.model.study.WordCard
-
-/** 词典释义查询状态 */
-sealed interface DictLookupState {
-    data object Idle : DictLookupState
-    data object Loading : DictLookupState
-    data class Success(
-        val dictId: String,
-        val dictName: String,
-        val cn: String?,
-        val pos: String?,
-        val ph: String?,
-        val enGloss: String?,
-        val senses: List<Sense>,
-        /** 用户请求的词典 ID（用于 UI 高亮；服务端回退后 dictId 可能不同） */
-        val requestedDictId: String = dictId,
-    ) : DictLookupState
-    data class Error(val message: String) : DictLookupState
-}
 
 /** 学习页 UI 状态 */
 sealed interface StudyUiState {
@@ -64,9 +45,7 @@ sealed interface StudyUiState {
         val imagePickSheetWordKey: String? = null,
         val showGuide: Boolean,
         val allFlippedToBack: Boolean,
-        /** 详情抽屉当前选中的词典释义（临时切换，不影响全局 activeDictId） */
-        val dictLookup: DictLookupState = DictLookupState.Idle,
-        /** 可用词典列表（从设置页同步或本地缓存） */
+        /** 兼容旧状态构造；详情页实际按卡片 sourceMaterials 分区展示。 */
         val dictionaries: List<com.wordflip.core.model.book.DictionaryItem> = emptyList(),
     ) : StudyUiState
 

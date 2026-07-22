@@ -2,7 +2,7 @@ package com.wordflip.core.model.quiz
 
 import com.wordflip.core.model.settings.QuestionType
 import com.wordflip.core.model.settings.apiValue
-import com.wordflip.core.model.study.MasterySnapshot
+import com.wordflip.core.model.study.FsrsMemory
 
 /** POST /quiz/sessions 请求体 */
 data class CreateQuizSessionRequest(
@@ -27,7 +27,8 @@ data class QuizSessionCreated(
 /** openapi QuizQuestion（不含标准答案） */
 data class QuizQuestionPayload(
     val questionIndex: Int,
-    val wordKey: String,
+    val cardId: Long,
+    val lexemeId: Long,
     val type: String = QuestionType.DICTATION.apiValue(),
     val prompt: QuizPrompt,
     val options: List<QuizOption>? = null,
@@ -35,6 +36,7 @@ data class QuizQuestionPayload(
 
 /** POST .../answer 请求 */
 data class SubmitAnswerRequest(
+    val requestId: String,
     val questionIndex: Int,
     val answer: String? = null,
     /** 选择题选中选项 key；默写题可省略 */
@@ -53,9 +55,10 @@ data class AnswerResult(
 )
 
 data class MasteryUpdatePayload(
-    val wordKey: String,
-    val before: MasterySnapshot,
-    val after: MasterySnapshot,
+    val cardId: Long,
+    val lexemeId: Long,
+    val before: FsrsMemory,
+    val after: FsrsMemory,
 )
 
 data class AnswerSessionProgress(
@@ -75,7 +78,7 @@ data class QuizResultPayload(
     val wrongCount: Int,
     val accuracy: Float,
     val rating: String,
-    val wrongWords: List<QuizWrongWord>,
+    val wrongCards: List<QuizWrongCard>,
 )
 
 /** QuizQuestionPayload → 本地测验题目（expectedEn 答错后由服务端返回） */
@@ -83,14 +86,15 @@ fun QuizQuestionPayload.toQuestionItem(expectedEn: String = ""): QuizQuestionIte
     // 英选中：预填英文题干，避免 prompt.en 缺失时只能显示空串
     val seededEn = expectedEn.ifBlank {
         if (type.equals("choice_en_cn", ignoreCase = true)) {
-            prompt.en?.takeIf { it.isNotBlank() } ?: wordKey
+            prompt.en?.takeIf { it.isNotBlank() }.orEmpty()
         } else {
             ""
         }
     }
     return QuizQuestionItem(
         questionIndex = questionIndex,
-        wordKey = wordKey,
+        cardId = cardId,
+        lexemeId = lexemeId,
         expectedEn = seededEn,
         prompt = prompt,
         type = type,
@@ -111,5 +115,5 @@ fun QuizResultPayload.toResultData(): QuizResultData = QuizResultData(
         "good" -> QuizRating.GOOD
         else -> QuizRating.KEEP_GOING
     },
-    wrongWords = wrongWords,
+    wrongCards = wrongCards,
 )

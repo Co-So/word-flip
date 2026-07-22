@@ -1,49 +1,77 @@
 package com.wordflip.core.network.books
 
+import com.wordflip.core.model.book.BookCardsPage
 import com.wordflip.core.model.book.BookImportConfirmRequest
 import com.wordflip.core.model.book.BookImportConfirmResponse
 import com.wordflip.core.model.book.BookImportPreviewResponse
 import com.wordflip.core.model.book.BookItem
-import com.wordflip.core.model.book.BookWordsResponse
 import com.wordflip.core.model.book.BooksPageData
-import com.wordflip.core.model.book.GroupStrategy
-import com.wordflip.core.model.book.SaveBooksSettingsRequest
-import com.wordflip.core.model.book.SaveBooksSettingsResponse
+import com.wordflip.core.model.learning.CreateLearningPlanRequest
+import com.wordflip.core.model.study.WordSummary
 import com.wordflip.core.network.ApiErrorParser
 import com.wordflip.core.network.api.BooksApi
-import com.wordflip.core.network.api.SettingsApi
+import com.wordflip.core.network.api.LearningCardsApi
+import com.wordflip.core.network.api.LearningPlansApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.HttpException
 
-/**
- * 词书/设置业务编排：列表、详情、导入、删除、PUT /settings。
- */
+/** 词书列表、导入与单一当前学习计划编排。 */
 class BooksSettingsRepository(
     private val booksApi: BooksApi,
-    private val settingsApi: SettingsApi,
+    private val plansApi: LearningPlansApi,
+    private val cardsApi: LearningCardsApi,
     private val apiErrorParser: ApiErrorParser,
 ) {
-
     suspend fun loadBooksPage(): Result<BooksPageData> = apiCall {
         coroutineScope {
-            val booksDeferred = async { booksApi.listBooks() }
-            val settingsDeferred = async { settingsApi.getSettings() }
-            BooksPageData(
-                books = booksDeferred.await().books,
-                settings = settingsDeferred.await(),
-            )
+            val books = async { booksApi.listBooks().books }
+            val currentPlan = async {
+                try {
+                    plansApi.current()
+                } catch (error: HttpException) {
+                    if (error.code() == 404) null else throw error
+                }
+            }
+            BooksPageData(books.await(), currentPlan.await())
         }
     }
 
-    suspend fun getBook(bookId: Long): Result<BookItem> = apiCall {
-        booksApi.getBook(bookId)
+    suspend fun getBook(bookId: Long): Result<BookItem> = apiCall { booksApi.getBook(bookId) }
+
+    suspend fun listBookCards(bookId: Long, page: Int, size: Int = 50): Result<BookCardsPage> = apiCall {
+        val response = cardsApi.listBookCards(bookId, page, size)
+        BookCardsPage(
+            page = response.page,
+            size = response.size,
+            totalElements = response.totalElements,
+            totalPages = response.totalPages,
+            cards = response.cards.map { card ->
+                val primary = card.senses.firstOrNull { it.primary } ?: card.senses.firstOrNull()
+                WordSummary(
+                    wordKey = card.wordKey,
+                    en = card.en,
+                    cn = primary?.cn,
+                    pos = primary?.pos,
+                    ph = card.phonetic,
+                    enGloss = primary?.enGloss,
+                    senses = card.senses,
+                    cardId = card.cardId,
+                    lexemeId = card.lexemeId,
+                    bookId = card.bookId,
+                    version = card.version,
+                )
+            },
+        )
     }
 
-    suspend fun listBookWords(bookId: Long, page: Int, size: Int = 50): Result<BookWordsResponse> =
-        apiCall { booksApi.listBookWords(bookId, page, size) }
+    suspend fun startBook(bookId: Long): Result<Unit> = apiCall {
+        plansApi.create(CreateLearningPlanRequest(bookId))
+        Unit
+    }
 
     suspend fun previewImport(fileBytes: ByteArray, fileName: String, mimeType: String): Result<BookImportPreviewResponse> =
         apiCall {
@@ -52,35 +80,15 @@ class BooksSettingsRepository(
             booksApi.previewImport(part)
         }
 
-    suspend fun confirmImport(previewToken: String, name: String): Result<BookImportConfirmResponse> =
-        apiCall {
-            booksApi.confirmImport(BookImportConfirmRequest(previewToken = previewToken, name = name))
-        }
-
-    suspend fun deleteBook(bookId: Long): Result<Unit> = apiCall {
-        booksApi.deleteBook(bookId)
+    suspend fun confirmImport(previewToken: String, name: String): Result<BookImportConfirmResponse> = apiCall {
+        booksApi.confirmImport(BookImportConfirmRequest(previewToken = previewToken, name = name))
     }
 
-    suspend fun saveBooksSettings(
-        bookIds: List<Long>,
-        groupSize: Int,
-        groupStrategy: GroupStrategy,
-        regroup: Boolean = false,
-    ): Result<SaveBooksSettingsResponse> =
-        apiCall {
-            settingsApi.saveSettings(
-                SaveBooksSettingsRequest(
-                    bookIds = bookIds,
-                    groupSize = groupSize,
-                    groupStrategy = groupStrategy,
-                    regroup = regroup,
-                ),
-            )
-        }
+    suspend fun deleteBook(bookId: Long): Result<Unit> = apiCall { booksApi.deleteBook(bookId) }
 
     private suspend fun <T> apiCall(block: suspend () -> T): Result<T> = try {
         Result.success(block())
-    } catch (throwable: Throwable) {
-        Result.failure(Exception(apiErrorParser.parseMessage(throwable), throwable))
+    } catch (error: Throwable) {
+        Result.failure(Exception(apiErrorParser.parseMessage(error), error))
     }
 }

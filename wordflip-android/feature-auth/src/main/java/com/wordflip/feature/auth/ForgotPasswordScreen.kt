@@ -16,6 +16,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.wordflip.core.ui.component.WordFlipToastHost
 import com.wordflip.core.ui.component.rememberWordFlipToast
+import com.wordflip.core.ui.apple.AppleUi
 
 /**
  * 找回密码（规划项 REQ-AUTH；模拟验证码 gate，后端 reset API 待 B-07）。
@@ -95,6 +97,9 @@ fun ForgotPasswordScreen(
         topBar = {
             TopAppBar(
                 title = { },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = AppleUi.colors.canvas,
+                ),
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack, enabled = !isLoading) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")

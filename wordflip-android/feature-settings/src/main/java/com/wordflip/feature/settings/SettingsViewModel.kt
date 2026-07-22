@@ -3,14 +3,12 @@ package com.wordflip.feature.settings
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.wordflip.core.model.book.DictionaryItem
 import com.wordflip.core.model.book.PreferencesPatchRequest
 import com.wordflip.core.model.settings.HeatDisplayMode
 import com.wordflip.core.model.settings.QuizLaunchMode
 import com.wordflip.core.model.settings.ThemeMode
 import com.wordflip.core.model.settings.label
 import com.wordflip.core.model.settings.storageValue
-import com.wordflip.core.network.api.DictsApi
 import com.wordflip.core.network.auth.AuthRepository
 import com.wordflip.core.network.settings.PreferencesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,7 +31,6 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val preferences: SettingsPreferences,
     private val preferencesRepository: PreferencesRepository,
-    private val dictsApi: DictsApi,
     @ApplicationContext private val appContext: Context,
     private val authRepository: AuthRepository,
 ) : ViewModel() {
@@ -44,13 +41,7 @@ class SettingsViewModel @Inject constructor(
     private val _events = MutableSharedFlow<SettingsUiEvent>()
     val events: SharedFlow<SettingsUiEvent> = _events.asSharedFlow()
 
-    private val dictionariesState = MutableStateFlow<List<DictionaryItem>>(emptyList())
-
     init {
-        viewModelScope.launch {
-            runCatching { dictsApi.listDictionaries() }
-                .onSuccess { dictionariesState.value = it }
-        }
         viewModelScope.launch {
             val baseFlow = combine(
                 preferences.autoSpeakFlow,
@@ -61,18 +52,14 @@ class SettingsViewModel @Inject constructor(
                 preferences.heatDisplayModeFlow,
                 preferences.quizLaunchModeFlow,
                 preferences.defaultQuestionLimitFlow,
-                preferences.activeDictIdFlow,
-            ) { base, heatDisplayMode, quizLaunchMode, defaultQuestionLimit, activeDictId ->
+            ) { base, heatDisplayMode, quizLaunchMode, defaultQuestionLimit ->
                 SettingsContent(
                     autoSpeak = base.first,
                     themeMode = base.second,
                     heatDisplayMode = heatDisplayMode,
                     quizLaunchMode = quizLaunchMode,
                     defaultQuestionLimit = defaultQuestionLimit,
-                    activeDictId = activeDictId,
                 )
-            }.combine(dictionariesState) { content, dicts ->
-                content.copy(dictionaries = dicts)
             }.collect { content ->
                 _uiState.value = SettingsUiState.Content(content)
             }
@@ -126,14 +113,6 @@ class SettingsViewModel @Inject constructor(
             preferences.setDefaultQuestionLimit(coerced)
             patchRemote(PreferencesPatchRequest(defaultQuestionLimit = coerced))
             _events.emit(SettingsUiEvent.Toast("默认题数：$coerced"))
-        }
-    }
-
-    fun setActiveDictId(dictId: String, displayName: String) {
-        viewModelScope.launch {
-            preferences.setActiveDictId(dictId)
-            patchRemote(PreferencesPatchRequest(activeDictId = dictId))
-            _events.emit(SettingsUiEvent.Toast("词典：$displayName"))
         }
     }
 

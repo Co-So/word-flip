@@ -22,7 +22,7 @@ object FakeUnassignedWordsData {
             .forEach { assignedKeys.add(it.wordKey) }
     }
 
-    /** 拉取未入组词列表（Mock 等价 GET /words/unassigned?all=true） */
+    /** 拉取当前计划未入组卡片列表。 */
     fun unassigned(): UnassignedWordsResponse {
         val words = allWords.filter { it.wordKey !in assignedKeys }
         return UnassignedWordsResponse(words = words, totalElements = words.size.toLong())

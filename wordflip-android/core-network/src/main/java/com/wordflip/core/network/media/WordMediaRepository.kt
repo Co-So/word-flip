@@ -33,7 +33,7 @@ class WordMediaRepository(
      * 上传或替换卡片图片；transform JSON 含 showCn 与 filters（对齐 openapi）。
      */
     suspend fun uploadImage(
-        wordKey: String,
+        cardId: Long,
         fileBytes: ByteArray,
         mimeType: String,
         transform: ImageTransform,
@@ -45,34 +45,34 @@ class WordMediaRepository(
         val fileBody = fileBytes.toRequestBody(mimeType.toMediaType())
         val filePart = MultipartBody.Part.createFormData("file", "card.webp", fileBody)
         val transformPart = transformJson.toRequestBody("text/plain".toMediaType())
-        imagesApi.uploadImage(wordKey, filePart, transformPart).toPayload()
+        imagesApi.uploadImage(cardId, filePart, transformPart).toPayload()
     }
 
     /** 仅更新 transform（不重传文件） */
     suspend fun patchImageTransform(
-        wordKey: String,
+        cardId: Long,
         transform: ImageTransform,
         filters: ImageFilters,
         showCn: Boolean,
     ): Result<WordImagePayload> = apiCall {
-        imagesApi.patchTransform(wordKey, transform.copy(showCn = showCn, filters = filters)).toPayload()
+        imagesApi.patchTransform(cardId, transform.copy(showCn = showCn, filters = filters)).toPayload()
     }
 
-    suspend fun deleteImage(wordKey: String): Result<Unit> = apiCall {
-        imagesApi.deleteImage(wordKey)
+    suspend fun deleteImage(cardId: Long): Result<Unit> = apiCall {
+        imagesApi.deleteImage(cardId)
     }
 
-    suspend fun getStain(wordKey: String): Result<WordStainPayload> = apiCall {
-        stainsApi.getStain(wordKey).toPayload()
+    suspend fun getStain(cardId: Long): Result<WordStainPayload> = apiCall {
+        stainsApi.getStain(cardId).toPayload()
     }
 
     /** 换一个污渍（regenerate） */
     suspend fun regenerateStain(
-        wordKey: String,
+        cardId: Long,
         allowedTypes: List<StainType> = StainType.entries,
     ): Result<WordStainPayload> = apiCall {
         stainsApi.updateStain(
-            wordKey,
+            cardId,
             StainUpdateRequest(
                 action = "regenerate",
                 typeFilter = allowedTypes.map { it.toApiValue() },
@@ -80,9 +80,9 @@ class WordMediaRepository(
         ).toPayload()
     }
 
-    suspend fun setStainHidden(wordKey: String, hidden: Boolean): Result<WordStainPayload> = apiCall {
+    suspend fun setStainHidden(cardId: Long, hidden: Boolean): Result<WordStainPayload> = apiCall {
         stainsApi.updateStain(
-            wordKey,
+            cardId,
             StainUpdateRequest(action = if (hidden) "set_hidden" else "set_visible"),
         ).toPayload()
     }

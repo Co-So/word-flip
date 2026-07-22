@@ -17,6 +17,7 @@ object Routes {
     const val REGISTER = "register"
     const val FORGOT_PASSWORD = "forgot_password"
     const val MAIN = "main"
+    const val PLAN_GATE = "plan_gate"
 }
 
 @Composable
@@ -37,7 +38,7 @@ fun WordFlipNavHost(
         }
     }
 
-    val startDestination = if (isLoggedIn) Routes.MAIN else Routes.LOGIN
+    val startDestination = if (isLoggedIn) Routes.PLAN_GATE else Routes.LOGIN
 
     NavHost(
         navController = navController,
@@ -48,7 +49,7 @@ fun WordFlipNavHost(
             LoginScreen(
                 onLoginSuccess = {
                     onLoginSuccess()
-                    navController.navigate(Routes.MAIN) {
+                    navController.navigate(Routes.PLAN_GATE) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 },
@@ -70,7 +71,7 @@ fun WordFlipNavHost(
             RegisterScreen(
                 onRegisterSuccess = {
                     onLoginSuccess()
-                    navController.navigate(Routes.MAIN) {
+                    navController.navigate(Routes.PLAN_GATE) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 },
@@ -81,6 +82,15 @@ fun WordFlipNavHost(
             MainScreen(
                 settingsPreferences = settingsPreferences,
                 onLogout = onLogout,
+            )
+        }
+        composable(Routes.PLAN_GATE) {
+            PlanGateScreen(
+                onReady = {
+                    navController.navigate(Routes.MAIN) {
+                        popUpTo(Routes.PLAN_GATE) { inclusive = true }
+                    }
+                },
             )
         }
     }

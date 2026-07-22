@@ -14,31 +14,31 @@ import retrofit2.http.Part
 import retrofit2.http.Path
 
 /**
- * 卡片图片 API：GET/POST/PATCH/DELETE /words/{wordKey}/image（P3）。
+ * 卡片图片 API：图片严格绑定词书学习卡。
  */
 interface ImagesApi {
 
-    @GET("words/{wordKey}/image")
+    @GET("learning/cards/{cardId}/image")
     suspend fun getImage(
-        @Path("wordKey") wordKey: String,
+        @Path("cardId") cardId: Long,
     ): WordImageResponse
 
     @Multipart
-    @POST("words/{wordKey}/image")
+    @POST("learning/cards/{cardId}/image")
     suspend fun uploadImage(
-        @Path("wordKey") wordKey: String,
+        @Path("cardId") cardId: Long,
         @Part file: MultipartBody.Part,
         @Part("transform") transform: RequestBody,
     ): WordImageResponse
 
-    @PATCH("words/{wordKey}/image")
+    @PATCH("learning/cards/{cardId}/image")
     suspend fun patchTransform(
-        @Path("wordKey") wordKey: String,
+        @Path("cardId") cardId: Long,
         @Body transform: ImageTransform,
     ): WordImageResponse
 
-    @DELETE("words/{wordKey}/image")
+    @DELETE("learning/cards/{cardId}/image")
     suspend fun deleteImage(
-        @Path("wordKey") wordKey: String,
+        @Path("cardId") cardId: Long,
     )
 }

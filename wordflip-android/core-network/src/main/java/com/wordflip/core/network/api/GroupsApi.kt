@@ -25,16 +25,16 @@ interface GroupsApi {
     @GET("groups/{groupId}")
     suspend fun getGroup(@Path("groupId") groupId: Int): GroupDetail
 
-    @GET("groups/{groupId}/words")
-    suspend fun listGroupWords(
+    @GET("groups/{groupId}/cards")
+    suspend fun listGroupCards(
         @Path("groupId") groupId: Int,
         @Query("page") page: Int = 0,
         @Query("size") size: Int = 100,
     ): GroupWordsResponse
 
     /** `all=true` 返回全量未入组词（REQ-CG-1，上限 5000） */
-    @GET("words/unassigned")
-    suspend fun listUnassignedWords(
+    @GET("learning/cards/unassigned")
+    suspend fun listUnassignedCards(
         @Query("all") all: Boolean = false,
         @Query("q") q: String? = null,
         @Query("page") page: Int = 0,

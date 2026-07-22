@@ -1,11 +1,9 @@
 package com.wordflip.core.ui.component
 
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -36,8 +34,13 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,11 +61,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.hypot
 import kotlin.math.min
 
-private val FlipEasing = CubicBezierEasing(0.34f, 1.05f, 0.64f, 1f)
-
 /**
- * 双面翻转学习卡片（REQ-STUDY-3~8）：3:4.2 比例、v5 cubic-bezier 3D 翻转。
- * REQ-STUDY-14：短按翻转无按压反馈；长按等待期有缩小与阴影反馈。
+ * 双面翻转学习卡片（REQ-STUDY-3~8）：3:4.2 比例、可中断 spring 3D 翻转。
+ * REQ-STUDY-14：按下即时缩小反馈，长按提交时保留一次触觉反馈。
  */
 @Composable
 fun FlipCard(
@@ -86,42 +87,65 @@ fun FlipCard(
     showCnOnImage: Boolean = true,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val isLongPressHolding by interactionSource.collectIsPressedAsState()
+    val isPressed by interactionSource.collectIsPressedAsState()
     val haptic = LocalHapticFeedback.current
     val viewConfiguration = LocalViewConfiguration.current
 
-    // 仅长按等待/触发时缩小，短按翻转无按压感
-    val longPressScale by animateFloatAsState(
-        targetValue = if (isLongPressHolding) 0.97f else 1f,
+    // 按下即响应，并允许松手或翻转途中从当前值平滑反向
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = if (isLongPressHolding) Spring.StiffnessMedium else Spring.StiffnessHigh,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessHigh,
         ),
-        label = "longPressScale",
+        label = "cardPressScale",
     )
 
-    // REQ-STUDY-8：v5 翻转曲线 0.5s cubic-bezier(0.34,1.05,0.64,1)
+    // 翻转使用无回弹 spring，快速连点时可以从当前角度继续或反向
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
-        animationSpec = tween(durationMillis = 500, easing = FlipEasing),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
         label = "flipRotation",
     )
 
     val isDark = isSystemInDarkTheme()
     val frontColor = if (isDark) SageDarkStudyCard else SageStudyCard
     val backColor = SageStudyCardBack
+    val accessibilityDescription = listOfNotNull(
+        en,
+        if (isFlipped) "背面" else "正面",
+        cn?.takeIf { isFlipped && it.isNotBlank() },
+    ).joinToString("，")
 
     Box(
         modifier = modifier
             .aspectRatio(3f / 4.2f)
-            .semantics {
-                contentDescription = if (isFlipped) "$en，背面，$cn" else "$en，正面"
+            // 卡面文字由根节点统一描述，避免装饰性子节点重复播报。
+            .clearAndSetSemantics {
+                contentDescription = accessibilityDescription
+                role = Role.Button
+                if (interactionEnabled) {
+                    onClick(label = "翻面") {
+                        onClick()
+                        true
+                    }
+                    onLongClick(label = "查看详情") {
+                        // 辅助操作不重复触发触摸路径的长按触觉。
+                        onLongClick()
+                        true
+                    }
+                } else {
+                    disabled()
+                }
             }
             .studyCardPointerInput(
                 enabled = interactionEnabled,
                 interactionSource = interactionSource,
                 longPressTimeoutMillis = 500L,
-                pressFeedbackDelayMillis = 120L,
+                pressFeedbackDelayMillis = 0L,
                 longPressSlop = viewConfiguration.touchSlop,
                 onClick = onClick,
                 onLongClick = {
@@ -134,8 +158,8 @@ fun FlipCard(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    scaleX = longPressScale
-                    scaleY = longPressScale
+                    scaleX = pressScale
+                    scaleY = pressScale
                     rotationY = rotation
                     cameraDistance = 8f * density
                 },
@@ -144,7 +168,7 @@ fun FlipCard(
                 CardFace(
                     modifier = Modifier.fillMaxSize(),
                     backgroundColor = frontColor,
-                    isLongPressHolding = isLongPressHolding,
+                    isPressed = isPressed,
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         StainOverlay(
@@ -187,7 +211,7 @@ fun FlipCard(
                         .fillMaxSize()
                         .graphicsLayer { rotationY = 180f },
                     backgroundColor = backColor,
-                    isLongPressHolding = isLongPressHolding,
+                    isPressed = isPressed,
                 ) {
                     CardBackContent(
                         cn = cn,
@@ -274,7 +298,7 @@ private fun CardBackContent(
 }
 
 /**
- * REQ-STUDY-14：短按不 emit PressInteraction；长按等待 ≥120ms 后才有按压反馈。
+ * REQ-STUDY-14：按下即 emit PressInteraction，抬起后才提交短按；长按与短按保持互斥。
  * 使用 deadline 轮询，避免 withTimeout 嵌套导致长按超时无法触发。
  */
 private fun Modifier.studyCardPointerInput(
@@ -356,12 +380,12 @@ private fun Modifier.studyCardPointerInput(
 @Composable
 private fun CardFace(
     backgroundColor: Color,
-    isLongPressHolding: Boolean,
+    isPressed: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val elevation by animateDpAsState(
-        targetValue = if (isLongPressHolding) 1.dp else 4.dp,
+        targetValue = if (isPressed) 1.dp else 4.dp,
         animationSpec = spring(stiffness = Spring.StiffnessHigh),
         label = "cardElevation",
     )

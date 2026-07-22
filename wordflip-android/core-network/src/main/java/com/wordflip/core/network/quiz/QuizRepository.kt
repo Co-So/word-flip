@@ -42,6 +42,7 @@ class QuizRepository(
 
     suspend fun submitAnswer(
         sessionId: String,
+        requestId: String,
         questionIndex: Int,
         answer: String? = null,
         selectedKey: String? = null,
@@ -50,6 +51,7 @@ class QuizRepository(
             sessionId = sessionId,
             timezone = TimeZone.getDefault().id,
             request = SubmitAnswerRequest(
+                requestId = requestId,
                 questionIndex = questionIndex,
                 answer = answer,
                 selectedKey = selectedKey,

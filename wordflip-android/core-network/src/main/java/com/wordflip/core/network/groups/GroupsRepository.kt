@@ -25,11 +25,11 @@ class GroupsRepository(
 
     /** 拉取分组内全部单词（按 totalPages 顺序分页，REQ-GROUP 只读掌握度） */
     suspend fun loadGroupWordsAll(groupId: Int): Result<List<GroupWordItem>> = apiCall {
-        val firstPage = groupsApi.listGroupWords(groupId = groupId, page = 0, size = 100)
+        val firstPage = groupsApi.listGroupCards(groupId = groupId, page = 1, size = 100)
         val dtos = firstPage.words.toMutableList()
         if (firstPage.totalPages > 1) {
-            for (page in 1 until firstPage.totalPages) {
-                dtos += groupsApi.listGroupWords(groupId = groupId, page = page, size = firstPage.size).words
+            for (page in 2..firstPage.totalPages) {
+                dtos += groupsApi.listGroupCards(groupId = groupId, page = page, size = firstPage.size).words
             }
         }
         dtos.map { it.toGroupWordItem() }
@@ -37,13 +37,13 @@ class GroupsRepository(
 
     /** CustomGroup 全量未入组词池（all=true） */
     suspend fun loadUnassignedAll(): Result<UnassignedWordsResponse> = apiCall {
-        groupsApi.listUnassignedWords(all = true)
+        groupsApi.listUnassignedCards(all = true)
     }
 
-    suspend fun createCustomGroup(wordKeys: List<String>, name: String? = null): Result<GroupDetail> =
+    suspend fun createCustomGroup(cardIds: List<Long>, name: String? = null): Result<GroupDetail> =
         apiCall {
             groupsApi.createCustomGroup(
-                CreateCustomGroupRequest(wordKeys = wordKeys, name = name),
+                CreateCustomGroupRequest(cardIds = cardIds, name = name),
             )
         }
 

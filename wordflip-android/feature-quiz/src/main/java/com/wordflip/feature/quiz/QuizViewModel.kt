@@ -7,12 +7,11 @@ import com.wordflip.core.model.quiz.QuizAnswerFeedback
 import com.wordflip.core.model.quiz.QuizFeedbackType
 import com.wordflip.core.model.quiz.QuizQuestionItem
 import com.wordflip.core.model.quiz.QuizSource
-import com.wordflip.core.model.quiz.QuizWrongWord
+import com.wordflip.core.model.quiz.QuizWrongCard
 import com.wordflip.core.model.quiz.toQuestionItem
 import com.wordflip.core.model.quiz.toResultData
 import com.wordflip.core.model.settings.apiValue
 import com.wordflip.core.model.settings.parseQuestionTypesCsv
-import com.wordflip.core.model.study.MasteryLevel
 import com.wordflip.core.network.quiz.QuizRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -22,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * 测验 ViewModel；走 POST /quiz/sessions 与 answer（掌握度唯一写入口）。
@@ -54,7 +54,9 @@ class QuizViewModel @Inject constructor(
     /** 答错巩固完成后待展示的下一题（服务端已在首次判题时写入掌握度） */
     private var pendingNextQuestion: QuizQuestionItem? = null
     private var pendingCompleted: Boolean = false
-    private val wrongWords = mutableListOf<QuizWrongWord>()
+    private val wrongCards = mutableListOf<QuizWrongCard>()
+    /** 同一题网络重试复用同一幂等键，成功后才移除。 */
+    private val answerRequestIds = mutableMapOf<Int, String>()
     private var autoAdvanceJob: Job? = null
 
     init {
@@ -79,7 +81,8 @@ class QuizViewModel @Inject constructor(
                     totalQuestions = created.totalQuestions
                     currentIndex = created.currentIndex
                     score = created.score
-                    wrongWords.clear()
+                    wrongCards.clear()
+                    answerRequestIds.clear()
                     pendingNextQuestion = null
                     pendingCompleted = false
                     currentQuestion = created.question.toQuestionItem()
@@ -152,15 +155,18 @@ class QuizViewModel @Inject constructor(
     ) {
         val question = state.question
         val displayAnswer = selectedKey ?: answer.orEmpty()
+        val requestId = answerRequestIds.getOrPut(question.questionIndex) { UUID.randomUUID().toString() }
         viewModelScope.launch {
             _uiState.value = state.copy(inputEnabled = false, userAnswer = displayAnswer)
             quizRepository.submitAnswer(
                 sessionId = sessionId,
+                requestId = requestId,
                 questionIndex = question.questionIndex,
                 answer = answer,
                 selectedKey = selectedKey,
             ).fold(
                 onSuccess = { result ->
+                    answerRequestIds.remove(question.questionIndex)
                     score = result.session.score
                     currentIndex = result.session.currentIndex
                     totalQuestions = result.session.totalQuestions
@@ -204,8 +210,9 @@ class QuizViewModel @Inject constructor(
                             autoAdvanceJob = null
                         }
                     } else {
-                        wrongWords += QuizWrongWord(
-                            wordKey = question.wordKey,
+                        wrongCards += QuizWrongCard(
+                            cardId = question.cardId,
+                            lexemeId = question.lexemeId,
                             en = revealedEn.ifBlank { question.expectedEn },
                             cn = questionWithAnswer.prompt.cn,
                             userAnswer = wrongDisplay,
@@ -309,12 +316,7 @@ private fun com.wordflip.core.model.quiz.AnswerResult.toFeedback(): QuizAnswerFe
     val message = if (correct) {
         "✓ 正确！"
     } else {
-        val afterLevel = masteryUpdate?.after?.level
-        if (afterLevel == MasteryLevel.UNKNOWN) {
-            "✗ 错误 · 已标记不认识"
-        } else {
-            "✗ 错误 · 已标记模糊"
-        }
+        "✗ 错误 · 已按 Again 调度"
     }
     return QuizAnswerFeedback(
         type = type,

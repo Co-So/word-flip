@@ -64,7 +64,7 @@ class StudyRepository(
             request = StudySessionReportRequest(
                 groupId = groupId,
                 durationSec = durationSec,
-                wordsViewed = wordsViewed,
+                cardsViewed = wordsViewed,
                 completedAt = Instant.now().toString(),
             ),
         )

@@ -16,14 +16,14 @@ data class WordFlipExtraColors(
 )
 
 val LightExtraColors = WordFlipExtraColors(
-    success = SageSuccess,
+    success = AppleLightSuccess,
     successContainer = Color(0xFFE0F5EE),
     warning = Color(0xFFC47D00),
     warningContainer = Color(0xFFFEF3DC),
 )
 
 val DarkExtraColors = WordFlipExtraColors(
-    success = SageDarkSuccess,
+    success = AppleDarkSuccess,
     successContainer = Color(0xFF123528),
     warning = Color(0xFFFFB95A),
     warningContainer = Color(0xFF3D2E14),

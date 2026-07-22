@@ -7,21 +7,23 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -41,15 +44,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.wordflip.core.model.study.WordSummary
+import com.wordflip.core.ui.apple.AppleGroupedSurface
+import com.wordflip.core.ui.apple.ApplePageTitle
+import com.wordflip.core.ui.apple.ApplePrimaryAction
+import com.wordflip.core.ui.apple.AppleUi
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.WordFlipToastHost
 import com.wordflip.core.ui.component.rememberWordFlipToast
 
-/**
- * 词书详情：浏览词条；imported 可删；未在学可加入学习计划。
- */
+/** 词书详情：以大标题和可滚动索引展示词条，学习计划仍由原回调切换。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookDetailScreen(
@@ -80,15 +87,15 @@ fun BookDetailScreen(
     pendingDelete?.let { (_, bookName) ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("删除词书") },
-            text = { Text("确定删除「$bookName」？已入组的单词将保留。") },
+            title = { Text("删除或归档词书") },
+            text = { Text("确定处理「$bookName」？历史计划存在时只会归档，已入组的单词仍会保留。") },
             confirmButton = {
                 TextButton(
                     onClick = {
                         viewModel.confirmDelete()
                         pendingDelete = null
                     },
-                ) { Text("删除") }
+                ) { Text("继续") }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) { Text("取消") }
@@ -96,14 +103,13 @@ fun BookDetailScreen(
         )
     }
 
-    val title = (uiState as? BookDetailUiState.Content)?.book?.name ?: "词书详情"
     val canDelete = (uiState as? BookDetailUiState.Content)?.book?.canDelete == true
-
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = AppleUi.colors.canvas,
         topBar = {
             TopAppBar(
-                title = { Text(title) },
+                title = { Text("词书详情") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
@@ -120,9 +126,13 @@ fun BookDetailScreen(
                                 onDismissRequest = { menuExpanded = false },
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("删除词书") },
+                                    text = { Text("删除或归档") },
                                     leadingIcon = {
-                                        Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
+                                        Icon(
+                                            imageVector = Icons.Outlined.DeleteOutline,
+                                            contentDescription = null,
+                                            tint = AppleUi.colors.destructive,
+                                        )
                                     },
                                     onClick = {
                                         menuExpanded = false
@@ -133,34 +143,21 @@ fun BookDetailScreen(
                         }
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = AppleUi.colors.canvas,
+                    titleContentColor = AppleUi.colors.primaryText,
+                ),
             )
         },
         snackbarHost = { WordFlipToastHost(snackbarHostState) },
         bottomBar = {
             val content = uiState as? BookDetailUiState.Content
             if (content != null) {
-                Surface(tonalElevation = 2.dp) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                    ) {
-                        if (content.book.selected) {
-                            Text(
-                                text = "已在学习计划中",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            Button(
-                                onClick = viewModel::joinLearning,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("加入学习")
-                            }
-                        }
-                    }
-                }
+                BookDetailBottomAction(
+                    selected = content.book.selected,
+                    isJoiningLearning = content.isJoiningLearning,
+                    onJoinLearning = viewModel::joinLearning,
+                )
             }
         },
     ) { innerPadding ->
@@ -172,7 +169,7 @@ fun BookDetailScreen(
                         .padding(innerPadding),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(color = AppleUi.colors.accent)
                 }
             }
             is BookDetailUiState.Error -> {
@@ -187,6 +184,68 @@ fun BookDetailScreen(
                     state = state,
                     onLoadMore = viewModel::loadMore,
                     modifier = Modifier.padding(innerPadding),
+                )
+            }
+        }
+    }
+}
+
+/** 固定底部区域区分当前计划与可加入状态，不改变 joinLearning 回调。 */
+@Composable
+private fun BookDetailBottomAction(
+    selected: Boolean,
+    isJoiningLearning: Boolean,
+    onJoinLearning: () -> Unit,
+) {
+    Surface(
+        color = AppleUi.colors.glass,
+        tonalElevation = 0.dp,
+        shadowElevation = 8.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            if (selected) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 9.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = AppleUi.colors.accent,
+                    )
+                    Text(
+                        text = "已在当前学习计划中",
+                        modifier = Modifier.padding(start = 8.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = AppleUi.colors.accent,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            } else {
+                ApplePrimaryAction(
+                    text = if (isJoiningLearning) "正在加入…" else "加入学习计划",
+                    onClick = onJoinLearning,
+                    enabled = !isJoiningLearning,
+                    leadingContent = if (isJoiningLearning) {
+                        {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp,
+                            )
+                        }
+                    } else {
+                        null
+                    },
                 )
             }
         }
@@ -213,65 +272,61 @@ private fun BookDetailContent(
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ApplePageTitle(
+                    title = state.book.name,
+                    subtitle = "${state.book.wordCount} 张已发布卡 · ${state.book.sourceLabel()}",
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(
-                        shape = MaterialTheme.shapes.small,
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                    ) {
-                        Text(
-                            text = state.book.sourceLabel(),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
-                    if (state.book.selected) {
-                        Surface(
-                            shape = MaterialTheme.shapes.small,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                        ) {
-                            Text(
-                                text = "在学",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                    }
+                    DetailBadge(
+                        text = state.book.sourceLabel(),
+                        emphasized = false,
+                    )
+                    DetailBadge(
+                        text = if (state.book.selected) "当前计划" else "可加入学习",
+                        emphasized = state.book.selected,
+                    )
                 }
-                Text(
-                    text = "${state.book.wordCount} 词",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Text(
+                        text = "词条索引",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = AppleUi.colors.primaryText,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "已载入 ${state.words.size} / ${state.book.wordCount}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = AppleUi.colors.secondaryText,
+                    )
+                }
             }
-            HorizontalDivider()
         }
-        items(state.words, key = { it.wordKey }) { word ->
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-            ) {
-                Text(
-                    text = word.en,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = word.cn ?: "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        if (state.words.isEmpty() && state.endReached) {
+            item {
+                AppleGroupedSurface(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "这本词书暂时没有可展示的词条。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppleUi.colors.secondaryText,
+                    )
+                }
             }
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+        } else {
+            itemsIndexed(
+                items = state.words,
+                key = { _, word -> word.wordKey },
+            ) { index, word ->
+                BookWordIndexRow(index = index + 1, word = word)
+            }
         }
         if (!state.endReached) {
             item {
@@ -281,9 +336,90 @@ private fun BookDetailContent(
                         .padding(16.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = AppleUi.colors.accent,
+                        strokeWidth = 2.dp,
+                    )
                 }
             }
         }
+    }
+}
+
+/** 每个索引项保持清晰的英文主信息、中文释义和序号层级。 */
+@Composable
+private fun BookWordIndexRow(
+    index: Int,
+    word: WordSummary,
+) {
+    AppleGroupedSurface(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = AppleUi.colors.accent.copy(alpha = 0.1f),
+                tonalElevation = 0.dp,
+            ) {
+                Box(
+                    modifier = Modifier.size(34.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = index.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = AppleUi.colors.accent,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = word.en,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = AppleUi.colors.primaryText,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                word.cn?.takeIf { it.isNotBlank() }?.let { meaning ->
+                    Text(
+                        text = meaning,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppleUi.colors.secondaryText,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailBadge(
+    text: String,
+    emphasized: Boolean,
+) {
+    Surface(
+        shape = CircleShape,
+        color = if (emphasized) AppleUi.colors.accent.copy(alpha = 0.12f) else AppleUi.colors.elevatedSurface,
+        tonalElevation = 0.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = if (emphasized) AppleUi.colors.accent else AppleUi.colors.secondaryText,
+        )
     }
 }

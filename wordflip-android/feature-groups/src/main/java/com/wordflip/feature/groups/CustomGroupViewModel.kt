@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 
 /**
  * 手动添加分组 ViewModel（REQ-CG-1~5）。
- * GET /words/unassigned?all=true + POST /groups/custom。
+ * GET /learning/cards/unassigned?all=true + POST /groups/custom。
  */
 @HiltViewModel
 class CustomGroupViewModel @Inject constructor(
@@ -28,7 +28,7 @@ class CustomGroupViewModel @Inject constructor(
     private val _events = MutableSharedFlow<CustomGroupUiEvent>()
     val events: SharedFlow<CustomGroupUiEvent> = _events.asSharedFlow()
 
-    private var selectedKeys: MutableSet<String> = mutableSetOf()
+    private var selectedCardIds: MutableSet<Long> = mutableSetOf()
 
     init {
         loadUnassigned()
@@ -39,10 +39,10 @@ class CustomGroupViewModel @Inject constructor(
             _uiState.value = CustomGroupUiState.Loading
             groupsRepository.loadUnassignedAll()
                 .onSuccess { response ->
-                    selectedKeys = mutableSetOf()
+                    selectedCardIds = mutableSetOf()
                     _uiState.value = CustomGroupUiState.Content(
                         words = response.words,
-                        selectedKeys = selectedKeys.toSet(),
+                        selectedCardIds = selectedCardIds.toSet(),
                     )
                 }
                 .onFailure { error ->
@@ -53,14 +53,14 @@ class CustomGroupViewModel @Inject constructor(
         }
     }
 
-    fun toggleWord(wordKey: String) {
+    fun toggleCard(cardId: Long) {
         val content = _uiState.value as? CustomGroupUiState.Content ?: return
-        if (wordKey in selectedKeys) {
-            selectedKeys.remove(wordKey)
+        if (cardId in selectedCardIds) {
+            selectedCardIds.remove(cardId)
         } else {
-            selectedKeys.add(wordKey)
+            selectedCardIds.add(cardId)
         }
-        _uiState.value = content.copy(selectedKeys = selectedKeys.toSet())
+        _uiState.value = content.copy(selectedCardIds = selectedCardIds.toSet())
     }
 
     /** 保存自定义分组；0 选时 Toast 提示（REQ-CG-4） */
@@ -73,7 +73,7 @@ class CustomGroupViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            groupsRepository.createCustomGroup(content.selectedKeys.toList())
+            groupsRepository.createCustomGroup(content.selectedCardIds.toList())
                 .onSuccess { detail ->
                     _events.emit(CustomGroupUiEvent.Toast("已保存 ${detail.stats.total} 个单词"))
                     _events.emit(CustomGroupUiEvent.Saved)

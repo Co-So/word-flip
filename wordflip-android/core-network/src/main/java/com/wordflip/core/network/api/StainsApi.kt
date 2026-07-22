@@ -11,18 +11,18 @@ import retrofit2.http.PUT
 import retrofit2.http.Path
 
 /**
- * 污渍 API：GET/PUT /words/{wordKey}/stain、POST /groups/{groupId}/stains/batch（P3）。
+ * 污渍 API：单卡配置绑定 cardId，批量接口绑定当前计划分组。
  */
 interface StainsApi {
 
-    @GET("words/{wordKey}/stain")
+    @GET("learning/cards/{cardId}/stain")
     suspend fun getStain(
-        @Path("wordKey") wordKey: String,
+        @Path("cardId") cardId: Long,
     ): WordStainResponse
 
-    @PUT("words/{wordKey}/stain")
+    @PUT("learning/cards/{cardId}/stain")
     suspend fun updateStain(
-        @Path("wordKey") wordKey: String,
+        @Path("cardId") cardId: Long,
         @Body request: StainUpdateRequest,
     ): WordStainResponse
 

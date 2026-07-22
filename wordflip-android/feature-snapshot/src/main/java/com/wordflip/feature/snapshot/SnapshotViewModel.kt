@@ -151,6 +151,7 @@ class SnapshotViewModel @Inject constructor(
         filters: ImageFilters,
         showCn: Boolean,
     ) {
+        val cardId = word(wordKey)?.cardId ?: return
         viewModelScope.launch {
             val pendingUri = pendingLocalUris[wordKey]
             val result = if (pendingUri != null) {
@@ -160,7 +161,7 @@ class SnapshotViewModel @Inject constructor(
                     return@launch
                 }
                 wordMediaRepository.uploadImage(
-                    wordKey = wordKey,
+                    cardId = cardId,
                     fileBytes = bytes,
                     mimeType = guessMime(pendingUri),
                     transform = transform,
@@ -168,7 +169,7 @@ class SnapshotViewModel @Inject constructor(
                     showCn = showCn,
                 )
             } else {
-                wordMediaRepository.patchImageTransform(wordKey, transform, filters, showCn)
+                wordMediaRepository.patchImageTransform(cardId, transform, filters, showCn)
             }
             result
                 .onSuccess { payload ->
@@ -190,8 +191,9 @@ class SnapshotViewModel @Inject constructor(
     }
 
     fun clearImage(wordKey: String) {
+        val cardId = word(wordKey)?.cardId ?: return
         viewModelScope.launch {
-            wordMediaRepository.deleteImage(wordKey)
+            wordMediaRepository.deleteImage(cardId)
                 .onSuccess {
                     pendingLocalUris.remove(wordKey)
                     applyImageToWord(wordKey, WordImagePayload())

@@ -34,7 +34,7 @@ class BookDetailViewModel @Inject constructor(
     private val _events = MutableSharedFlow<BookDetailEvent>()
     val events: SharedFlow<BookDetailEvent> = _events.asSharedFlow()
 
-    private var nextPage = 0
+    private var nextPage = 1
     private var totalPages = 1
     private var loadingMore = false
 
@@ -45,7 +45,7 @@ class BookDetailViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch {
             _uiState.value = BookDetailUiState.Loading
-            nextPage = 0
+            nextPage = 1
             booksSettingsRepository.getBook(bookId)
                 .onSuccess { book ->
                     loadFirstPage(book)
@@ -61,12 +61,12 @@ class BookDetailViewModel @Inject constructor(
         if (loadingMore || nextPage >= totalPages) return
         viewModelScope.launch {
             loadingMore = true
-            booksSettingsRepository.listBookWords(bookId, nextPage)
+            booksSettingsRepository.listBookCards(bookId, nextPage)
                 .onSuccess { page ->
                     totalPages = page.totalPages.coerceAtLeast(1)
                     nextPage = page.page + 1
                     _uiState.value = content.copy(
-                        words = content.words + page.words,
+                        words = content.words + page.cards,
                         endReached = nextPage >= totalPages,
                     )
                 }
@@ -95,21 +95,28 @@ class BookDetailViewModel @Inject constructor(
     }
 
     fun joinLearning() {
-        val content = _uiState.value as? BookDetailUiState.Content ?: return
-        if (content.book.selected) return
+        val content = prepareBookDetailJoinSubmission(_uiState.value) ?: return
+        // 在协程启动前同步占用提交态，避免快速点击发出重复请求。
+        _uiState.value = content
         viewModelScope.launch {
-            _events.emit(BookDetailEvent.JoinLearning(content.book.id))
+            booksSettingsRepository.startBook(content.book.id)
+                .onSuccess { _events.emit(BookDetailEvent.JoinLearning(content.book.id)) }
+                .onFailure { error ->
+                    val current = _uiState.value as? BookDetailUiState.Content ?: content
+                    _uiState.value = current.copy(isJoiningLearning = false)
+                    _events.emit(BookDetailEvent.Toast(error.message ?: "切换学习计划失败"))
+                }
         }
     }
 
     private suspend fun loadFirstPage(book: BookItem) {
-        booksSettingsRepository.listBookWords(bookId, 0)
+        booksSettingsRepository.listBookCards(bookId, 1)
             .onSuccess { page ->
                 totalPages = page.totalPages.coerceAtLeast(1)
-                nextPage = 1
+                nextPage = page.page + 1
                 _uiState.value = BookDetailUiState.Content(
                     book = book,
-                    words = page.words,
+                    words = page.cards,
                     endReached = nextPage >= totalPages,
                 )
             }
@@ -125,6 +132,7 @@ sealed interface BookDetailUiState {
         val book: BookItem,
         val words: List<WordSummary>,
         val endReached: Boolean,
+        val isJoiningLearning: Boolean = false,
     ) : BookDetailUiState
     data class Error(val message: String) : BookDetailUiState
 }
@@ -134,6 +142,15 @@ sealed interface BookDetailEvent {
     data class ConfirmDelete(val bookId: Long, val bookName: String) : BookDetailEvent
     data object Deleted : BookDetailEvent
     data class JoinLearning(val bookId: Long) : BookDetailEvent
+}
+
+/** 为详情页加入学习同步申请提交资格；已有提交或状态不匹配时拒绝。 */
+internal fun prepareBookDetailJoinSubmission(
+    state: BookDetailUiState,
+): BookDetailUiState.Content? {
+    val content = state as? BookDetailUiState.Content ?: return null
+    if (content.isJoiningLearning) return null
+    return content.copy(isJoiningLearning = true)
 }
 
 fun BookItem.sourceLabel(): String = when (source) {

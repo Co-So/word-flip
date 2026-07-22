@@ -5,13 +5,22 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,15 +32,14 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.VolumeUp
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -53,9 +61,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -63,11 +73,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.wordflip.core.model.fake.FakeQuizData
 import com.wordflip.core.model.quiz.QuizFeedbackType
 import com.wordflip.core.model.quiz.QuizSource
 import com.wordflip.core.model.quiz.emoji
 import com.wordflip.core.model.quiz.label
+import com.wordflip.core.ui.apple.AppleGroupedSurface
+import com.wordflip.core.ui.apple.ApplePrimaryAction
+import com.wordflip.core.ui.apple.AppleUi
+import com.wordflip.core.ui.apple.applePress
 import com.wordflip.core.ui.component.FlowingSyllableWord
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.WordFlipTopBar
@@ -90,9 +103,10 @@ fun QuizScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = AppleUi.colors.canvas,
         topBar = {
             WordFlipTopBar(
-                title = "默写测验",
+                title = "测验",
                 onNavigateBack = onNavigateBack,
             )
         },
@@ -130,11 +144,12 @@ private fun QuizLoading(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        CircularProgressIndicator()
+        CircularProgressIndicator(color = AppleUi.colors.accent)
         Text(
             text = "正在抽题…",
             modifier = Modifier.padding(top = 12.dp),
             style = MaterialTheme.typography.bodyMedium,
+            color = AppleUi.colors.secondaryText,
         )
     }
 }
@@ -158,7 +173,6 @@ private fun QuizQuestionContent(
     var speechRate by remember { mutableFloatStateOf(1.0f) }
     val scrollState = rememberScrollState()
     val isCorrect = state.feedback?.type == QuizFeedbackType.CORRECT
-    val practiceWrong = state.practiceHint == "再试一次"
     val practicePassed = state.practicePassed
 
     DisposableEffect(Unit) {
@@ -181,7 +195,11 @@ private fun QuizQuestionContent(
 
     LaunchedEffect(state.currentIndex, state.inputEnabled, state.question.isChoice) {
         // 选择题不抢焦点；默写/巩固才弹出键盘
-        if (!state.inputEnabled || (state.question.isChoice && !state.consolidationActive)) {
+        if (
+            state.totalQuestions <= 0 ||
+            !state.inputEnabled ||
+            (state.question.isChoice && !state.consolidationActive)
+        ) {
             return@LaunchedEffect
         }
         delay(120)
@@ -196,73 +214,131 @@ private fun QuizQuestionContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .background(AppleUi.colors.canvas),
     ) {
-        LinearProgressIndicator(
-            progress = { state.progress },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        RowMeta(
+        // 紧凑进度始终在题干上方，不与得分或答题控件争夺注意力。
+        QuizProgressHeader(
             current = state.currentIndex + 1,
             total = state.totalQuestions,
             score = state.score,
+            progress = state.progress,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        // 题干和纠正信息占据中央可滚动区，长文本不会挤出底部主操作。
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            if (state.totalQuestions <= 0) {
+                AppleGroupedSurface(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "暂无可用题目",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = AppleUi.colors.primaryText,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = "请返回后重新开始测验",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AppleUi.colors.secondaryText,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                QuizWordHeader(
+                    state = state,
+                    isSpeaking = isSpeaking,
+                    speechRate = speechRate,
+                    onToggleHintCovered = onToggleHintCovered,
+                    onSpeakAnswer = { tts.speak(state.question.expectedEn) },
+                    onRateDown = {
+                        tts.adjustRate(-0.25f)
+                        speechRate = tts.rate
+                    },
+                    onRateUp = {
+                        tts.adjustRate(0.25f)
+                        speechRate = tts.rate
+                    },
+                )
+                if (state.consolidationActive) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    QuizHintSection(state = state)
+                }
+            }
+        }
 
-        // ① 顶部题干：dictation/中选英看中文；英选中看英文（REQ-QUIZ-11）
-        QuizWordHeader(
-            state = state,
-            isSpeaking = isSpeaking,
-            speechRate = speechRate,
-            onToggleHintCovered = onToggleHintCovered,
-            onSpeakAnswer = { tts.speak(state.question.expectedEn) },
-            onRateDown = {
-                tts.adjustRate(-0.25f)
-                speechRate = tts.rate
-            },
-            onRateUp = {
-                tts.adjustRate(0.25f)
-                speechRate = tts.rate
-            },
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ② 中部：选择题 4 选项 / 默写输入框
-        if (state.question.isChoice && !state.consolidationActive) {
-            QuizChoiceSection(
-                state = state,
-                isCorrect = isCorrect,
-                onSubmitChoice = onSubmitChoice,
-                onNextQuestion = onNextQuestion,
-            )
-        } else {
-            QuizInputSection(
+        // 答题区固定在底部安全区；IME 弹出后随键盘上移，保留原有提交时机。
+        if (state.totalQuestions > 0) {
+            QuizAnswerDock(
                 state = state,
                 focusRequester = focusRequester,
                 practicePassed = practicePassed,
                 isCorrect = isCorrect,
                 onAnswerChange = onAnswerChange,
                 onSubmit = onSubmit,
+                onSubmitChoice = onSubmitChoice,
                 onNextQuestion = onNextQuestion,
             )
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ③ 底部：答错巩固时才显示提示信息
-        if (state.consolidationActive) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                QuizHintSection(
+/** 底部答题层：只承载当前一步的主操作。 */
+@Composable
+private fun QuizAnswerDock(
+    state: QuizUiState.Question,
+    focusRequester: FocusRequester,
+    practicePassed: Boolean,
+    isCorrect: Boolean,
+    onAnswerChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onSubmitChoice: (String) -> Unit,
+    onNextQuestion: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .imePadding(),
+        color = AppleUi.colors.glass,
+        tonalElevation = 0.dp,
+        shadowElevation = 10.dp,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+        ) {
+            if (state.question.isChoice && !state.consolidationActive) {
+                QuizChoiceSection(
                     state = state,
-                    practiceWrong = practiceWrong,
+                    isCorrect = isCorrect,
+                    onSubmitChoice = onSubmitChoice,
+                    onNextQuestion = onNextQuestion,
+                    modifier = Modifier
+                        .heightIn(max = 460.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
+            } else {
+                QuizInputSection(
+                    state = state,
+                    focusRequester = focusRequester,
                     practicePassed = practicePassed,
+                    isCorrect = isCorrect,
+                    onAnswerChange = onAnswerChange,
+                    onSubmit = onSubmit,
+                    onNextQuestion = onNextQuestion,
                 )
             }
         }
@@ -283,15 +359,22 @@ private fun QuizWordHeader(
     onRateDown: () -> Unit,
     onRateUp: () -> Unit,
 ) {
+    val colors = AppleUi.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(24.dp),
+        color = if (state.consolidationActive) {
+            WordFlipColors.extra.successContainer
+        } else {
+            Color.Transparent
+        },
+        tonalElevation = 0.dp,
     ) {
         if (state.consolidationActive) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -301,12 +384,14 @@ private fun QuizWordHeader(
                     Text(
                         text = "正确答案",
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.secondaryText,
+                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
                     FilterChip(
                         selected = state.hintPanelCovered,
                         onClick = onToggleHintCovered,
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp),
                         label = { Text(if (state.hintPanelCovered) "显示单词" else "盖住单词") },
                         leadingIcon = {
                             Icon(
@@ -339,9 +424,9 @@ private fun QuizWordHeader(
                     // 盖住英文：原单词位显示中文释义，便于对照默写
                     Text(
                         text = preferChinesePrompt(state.question.prompt.cn),
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = colors.accent,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -375,7 +460,7 @@ private fun QuizWordHeader(
             val promptText = when (type) {
                 "choice_en_cn" -> state.question.prompt.en?.takeIf { it.isNotBlank() }
                     ?: state.question.expectedEn.takeIf { it.isNotBlank() }
-                    ?: state.question.wordKey
+                    ?: ""
                 // 词书 cn 常夹带英文搭配（如 favour (prep.)；为收款人），从首个汉字起展示，避免「英文选英文」观感
                 "choice_cn_en" -> preferChinesePrompt(state.question.prompt.cn)
                 else -> preferChinesePrompt(state.question.prompt.cn)
@@ -388,22 +473,23 @@ private fun QuizWordHeader(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 8.dp, vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (hint != null) {
                     Text(
                         text = hint,
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.secondaryText,
                         textAlign = TextAlign.Center,
                     )
                 }
                 Text(
                     text = promptText,
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
+                    color = colors.primaryText,
                     textAlign = TextAlign.Center,
                 )
                 // 英选中才展示音标；中选英题干为中文，音标易造成「英文题干」错觉
@@ -418,43 +504,138 @@ private fun QuizWordHeader(
     }
 }
 
-/** 选择题：4 选项按钮；选中后 submit selectedKey */
+/** 选择题：整块选项点击后立即提交 selectedKey，不改变原有答案时机。 */
 @Composable
 private fun QuizChoiceSection(
     state: QuizUiState.Question,
     isCorrect: Boolean,
     onSubmitChoice: (String) -> Unit,
     onNextQuestion: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val options = state.question.options.orEmpty()
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (state.inputEnabled) {
-            options.forEach { option ->
-                OutlinedButton(
-                    onClick = { onSubmitChoice(option.key) },
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (options.isEmpty()) {
+            AppleGroupedSurface(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "暂无可用选项",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = AppleUi.colors.secondaryText,
                     modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        } else {
+            options.forEachIndexed { index, option ->
+                QuizChoiceOption(
+                    label = option.label,
+                    index = index,
+                    selected = state.userAnswer == option.key,
+                    correct = isCorrect && state.userAnswer == option.key,
+                    enabled = state.inputEnabled,
+                    onClick = { onSubmitChoice(option.key) },
+                )
+            }
+        }
+
+        when {
+            isCorrect -> {
+                QuizInlineFeedback(
+                    text = state.feedback?.message ?: "正确！",
+                    success = true,
+                )
+                ApplePrimaryAction(
+                    text = "下一题",
+                    onClick = onNextQuestion,
+                )
+            }
+            !state.inputEnabled -> {
+                Text(
+                    text = "正在提交答案…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppleUi.colors.secondaryText,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+/** 单个答案的整块触控面，选中、正确和禁用状态均保留语义反馈。 */
+@Composable
+private fun QuizChoiceOption(
+    label: String,
+    index: Int,
+    selected: Boolean,
+    correct: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = AppleUi.colors
+    val interactions = remember { MutableInteractionSource() }
+    val containerColor = when {
+        correct -> WordFlipColors.extra.successContainer
+        selected -> colors.accent.copy(alpha = 0.14f)
+        else -> colors.groupedSurface
+    }
+    val contentColor = when {
+        correct -> WordFlipColors.extra.success
+        selected -> colors.accent
+        enabled -> colors.primaryText
+        else -> colors.secondaryText.copy(alpha = 0.62f)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 56.dp)
+            .applePress(interactions, enabled)
+            .clickable(
+                enabled = enabled,
+                role = Role.RadioButton,
+                interactionSource = interactions,
+                indication = null,
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(16.dp),
+        color = containerColor,
+        tonalElevation = 0.dp,
+        shadowElevation = if (selected || correct) 1.dp else 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = contentColor.copy(alpha = 0.12f),
+                contentColor = contentColor,
+            ) {
+                Box(
+                    modifier = Modifier.size(28.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = option.label,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Start,
+                        text = ('A'.code + index).toChar().toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
-        } else if (isCorrect) {
             Text(
-                text = state.feedback?.message ?: "✓ 正确！",
-                style = MaterialTheme.typography.labelLarge,
-                color = WordFlipColors.extra.success,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = contentColor,
+                fontWeight = if (selected || correct) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.weight(1f),
             )
-            Button(
-                onClick = onNextQuestion,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("下一题")
-            }
         }
     }
 }
@@ -476,7 +657,7 @@ private fun PosPhRow(
             Text(
                 text = pos,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = AppleUi.colors.accent,
                 fontWeight = FontWeight.Bold,
             )
         }
@@ -488,7 +669,7 @@ private fun PosPhRow(
                 text = ph,
                 style = MaterialTheme.typography.bodyMedium,
                 fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = AppleUi.colors.secondaryText,
             )
         }
     }
@@ -508,14 +689,22 @@ private fun QuizSpeakControls(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedButton(onClick = onRateDown) { Text("−") }
+        OutlinedButton(
+            onClick = onRateDown,
+            modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp),
+        ) { Text("−") }
         Text(
             text = "${"%.1f".format(speechRate)}x",
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 12.dp),
         )
-        OutlinedButton(onClick = onRateUp) { Text("+") }
+        OutlinedButton(
+            onClick = onRateUp,
+            modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp),
+        ) { Text("+") }
         val infiniteTransition = rememberInfiniteTransition(label = "quizSpeakPulse")
         val pulseScale by infiniteTransition.animateFloat(
             initialValue = 1f,
@@ -530,15 +719,16 @@ private fun QuizSpeakControls(
             onClick = onSpeak,
             modifier = Modifier
                 .padding(start = 8.dp)
+                .size(48.dp)
                 .scale(if (isSpeaking) pulseScale else 1f),
             shape = CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
+                containerColor = AppleUi.colors.accent,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ),
         ) {
             Icon(
-                imageVector = Icons.Outlined.VolumeUp,
+                imageVector = Icons.AutoMirrored.Outlined.VolumeUp,
                 contentDescription = "朗读",
                 modifier = Modifier.size(22.dp),
             )
@@ -557,8 +747,8 @@ private fun QuizInputSection(
     onSubmit: () -> Unit,
     onNextQuestion: () -> Unit,
 ) {
-    // 答错进入巩固或练习未通过时，输入框标红
-    val inputIsError = state.consolidationActive && !practicePassed
+    // 只在巩固再次答错后标记错误，避免刚进入练习就显示负面反馈。
+    val inputIsError = state.consolidationActive && state.practiceHint == "再试一次"
 
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -568,6 +758,7 @@ private fun QuizInputSection(
             onValueChange = onAnswerChange,
             modifier = Modifier
                 .fillMaxWidth()
+                .defaultMinSize(minHeight = 64.dp)
                 .focusRequester(focusRequester),
             enabled = state.inputEnabled,
             isError = inputIsError,
@@ -585,47 +776,92 @@ private fun QuizInputSection(
         )
 
         if (state.consolidationActive) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(
-                    onClick = onSubmit,
-                    enabled = state.userAnswer.isNotBlank(),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(if (practicePassed) "再检查一次" else "检查练习")
-                }
-                OutlinedButton(
-                    onClick = onNextQuestion,
-                    enabled = practicePassed,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("下一题")
-                }
-            }
-        } else if (state.inputEnabled) {
-            Button(
+            QuizInlineFeedback(
+                text = when {
+                    practicePassed -> state.practiceHint.orEmpty()
+                    inputIsError -> state.practiceHint.orEmpty()
+                    else -> "正确后即可继续"
+                },
+                success = practicePassed,
+                subdued = !practicePassed && !inputIsError,
+            )
+            ApplePrimaryAction(
+                text = if (practicePassed) "再检查一次" else "检查练习",
                 onClick = onSubmit,
                 enabled = state.userAnswer.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("确认")
-            }
-        } else if (isCorrect) {
-            Text(
-                text = state.feedback?.message ?: "✓ 正确！",
-                style = MaterialTheme.typography.labelLarge,
-                color = WordFlipColors.extra.success,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
             )
-            Button(
+            OutlinedButton(
                 onClick = onNextQuestion,
-                modifier = Modifier.fillMaxWidth(),
+                enabled = practicePassed,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = AppleUi.colors.accent,
+                ),
             ) {
                 Text("下一题")
             }
+        } else if (state.inputEnabled) {
+            ApplePrimaryAction(
+                text = "确认答案",
+                onClick = onSubmit,
+                enabled = state.userAnswer.isNotBlank(),
+            )
+        } else if (isCorrect) {
+            QuizInlineFeedback(
+                text = state.feedback?.message ?: "✓ 正确！",
+                success = true,
+            )
+            ApplePrimaryAction(text = "下一题", onClick = onNextQuestion)
+        } else {
+            Text(
+                text = "正在提交答案…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = AppleUi.colors.secondaryText,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+/** 就地呈现提交或巩固反馈，不生成新的业务状态。 */
+@Composable
+private fun QuizInlineFeedback(
+    text: String,
+    success: Boolean,
+    subdued: Boolean = false,
+) {
+    if (text.isBlank()) return
+    val colors = AppleUi.colors
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = when {
+            subdued -> colors.elevatedSurface
+            success -> WordFlipColors.extra.successContainer
+            else -> MaterialTheme.colorScheme.errorContainer
+        },
+        tonalElevation = 0.dp,
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                color = when {
+                    subdued -> colors.secondaryText
+                    success -> WordFlipColors.extra.success
+                    else -> colors.destructive
+                },
+                fontWeight = if (subdued) FontWeight.Normal else FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
@@ -634,8 +870,6 @@ private fun QuizInputSection(
 @Composable
 private fun QuizHintSection(
     state: QuizUiState.Question,
-    practiceWrong: Boolean,
-    practicePassed: Boolean,
 ) {
     val detail = state.question.detail
 
@@ -645,33 +879,19 @@ private fun QuizHintSection(
         color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            when {
-                practicePassed -> {
-                    HintLine(
-                        text = state.practiceHint.orEmpty(),
-                        color = WordFlipColors.extra.success,
-                        bold = true,
-                    )
-                }
-                practiceWrong -> {
-                    HintLine(
-                        text = state.practiceHint.orEmpty(),
-                        color = MaterialTheme.colorScheme.error,
-                        bold = true,
-                    )
-                }
-                else -> {
-                    HintLine(text = "练习正确后才能进入下一题")
-                }
-            }
-
+            Text(
+                text = "需要巩固",
+                style = MaterialTheme.typography.titleMedium,
+                color = AppleUi.colors.destructive,
+                fontWeight = FontWeight.Bold,
+            )
             state.feedback?.message?.let { message ->
                 HintLine(
                     text = message,
-                    color = MaterialTheme.colorScheme.error,
+                    color = AppleUi.colors.destructive,
                     bold = true,
                 )
             }
@@ -742,21 +962,43 @@ private fun DetailSection(title: String, body: String) {
     }
 }
 
+/** 将进度与得分压缩为辅助信息，保留中央题干的唯一主焦点。 */
 @Composable
-private fun RowMeta(current: Int, total: Int, score: Int) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+private fun QuizProgressHeader(
+    current: Int,
+    total: Int,
+    score: Int,
+    progress: Float,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = "$current / $total",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = "得分 $score",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (total > 0) "第 $current 题 · 共 $total 题" else "暂无题目",
+                style = MaterialTheme.typography.labelLarge,
+                color = AppleUi.colors.secondaryText,
+            )
+            Text(
+                text = "$score 分",
+                style = MaterialTheme.typography.labelLarge,
+                color = AppleUi.colors.primaryText,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp),
+            color = AppleUi.colors.accent,
+            trackColor = AppleUi.colors.separator,
         )
     }
 }
@@ -768,79 +1010,132 @@ private fun QuizResultContent(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val accuracyText = "${"%.0f".format(result.accuracy * 100)}%"
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(AppleUi.colors.canvas)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(horizontal = 20.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Text(text = result.rating.emoji(), fontSize = 48.sp)
+        Text(text = result.rating.emoji(), fontSize = 44.sp)
         Text(
             text = result.rating.label(),
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineMedium,
+            color = AppleUi.colors.primaryText,
             fontWeight = FontWeight.Bold,
         )
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
+        AppleGroupedSurface(
             modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 22.dp),
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                ResultStatRow("答对", "${result.correctCount} 题")
-                ResultStatRow("答错", "${result.wrongCount} 题")
-                ResultStatRow(
-                    "正确率",
-                    "${FakeQuizData.accuracyPercent(result.accuracy)}%",
-                    valueColor = WordFlipColors.extra.success,
+                Text(
+                    text = "正确率",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = AppleUi.colors.secondaryText,
                 )
+                Text(
+                    text = accuracyText,
+                    style = MaterialTheme.typography.displayMedium,
+                    color = WordFlipColors.extra.success,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ResultStat(
+                        label = "答对",
+                        value = "${result.correctCount} 题",
+                        valueColor = WordFlipColors.extra.success,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ResultStat(
+                        label = "答错",
+                        value = "${result.wrongCount} 题",
+                        valueColor = AppleUi.colors.destructive,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
-        if (result.wrongWords.isNotEmpty()) {
+        if (result.wrongCards.isNotEmpty()) {
             Text(
                 text = "错题列表",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleLarge,
+                color = AppleUi.colors.primaryText,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier.fillMaxWidth(),
             )
-            result.wrongWords.forEach { wrong ->
-                Text(
-                    text = "${wrong.cn} → ${wrong.en}（你的答案：${wrong.userAnswer}）",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            result.wrongCards.forEach { wrong ->
+                AppleGroupedSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = wrong.en,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = AppleUi.colors.primaryText,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        wrong.cn?.takeIf { it.isNotBlank() }?.let { meaning ->
+                            Text(
+                                text = meaning,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = AppleUi.colors.secondaryText,
+                            )
+                        }
+                        Text(
+                            text = "你的答案：${wrong.userAnswer}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AppleUi.colors.destructive,
+                        )
+                    }
+                }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-            Text("再来一次")
-        }
-        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+        Spacer(modifier = Modifier.height(4.dp))
+        ApplePrimaryAction(text = "再来一次", onClick = onRetry)
+        OutlinedButton(
+            onClick = onBack,
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 48.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = AppleUi.colors.accent),
+        ) {
             Text("返回")
         }
     }
 }
 
 @Composable
-private fun ResultStatRow(
+private fun ResultStat(
     label: String,
     value: String,
-    valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onPrimaryContainer,
+    valueColor: Color,
+    modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Text(text = label, style = MaterialTheme.typography.bodyLarge)
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = valueColor,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = AppleUi.colors.secondaryText,
         )
     }
 }
@@ -857,10 +1152,6 @@ fun parseQuizSource(value: String): QuizSource {
     }
 }
 
-/**
- * 词书 cn 常以英文搭配开头（如 `favour (prep.)；为收款人`）。
- * 中选英题干从首个汉字截取，避免题干看起来像英文、再配英文选项形成「英文选英文」。
- */
 /**
  * 词书 cn 常以英文搭配开头（如 `favour (prep.)；为收款人`）。
  * 中选英题干从首个汉字截取，避免题干看起来像英文、再配英文选项形成「英文选英文」。

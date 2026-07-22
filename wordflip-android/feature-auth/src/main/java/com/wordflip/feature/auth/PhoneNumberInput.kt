@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DropdownMenuItem
@@ -163,6 +164,7 @@ fun VerificationCodeInput(
                 onClick = onSendClick,
                 enabled = enabled && countdownSeconds == 0,
                 contentPadding = PaddingValues(horizontal = 12.dp),
+                modifier = Modifier.heightIn(min = 48.dp),
             ) {
                 Text(
                     text = if (countdownSeconds > 0) "${countdownSeconds}s" else "发送",

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -19,6 +20,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.wordflip.core.ui.component.WordFlipToastHost
 import com.wordflip.core.ui.component.rememberWordFlipToast
+import com.wordflip.core.ui.apple.AppleUi
 
 /**
  * 注册页（P0-A04）：TopBar 返回 + 紧凑品牌 + 单卡片（账号/验证码/密码 + 主 CTA）。
@@ -101,6 +104,9 @@ fun RegisterScreen(
         topBar = {
             TopAppBar(
                 title = { },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = AppleUi.colors.canvas,
+                ),
                 navigationIcon = {
                     IconButton(onClick = onNavigateToLogin, enabled = !isLoading) {
                         Icon(
@@ -152,6 +158,7 @@ fun RegisterScreen(
                         onClick = { mode = AuthFormValidation.RegisterMode.EMAIL },
                         enabled = !isLoading,
                         shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        modifier = Modifier.heightIn(min = 48.dp),
                     ) {
                         Text("邮箱")
                     }
@@ -160,6 +167,7 @@ fun RegisterScreen(
                         onClick = { mode = AuthFormValidation.RegisterMode.PHONE },
                         enabled = !isLoading,
                         shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        modifier = Modifier.heightIn(min = 48.dp),
                     ) {
                         Text("手机")
                     }

@@ -150,8 +150,9 @@ class GroupDetailViewModel @Inject constructor(
 
     fun regenerateStain(wordKey: String) {
         val content = _uiState.value as? GroupDetailUiState.Content ?: return
+        val cardId = content.stainCards.firstOrNull { it.wordKey == wordKey }?.cardId ?: return
         viewModelScope.launch {
-            wordMediaRepository.regenerateStain(wordKey, content.selectedStainTypes.toList())
+            wordMediaRepository.regenerateStain(cardId, content.selectedStainTypes.toList())
                 .onSuccess { stain ->
                     applyStainToCard(wordKey, stain)
                     _events.emit(GroupDetailUiEvent.Toast("已更换污渍"))
@@ -163,11 +164,11 @@ class GroupDetailViewModel @Inject constructor(
     fun toggleStainsHidden() {
         val content = _uiState.value as? GroupDetailUiState.Content ?: return
         val nextHidden = !content.stainsHidden
-        val keys = content.stainCards.map { it.wordKey }
+        val cards = content.stainCards.map { it.wordKey to it.cardId }
         viewModelScope.launch {
             var failed = 0
-            keys.forEach { key ->
-                wordMediaRepository.setStainHidden(key, nextHidden)
+            cards.forEach { (key, cardId) ->
+                wordMediaRepository.setStainHidden(cardId, nextHidden)
                     .onSuccess { applyStainToCard(key, it) }
                     .onFailure { failed++ }
             }
@@ -211,7 +212,11 @@ class GroupDetailViewModel @Inject constructor(
         ph = summary.ph,
         enGloss = summary.enGloss,
         senses = summary.senses,
-        mastery = mastery,
+        cardId = summary.cardId,
+        lexemeId = summary.lexemeId,
+        bookId = summary.bookId,
+        version = summary.version,
+        progress = progress,
     )
 
     private inline fun updateContent(block: (GroupDetailUiState.Content) -> GroupDetailUiState.Content) {

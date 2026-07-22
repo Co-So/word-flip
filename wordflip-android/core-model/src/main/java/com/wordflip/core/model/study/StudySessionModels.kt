@@ -6,7 +6,7 @@ package com.wordflip.core.model.study
 data class StudySessionReportRequest(
     val groupId: Int,
     val durationSec: Int? = null,
-    val wordsViewed: Int? = null,
+    val cardsViewed: Int? = null,
     val completedAt: String? = null,
 )
 

@@ -11,10 +11,8 @@ import com.wordflip.core.model.media.StainType
 import com.wordflip.core.model.study.WordCard
 import com.wordflip.core.model.study.WordImagePayload
 import com.wordflip.core.model.study.WordStainPayload
-import com.wordflip.core.network.api.DictsApi
 import com.wordflip.core.network.media.WordMediaRepository
 import com.wordflip.core.network.study.StudyRepository
-import com.wordflip.core.network.word.WordLookupRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -36,8 +34,6 @@ class StudyViewModel @Inject constructor(
     @ApplicationContext appContext: Context,
     private val studyRepository: StudyRepository,
     private val wordMediaRepository: WordMediaRepository,
-    private val wordLookupRepository: WordLookupRepository,
-    private val dictsApi: DictsApi,
 ) : ViewModel() {
 
     private val groupId: Int = checkNotNull(savedStateHandle["groupId"])
@@ -92,22 +88,9 @@ class StudyViewModel @Inject constructor(
                         allFlippedToBack = false,
                         dictionaries = defaults,
                     )
-                    // 异步加载服务端词典列表
-                    loadDictionariesFromServer()
                 }
                 .onFailure { error ->
                     _uiState.value = StudyUiState.Error(error.message ?: "加载学习数据失败")
-                }
-        }
-    }
-
-    private fun loadDictionariesFromServer() {
-        viewModelScope.launch {
-            runCatching { dictsApi.listDictionaries() }
-                .onSuccess { dicts ->
-                    if (dicts.isNotEmpty()) {
-                        updateContent { it.copy(dictionaries = dicts) }
-                    }
                 }
         }
     }
@@ -281,26 +264,27 @@ class StudyViewModel @Inject constructor(
     }
 
     fun openDetail(wordKey: String) {
-        updateContent { it.copy(detailWordKey = wordKey, dictLookup = DictLookupState.Idle) }
+        updateContent { it.copy(detailWordKey = wordKey) }
     }
 
     fun closeDetail() {
-        updateContent { it.copy(detailWordKey = null, dictLookup = DictLookupState.Idle) }
+        updateContent { it.copy(detailWordKey = null) }
     }
 
     /**
-     * 详情抽屉内切换词典查看释义（不影响全局 activeDictId）。
+     * 已废弃的详情来源切换实现，仅保留历史说明。
      * 切换时异步加载指定词典的释义，加载中展示骨架屏。
      */
-    fun switchDictInDetail(dictId: String) {
+    /* 旧详情词典切换逻辑已由学习卡 sourceMaterials 分区展示替代。
+    fun removedSourceSwitch(sourceId: String) {
         val state = _uiState.value as? StudyUiState.Content ?: return
         val wordKey = state.detailWordKey ?: return
         val currentWord = currentWord(wordKey) ?: return
 
         // 切回默认词典（与当前卡片一致）时直接清空，展示原始释义
         val defaultDictId = state.dictionaries
-            .find { it.id == dictId }
-            ?.let { dictId }
+            .find { it.id == sourceId }
+            ?.let { sourceId }
             ?: currentWord.senses.firstOrNull()?.let { "wordflip_curated" }
             ?: "wordflip_curated"
 
@@ -311,19 +295,19 @@ class StudyViewModel @Inject constructor(
         updateContent { it.copy(dictLookup = DictLookupState.Loading) }
 
         viewModelScope.launch {
-            wordLookupRepository.lookupWord(wordKey, dictId)
+            removedSourceLookup(wordKey, sourceId)
                 .onSuccess { result ->
                     updateContent {
                         it.copy(
                             dictLookup = DictLookupState.Success(
-                                dictId = result.dictId,
+                                sourceId = result.sourceId,
                                 dictName = result.dictName,
                                 cn = result.cn,
                                 pos = result.pos,
                                 ph = result.ph,
                                 enGloss = result.enGloss,
                                 senses = result.senses,
-                                requestedDictId = dictId,
+                                requestedSourceId = sourceId,
                             ),
                         )
                     }
@@ -346,6 +330,7 @@ class StudyViewModel @Inject constructor(
         updateContent { it.copy(dictionaries = dictionaries) }
     }
 
+    */
     fun dismissGuide() {
         viewModelScope.launch {
             guidePreferences.dismissGuide()
@@ -423,7 +408,7 @@ class StudyViewModel @Inject constructor(
                     return@launch
                 }
                 wordMediaRepository.uploadImage(
-                    wordKey = wordKey,
+                    cardId = currentWord(wordKey)?.cardId ?: return@launch,
                     fileBytes = bytes,
                     mimeType = guessMime(pendingUri),
                     transform = transform,
@@ -431,7 +416,12 @@ class StudyViewModel @Inject constructor(
                     showCn = showCn,
                 )
             } else {
-                wordMediaRepository.patchImageTransform(wordKey, transform, filters, showCn)
+                wordMediaRepository.patchImageTransform(
+                    currentWord(wordKey)?.cardId ?: return@launch,
+                    transform,
+                    filters,
+                    showCn,
+                )
             }
             result
                 .onSuccess { payload ->
@@ -459,7 +449,10 @@ class StudyViewModel @Inject constructor(
         allowedTypes: List<StainType> = StainType.entries,
     ) {
         viewModelScope.launch {
-            wordMediaRepository.regenerateStain(wordKey, allowedTypes.ifEmpty { StainType.entries })
+            wordMediaRepository.regenerateStain(
+                currentWord(wordKey)?.cardId ?: return@launch,
+                allowedTypes.ifEmpty { StainType.entries },
+            )
                 .onSuccess { applyStainToWord(wordKey, it) }
                 .onFailure { _events.emit(StudyUiEvent.Toast(it.message ?: "更换污渍失败")) }
         }
@@ -469,7 +462,7 @@ class StudyViewModel @Inject constructor(
     fun toggleStainVisibility(wordKey: String) {
         val word = currentWord(wordKey) ?: return
         viewModelScope.launch {
-            wordMediaRepository.setStainHidden(wordKey, !word.stain.hidden)
+            wordMediaRepository.setStainHidden(word.cardId, !word.stain.hidden)
                 .onSuccess { applyStainToWord(wordKey, it) }
                 .onFailure { _events.emit(StudyUiEvent.Toast(it.message ?: "更新污渍失败")) }
         }
@@ -488,7 +481,7 @@ class StudyViewModel @Inject constructor(
         val transform = word.image.transform ?: ImageTransform()
         val filters = word.image.filters ?: ImageFilters()
         viewModelScope.launch {
-            wordMediaRepository.patchImageTransform(wordKey, transform, filters, nextShow)
+            wordMediaRepository.patchImageTransform(word.cardId, transform, filters, nextShow)
                 .onSuccess {
                     applyImageToWord(wordKey, it)
                     _events.emit(StudyUiEvent.Toast(if (nextShow) "已显示中文" else "已隐藏中文"))

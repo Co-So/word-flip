@@ -6,17 +6,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.zIndex
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Spellcheck
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,33 +23,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.wordflip.core.image.ImageEditorScreen
 import com.wordflip.core.image.rememberImagePickerLaunchers
 import com.wordflip.core.model.media.ImageFilters
 import com.wordflip.core.model.media.ImageTransform
+import com.wordflip.core.ui.apple.AppleUi
 import com.wordflip.core.ui.component.WordFlipBottomSheet
-import com.wordflip.core.ui.component.FlipCard
 import com.wordflip.core.ui.component.NetworkErrorView
 import com.wordflip.core.ui.component.WordFlipToastHost
 import com.wordflip.core.ui.component.WordFlipTopBar
 import com.wordflip.core.ui.component.WordFlipTopBarAction
 import com.wordflip.core.ui.component.rememberWordFlipToast
 import com.wordflip.feature.settings.SettingsPreferences
+import kotlinx.coroutines.launch
 
 /**
- * 卡片学习页（REQ-STUDY-1~3）：TopBar + 工具栏 + 2 列 FlipCard 网格。
+ * 卡片学习页（REQ-STUDY-1~3）：在三种布局中共用同一学习状态。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +64,11 @@ fun StudyScreen(
 ) {
     val context = LocalContext.current
     val reduceMotion = remember(context) { ShuffleMotion.isReduceMotionEnabled(context) }
+    val viewModePreferences = remember(context) {
+        StudyViewModePreferences(context.applicationContext)
+    }
+    val viewMode by viewModePreferences.modeFlow.collectAsState(initial = StudyViewMode.HYBRID)
+    val scope = rememberCoroutineScope()
     val viewModel: StudyViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
     // 与 MainActivity 同一 DataStore 实例，Compose 层实时读开关
@@ -128,6 +129,12 @@ fun StudyScreen(
                         title = groupName.ifBlank { "学习" },
                         onNavigateBack = handleNavigateBack,
                         actions = {
+                            StudyModePicker(
+                                mode = viewMode,
+                                onModeSelected = { selected ->
+                                    scope.launch { viewModePreferences.setMode(selected) }
+                                },
+                            )
                             WordFlipTopBarAction(
                                 icon = Icons.Outlined.Spellcheck,
                                 contentDescription = "默写测验",
@@ -158,77 +165,90 @@ fun StudyScreen(
                         )
                     }
                     is StudyUiState.Content -> {
-                        StudyContent(
-                            state = state,
-                            reduceMotion = reduceMotion,
-                            onShuffle = viewModel::shuffle,
-                            onFlipAll = {
-                                viewModel.flipAll(toBack = !state.allFlippedToBack)
-                            },
-                            onCardClick = { wordKey ->
-                                if (state.detailWordKey == null) {
-                                    viewModel.toggleFlip(wordKey)
-                                    if (autoSpeak) {
-                                        viewModel.currentWord(wordKey)?.let { tts.speakForCard(it.en) }
+                        // 空分组先短路，避免 pager 访问不存在的页面索引。
+                        if (state.orderedWords.isEmpty()) {
+                            StudyEmptyState(
+                                title = "这个分组还没有学习卡",
+                                message = "返回分组后添加已发布学习卡再继续。",
+                                onNavigateBack = handleNavigateBack,
+                            )
+                        } else {
+                            StudyModeContent(
+                                mode = viewMode,
+                                state = state,
+                                reduceMotion = reduceMotion,
+                                onShuffle = viewModel::shuffle,
+                                onFlipAll = {
+                                    viewModel.flipAll(toBack = !state.allFlippedToBack)
+                                },
+                                onCardClick = { wordKey ->
+                                    // 点击事件读取 StateFlow 实时值，避免连续点击复用 Compose 捕获快照
+                                    val currentState = viewModel.uiState.value as? StudyUiState.Content
+                                    if (currentState != null && currentState.detailWordKey == null) {
+                                        val result = reduceStudyFlip(
+                                            wasFlipped = currentState.flipStates[wordKey] == true,
+                                            autoSpeakEnabled = autoSpeak,
+                                        )
+                                        viewModel.toggleFlip(wordKey)
+                                        if (result.shouldAutoSpeak) {
+                                            viewModel.currentWord(wordKey)?.let { tts.speakForCard(it.en) }
+                                        }
                                     }
-                                }
-                            },
-                            onCardLongClick = viewModel::openDetail,
-                        )
-                        StudyDetailSheet(
-                            word = viewModel.detailWord(),
-                            visible = state.detailWordKey != null && !isEditorOpen,
-                            speechRate = displayRate,
-                            isDetailSpeaking = isDetailSpeaking,
-                            dictionaries = state.dictionaries,
-                            dictLookup = state.dictLookup,
-                            onDismiss = viewModel::closeDetail,
-                            onSpeak = {
-                                viewModel.detailWord()?.let { tts.speakForDetail(it.en) }
-                            },
-                            onRateDown = {
-                                tts.adjustDetailRate(-0.25f)
-                                displayRate = tts.detailRate
-                            },
-                            onRateUp = {
-                                tts.adjustDetailRate(0.25f)
-                                displayRate = tts.detailRate
-                            },
-                            onSwitchDict = viewModel::switchDictInDetail,
-                            onChangeStain = viewModel::changeStain,
-                            onToggleStainVisibility = viewModel::toggleStainVisibility,
-                            onToggleShowCnOnImage = viewModel::toggleShowCnOnImage,
-                            onTakePhoto = { key ->
-                                viewModel.markPickTarget(key)
-                                pickLaunchers.takePhoto()
-                            },
-                            onPickGallery = { key ->
-                                viewModel.markPickTarget(key)
-                                pickLaunchers.pickFromGallery()
-                            },
-                            onEditPhoto = viewModel::openImageEditor,
-                        )
-                        val pickSheetKey = state.imagePickSheetWordKey
-                        if (pickSheetKey != null) {
-                            StudyImagePickSheet(
-                                visible = true,
-                                onDismiss = viewModel::closeImagePickSheet,
-                                onPickGallery = {
-                                    viewModel.markPickTarget(pickSheetKey)
-                                    pickLaunchers.pickFromGallery()
-                                    viewModel.closeImagePickSheet()
                                 },
-                                onTakePhoto = {
-                                    viewModel.markPickTarget(pickSheetKey)
+                                onCardLongClick = viewModel::openDetail,
+                            )
+                            StudyDetailSheet(
+                                word = viewModel.detailWord(),
+                                visible = state.detailWordKey != null && !isEditorOpen,
+                                speechRate = displayRate,
+                                isDetailSpeaking = isDetailSpeaking,
+                                onDismiss = viewModel::closeDetail,
+                                onSpeak = {
+                                    viewModel.detailWord()?.let { tts.speakForDetail(it.en) }
+                                },
+                                onRateDown = {
+                                    tts.adjustDetailRate(-0.25f)
+                                    displayRate = tts.detailRate
+                                },
+                                onRateUp = {
+                                    tts.adjustDetailRate(0.25f)
+                                    displayRate = tts.detailRate
+                                },
+                                onChangeStain = viewModel::changeStain,
+                                onToggleStainVisibility = viewModel::toggleStainVisibility,
+                                onToggleShowCnOnImage = viewModel::toggleShowCnOnImage,
+                                onTakePhoto = { key ->
+                                    viewModel.markPickTarget(key)
                                     pickLaunchers.takePhoto()
-                                    viewModel.closeImagePickSheet()
                                 },
+                                onPickGallery = { key ->
+                                    viewModel.markPickTarget(key)
+                                    pickLaunchers.pickFromGallery()
+                                },
+                                onEditPhoto = viewModel::openImageEditor,
+                            )
+                            val pickSheetKey = state.imagePickSheetWordKey
+                            if (pickSheetKey != null) {
+                                StudyImagePickSheet(
+                                    visible = true,
+                                    onDismiss = viewModel::closeImagePickSheet,
+                                    onPickGallery = {
+                                        viewModel.markPickTarget(pickSheetKey)
+                                        pickLaunchers.pickFromGallery()
+                                        viewModel.closeImagePickSheet()
+                                    },
+                                    onTakePhoto = {
+                                        viewModel.markPickTarget(pickSheetKey)
+                                        pickLaunchers.takePhoto()
+                                        viewModel.closeImagePickSheet()
+                                    },
+                                )
+                            }
+                            StudyGuideOverlay(
+                                visible = state.showGuide,
+                                onDismiss = viewModel::dismissGuide,
                             )
                         }
-                        StudyGuideOverlay(
-                            visible = state.showGuide,
-                            onDismiss = viewModel::dismissGuide,
-                        )
                     }
                 }
             }
@@ -267,135 +287,41 @@ fun StudyScreen(
     }
 }
 
+/** 学习分组无可用卡片时的明确退路。 */
 @Composable
-private fun StudyContent(
-    state: StudyUiState.Content,
-    reduceMotion: Boolean,
-    onShuffle: (ShuffleViewportAnchor) -> Unit,
-    onFlipAll: () -> Unit,
-    onCardClick: (String) -> Unit,
-    onCardLongClick: (String) -> Unit,
+private fun StudyEmptyState(
+    title: String,
+    message: String,
+    onNavigateBack: () -> Unit,
 ) {
-    val gridState = rememberLazyGridState()
-    val density = LocalDensity.current
-    val horizontalPadding = 16.dp
-    val verticalPadding = 8.dp
-    val gap = 12.dp
-
-    // 打乱动画结束后，平滑滚动回顶部，让用户从第一屏开始看新顺序
-    LaunchedEffect(state.isShuffling, state.shuffleSettling) {
-        if (!state.isShuffling && !state.shuffleSettling && state.shuffleEpoch > 0) {
-            gridState.animateScrollToItem(index = 0)
-        }
-    }
-
-    BoxWithConstraints(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { clip = false },
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        val contentWidth = maxWidth - horizontalPadding * 2
-        val cardWidth = (contentWidth - gap) / 2
-        val cardHeight = cardWidth * 4.2f / 3f
-        val gridSpec = remember(maxWidth, cardWidth) {
-            with(density) {
-                ShuffleGridSpec(
-                    cardWidthPx = cardWidth.toPx(),
-                    cardHeightPx = cardHeight.toPx(),
-                    gapPx = gap.toPx(),
-                )
-            }
-        }
-
-        androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxSize()) {
-            StudyToolbar(
-                allFlippedToBack = state.allFlippedToBack,
-                isShuffling = state.isShuffling,
-                onShuffle = {
-                    val layoutInfo = gridState.layoutInfo
-                    val measuredByWordKey = layoutInfo.visibleItemsInfo.mapNotNull { item ->
-                        val word = state.orderedWords.getOrNull(item.index) ?: return@mapNotNull null
-                        word.wordKey to (
-                            item.offset.x + item.size.width / 2f to
-                                item.offset.y + item.size.height / 2f
-                            )
-                    }.toMap()
-                    val anchor = with(density) {
-                        val base = ShuffleViewportAnchor(
-                            centerXPx = layoutInfo.viewportSize.width / 2f,
-                            centerYPx = layoutInfo.viewportStartOffset.toFloat() +
-                                layoutInfo.viewportSize.height / 2f,
-                            contentPaddingLeftPx = horizontalPadding.toPx(),
-                            contentPaddingTopPx = verticalPadding.toPx(),
-                            viewportStartOffsetPx = layoutInfo.viewportStartOffset,
-                            measuredCentersByWordKey = measuredByWordKey,
-                        )
-                        base.copy(
-                            centersByIndexAtStart = ShuffleMotion.precomputeCentersByIndex(
-                                cardCount = state.orderedWords.size,
-                                spec = gridSpec,
-                                anchor = base,
-                            ),
-                        )
-                    }
-                    onShuffle(anchor)
-                },
-                onFlipAll = onFlipAll,
-            )
-            LazyVerticalGrid(
-                state = gridState,
-                columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(horizontal = horizontalPadding, vertical = verticalPadding),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-                verticalArrangement = Arrangement.spacedBy(gap),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { clip = false },
-                userScrollEnabled = !state.isShuffling,
-            ) {
-                itemsIndexed(
-                    items = state.orderedWords,
-                    key = { _, word -> word.wordKey },
-                ) { index, word ->
-                    val flipped = state.flipStates[word.wordKey] == true
-                    Box(
-                        modifier = Modifier
-                            .shuffleCardMotion(
-                                wordKey = word.wordKey,
-                                phase = state.shufflePhase,
-                                shuffleEpoch = state.shuffleEpoch,
-                                index = index,
-                                motion = state.shuffleMotions[word.wordKey],
-                                gridSpec = gridSpec,
-                                viewportAnchor = state.shuffleViewportAnchor,
-                                shuffleSettling = state.shuffleSettling,
-                                reduceMotion = reduceMotion,
-                                dealStartOffset = state.shuffleDealStartOffsets[word.wordKey],
-                            ),
-                    ) {
-                        FlipCard(
-                            en = word.en,
-                            cn = word.cn,
-                            ph = word.ph,
-                            pos = word.pos,
-                            wordKey = word.wordKey,
-                            stainSeed = word.stain.seed,
-                            stainHidden = word.stain.hidden,
-                            stainConfig = word.stain.config,
-                            hasImage = word.image.hasImage,
-                            imageUrl = word.image.imageUrl,
-                            imageTransform = word.image.transform,
-                            imageFilters = word.image.filters,
-                            showCnOnImage = word.image.showCnOnImage,
-                            isFlipped = flipped,
-                            onClick = { onCardClick(word.wordKey) },
-                            onLongClick = { onCardLongClick(word.wordKey) },
-                            modifier = Modifier,
-                            interactionEnabled = !state.isShuffling,
-                        )
-                    }
-                }
-            }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            color = AppleUi.colors.primaryText,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = message,
+            modifier = Modifier.padding(top = 8.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = AppleUi.colors.secondaryText,
+            textAlign = TextAlign.Center,
+        )
+        Button(
+            onClick = onNavigateBack,
+            modifier = Modifier
+                .padding(top = 20.dp)
+                .heightIn(min = 48.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AppleUi.colors.accent),
+        ) {
+            Text("返回分组")
         }
     }
 }

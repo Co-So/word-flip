@@ -2,7 +2,7 @@ package com.wordflip.core.model.quiz
 
 import com.wordflip.core.model.settings.QuestionType
 import com.wordflip.core.model.settings.apiValue
-import com.wordflip.core.model.study.MasterySnapshot
+import com.wordflip.core.model.study.FsrsMemory
 import com.wordflip.core.model.study.WordDetail
 
 /**
@@ -38,7 +38,8 @@ data class QuizOption(
  */
 data class QuizQuestionItem(
     val questionIndex: Int,
-    val wordKey: String,
+    val cardId: Long,
+    val lexemeId: Long,
     val expectedEn: String,
     val prompt: QuizPrompt,
     /** 题型；缺省默写以兼容旧响应 */
@@ -65,13 +66,14 @@ data class QuizAnswerFeedback(
     val expectedEn: String? = null,
     /** 按题型展示的正确答案文案 */
     val expectedAnswer: String? = null,
-    val masteryBefore: MasterySnapshot? = null,
-    val masteryAfter: MasterySnapshot? = null,
+    val masteryBefore: FsrsMemory? = null,
+    val masteryAfter: FsrsMemory? = null,
 )
 
-/** 错题条目，对齐 openapi `QuizResult.wrongWords` */
-data class QuizWrongWord(
-    val wordKey: String,
+/** 错题条目，对齐 openapi `QuizResult.wrongCards`。 */
+data class QuizWrongCard(
+    val cardId: Long,
+    val lexemeId: Long,
     val en: String,
     val cn: String? = null,
     val userAnswer: String,
@@ -86,7 +88,7 @@ data class QuizResultData(
     val wrongCount: Int,
     val accuracy: Float,
     val rating: QuizRating,
-    val wrongWords: List<QuizWrongWord>,
+    val wrongCards: List<QuizWrongCard>,
 )
 
 /** 结果评价档，对齐 openapi `QuizResult.rating`（REQ-QUIZ-9） */

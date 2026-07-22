@@ -2,13 +2,10 @@ package com.wordflip.feature.auth
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -17,6 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.wordflip.core.ui.apple.ApplePrimaryAction
+import com.wordflip.core.ui.apple.AppleUi
 
 /**
  * Auth 页底部次要导航：「没有账号？注册」类 inline 文案。
@@ -32,6 +31,7 @@ fun AuthFooterLink(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .padding(top = 24.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -39,9 +39,13 @@ fun AuthFooterLink(
         Text(
             text = prompt,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = AppleUi.colors.secondaryText,
         )
-        TextButton(onClick = onClick, enabled = enabled) {
+        TextButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier.heightIn(min = 48.dp),
+        ) {
             Text(actionLabel)
         }
     }
@@ -58,20 +62,23 @@ fun AuthPrimaryButton(
     isLoading: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Button(
+    ApplePrimaryAction(
+        text = text,
         onClick = onClick,
         enabled = enabled && !isLoading,
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp),
-    ) {
-        if (isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                strokeWidth = 2.dp,
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-        Text(text)
-    }
+        leadingContent = if (isLoading) {
+            {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+        } else {
+            null
+        },
+    )
 }

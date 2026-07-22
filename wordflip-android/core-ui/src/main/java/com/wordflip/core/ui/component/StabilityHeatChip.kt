@@ -77,6 +77,29 @@ fun StabilityHeatChip(
     }
 }
 
+/** 新学习卡链路使用的热力展示；档位由服务端权威计算。 */
+@Composable
+fun StabilityHeatChip(
+    heatLevel: Int,
+    modifier: Modifier = Modifier,
+) {
+    val isDark = isSystemInDarkTheme()
+    val heat = heatLevel.coerceIn(0, 4)
+    val style = heatStyle(heat, isDark)
+    Row(
+        modifier = modifier.semantics { contentDescription = "稳定性，${style.label}" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        HeatMeter(heatLevel = heat, isDark = isDark)
+        Text(
+            text = style.label,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
+            color = style.foreground,
+        )
+    }
+}
+
 /**
  * 薄弱角标：单轨用对应 skill；combined/free 时任一侧为 fuzzy/unknown（unknown 优先）。
  */

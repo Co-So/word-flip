@@ -2,9 +2,9 @@ package com.wordflip.core.model.group
 
 /**
  * 创建自定义分组请求，对齐 openapi `CreateCustomGroupRequest`。
- * wordKeys 须来自未入组词池（GET /words/unassigned）。
+ * cardIds 须来自当前计划未入组卡片池。
  */
 data class CreateCustomGroupRequest(
-    val wordKeys: List<String>,
+    val cardIds: List<Long>,
     val name: String? = null,
 )

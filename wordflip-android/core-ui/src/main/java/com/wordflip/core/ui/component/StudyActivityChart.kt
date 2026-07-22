@@ -18,6 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -42,9 +44,26 @@ fun StudyActivityChart(
     val weeks = remember(days) { buildWeeklyActivity(days).takeLast(12) }
     val totalActiveDays = remember(days) { days.count { it.level > 0 } }
     val monthFormatter = remember { DateTimeFormatter.ofPattern("M/d") }
+    val chartDescription = remember(weeks, totalActiveDays) {
+        buildString {
+            append("近三个月学习活动，共学习 $totalActiveDays 天。")
+            if (weeks.isNotEmpty()) {
+                append("每周活跃天数：")
+                append(
+                    weeks.joinToString(separator = "；") { week ->
+                        "${monthFormatter.format(week.weekStart)} 开始的一周 ${week.activeDays} 天"
+                    },
+                )
+            }
+        }
+    }
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = chartDescription
+            },
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,

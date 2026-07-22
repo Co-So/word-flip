@@ -1,8 +1,8 @@
 package com.wordflip.core.model.group
 
-import com.wordflip.core.model.study.MasterySnapshot
+import com.google.gson.annotations.SerializedName
+import com.wordflip.core.model.study.CardProgress
 import com.wordflip.core.model.study.Sense
-import com.wordflip.core.model.study.WordProgressSnapshot
 import com.wordflip.core.model.study.WordSummary
 
 /** 分组来源，对齐 openapi `GroupDetail.source` */
@@ -44,17 +44,15 @@ data class GroupDetail(
 )
 
 /**
- * 分组单词列表项，对齐 openapi `GroupWordsResponse.words[]`。
- * 掌握度只读展示，仅测验写入（REQ-GROUP）；热力优先 [progress.displayHeatLevel]。
+ * 分组学习卡列表项；双轨 FSRS 和展示热力均由服务端返回。
  */
 data class GroupWordItem(
     val summary: WordSummary,
-    val mastery: MasterySnapshot,
-    val progress: WordProgressSnapshot? = null,
+    val progress: CardProgress,
 ) {
-    /** 组详情主展示热力档：优先 progress 聚合值 */
+    /** 组详情只展示服务端计算的热力档。 */
     val displayHeatLevel: Int
-        get() = progress?.displayHeatLevel ?: mastery.heatLevel
+        get() = progress.displayHeatLevel
 }
 
 /** GET /groups 响应 */
@@ -63,19 +61,21 @@ data class GroupListResponse(
 )
 
 /**
- * openapi `GroupWordsResponse.words[]` 为 WordSummary + mastery 扁平 JSON；
+ * OpenAPI `GroupCardsResponse.cards[]` 为扁平 LearningCardDetail；
  * Gson 反序列化后用 [toGroupWordItem] 转为 UI 层 [GroupWordItem]。
  */
 data class GroupWordItemDto(
+    val cardId: Long,
+    val lexemeId: Long,
+    val bookId: Long,
+    val version: Int,
     val wordKey: String,
     val en: String,
     val cn: String? = null,
     val pos: String? = null,
-    val ph: String? = null,
-    val enGloss: String? = null,
+    @SerializedName("phonetic") val ph: String? = null,
     val senses: List<Sense> = emptyList(),
-    val mastery: MasterySnapshot,
-    val progress: WordProgressSnapshot? = null,
+    val progress: CardProgress,
 ) {
     fun toGroupWordItem(): GroupWordItem = GroupWordItem(
         summary = WordSummary(
@@ -84,19 +84,21 @@ data class GroupWordItemDto(
             cn = cn.orEmpty(),
             pos = pos,
             ph = ph,
-            enGloss = enGloss,
             senses = senses,
+            cardId = cardId,
+            lexemeId = lexemeId,
+            bookId = bookId,
+            version = version,
         ),
-        mastery = mastery,
         progress = progress,
     )
 }
 
-/** GET /groups/{groupId}/words 分页响应 */
+/** GET /groups/{groupId}/cards 分页响应 */
 data class GroupWordsResponse(
     val page: Int = 0,
     val size: Int = 0,
     val totalElements: Long = 0,
     val totalPages: Int = 0,
-    val words: List<GroupWordItemDto> = emptyList(),
+    @SerializedName("cards") val words: List<GroupWordItemDto> = emptyList(),
 )

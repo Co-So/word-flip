@@ -8,9 +8,9 @@ sealed interface CustomGroupUiState {
 
     data class Content(
         val words: List<WordSummary>,
-        val selectedKeys: Set<String>,
+        val selectedCardIds: Set<Long>,
     ) : CustomGroupUiState {
-        val selectedCount: Int get() = selectedKeys.size
+        val selectedCount: Int get() = selectedCardIds.size
         val isEmpty: Boolean get() = words.isEmpty()
     }
 
