@@ -1,597 +1,266 @@
 package com.wordflip.service;
 
-import com.wordflip.domain.BookWord;
-import com.wordflip.domain.GroupSource;
-import com.wordflip.domain.GroupStatus;
-import com.wordflip.domain.GroupStrategy;
-import com.wordflip.domain.GroupWord;
-import com.wordflip.domain.HeatDisplayMode;
-import com.wordflip.domain.StudyGroup;
-import com.wordflip.domain.UserSettings;
-import com.wordflip.dto.common.PageMeta;
 import com.wordflip.dto.group.CreateCustomGroupRequest;
+import com.wordflip.dto.group.GroupCardsResponse;
 import com.wordflip.dto.group.GroupDetail;
 import com.wordflip.dto.group.GroupListResponse;
 import com.wordflip.dto.group.GroupStats;
-import com.wordflip.dto.group.GroupWordsResponse;
-import com.wordflip.dto.settings.AppendedGroups;
-import com.wordflip.dto.word.UnassignedWordsResponse;
-import com.wordflip.dto.word.WordProgressSnapshot;
-import com.wordflip.dto.word.WordSummary;
+import com.wordflip.dto.group.UnassignedCardsResponse;
+import com.wordflip.dto.learning.LearningCardDetailResponse;
 import com.wordflip.exception.WordflipException;
-import com.wordflip.repository.BookWordRepository;
-import com.wordflip.repository.GroupRepository;
-import com.wordflip.repository.GroupWordRepository;
-import com.wordflip.repository.UserBookSelectionRepository;
-import com.wordflip.repository.UserSettingsRepository;
-import com.wordflip.repository.WordFreqRankRepository;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Random;
-import java.util.Set;
-import java.util.stream.Collectors;
-
 /**
- * 分组业务：增量 append（PUT /settings）与读 API（GET /groups、custom 创建）。
+ * 分组只关联当前学习计划中的学习卡，不再关联全局 wordKey。
  */
 @Service
 public class GroupService {
 
-    private static final int UNASSIGNED_ALL_MAX = 5000;
+    private final JdbcTemplate jdbc;
+    private final LearningCardQueryService cards;
 
-    private final UserBookSelectionRepository userBookSelectionRepository;
-    private final BookWordRepository bookWordRepository;
-    private final GroupWordRepository groupWordRepository;
-    private final GroupRepository groupRepository;
-    private final UserSettingsRepository userSettingsRepository;
-    private final WordFreqRankRepository wordFreqRankRepository;
-    private final BookService bookService;
-    private final ReviewService reviewService;
-    private final WordLookupService wordLookupService;
-
-    public GroupService(
-            UserBookSelectionRepository userBookSelectionRepository,
-            BookWordRepository bookWordRepository,
-            GroupWordRepository groupWordRepository,
-            GroupRepository groupRepository,
-            UserSettingsRepository userSettingsRepository,
-            WordFreqRankRepository wordFreqRankRepository,
-            BookService bookService,
-            ReviewService reviewService,
-            WordLookupService wordLookupService
-    ) {
-        this.userBookSelectionRepository = userBookSelectionRepository;
-        this.bookWordRepository = bookWordRepository;
-        this.groupWordRepository = groupWordRepository;
-        this.groupRepository = groupRepository;
-        this.userSettingsRepository = userSettingsRepository;
-        this.wordFreqRankRepository = wordFreqRankRepository;
-        this.bookService = bookService;
-        this.reviewService = reviewService;
-        this.wordLookupService = wordLookupService;
+    public GroupService(JdbcTemplate jdbc, LearningCardQueryService cards) {
+        this.jdbc = jdbc;
+        this.cards = cards;
     }
 
-    /** GET /groups：按 source 过滤、createdAt/name 排序 */
     @Transactional(readOnly = true)
-    public GroupListResponse listGroups(Long userId, GroupSource source, String sort) {
-        List<StudyGroup> groups = queryGroups(userId, source, sort);
-        List<GroupDetail> details = groups.stream()
-                .map(group -> toGroupDetail(userId, group))
-                .toList();
-        return new GroupListResponse(details);
+    public GroupListResponse listGroups(Long userId, String source, String sort) {
+        Long planId = currentPlanId(userId);
+        String order = "name".equals(sort) ? "g.name, g.id" : "g.sort_order, g.id";
+        String sql = "SELECT g.id FROM study_groups g WHERE g.plan_id=?"
+                + (source == null ? "" : " AND g.source=?") + " ORDER BY " + order;
+        List<Long> ids = source == null
+                ? jdbc.queryForList(sql, Long.class, planId)
+                : jdbc.queryForList(sql, Long.class, planId, source);
+        return new GroupListResponse(ids.stream().map(id -> loadGroup(userId, id)).toList());
     }
 
-    /** GET /groups/{groupId} */
     @Transactional(readOnly = true)
     public GroupDetail getGroup(Long userId, Long groupId) {
-        StudyGroup group = requireOwnedGroup(userId, groupId);
-        return toGroupDetail(userId, group);
+        return loadGroup(userId, groupId);
     }
 
-    /** GET /groups/{groupId}/words：分页 + 双 skill 进度（按 heatDisplayMode） */
     @Transactional(readOnly = true)
-    public GroupWordsResponse listGroupWords(Long userId, Long groupId, int page, int size) {
+    public GroupCardsResponse listGroupCards(Long userId, Long groupId, int page, int size) {
         requireOwnedGroup(userId, groupId);
-        int safePage = Math.max(page, 0);
+        int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 100);
-        Page<GroupWord> wordPage = groupWordRepository.findByGroupIdOrderBySortOrderAsc(
-                groupId,
-                PageRequest.of(safePage, safeSize)
+        Long total = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM study_group_cards WHERE group_id=?", Long.class, groupId
         );
-        List<String> wordKeys = wordPage.getContent().stream().map(GroupWord::getWordKey).toList();
-        Map<String, WordSummary> summaries = resolveWordSummaries(userId, wordKeys);
-        HeatDisplayMode heatMode = resolveHeatDisplayMode(userId);
-        Map<String, WordProgressSnapshot> progressByKey =
-                reviewService.buildWordProgressMap(userId, wordKeys, heatMode);
-
-        List<GroupWordsResponse.GroupWordItem> items = wordKeys.stream()
-                .map(key -> {
-                    WordSummary summary = summaries.get(key);
-                    if (summary == null) {
-                        summary = new WordSummary(key, key, "", null, null);
-                    }
-                    WordProgressSnapshot progress = progressByKey.getOrDefault(
-                            key,
-                            WordProgressSnapshot.empty(heatMode)
-                    );
-                    return GroupWordsResponse.GroupWordItem.from(summary, progress);
-                })
-                .toList();
-
-        PageMeta meta = PageMeta.of(safePage, safeSize, wordPage.getTotalElements());
-        return GroupWordsResponse.of(meta, items);
+        List<Long> ids = jdbc.queryForList(
+                "SELECT card_id FROM study_group_cards WHERE group_id=? ORDER BY sort_order LIMIT ? OFFSET ?",
+                Long.class, groupId, safeSize, (safePage - 1) * safeSize
+        );
+        List<LearningCardDetailResponse> values = ids.stream()
+                .map(cardId -> cards.getCurrentCard(userId, cardId)).toList();
+        long count = total == null ? 0 : total;
+        return new GroupCardsResponse(
+                safePage, safeSize, count, (int) Math.ceil((double) count / safeSize), values
+        );
     }
 
-    /** GET /words/unassigned：未入组词池 */
     @Transactional(readOnly = true)
-    public UnassignedWordsResponse listUnassignedWords(
-            Long userId,
-            boolean all,
-            String query,
-            int page,
-            int size
+    public UnassignedCardsResponse listUnassignedCards(
+            Long userId, boolean all, String query, int page, int size
     ) {
-        List<String> keys = listUnassignedWordKeys(userId);
-        if (query != null && !query.isBlank()) {
-            String q = query.trim().toLowerCase(Locale.ROOT);
-            Map<String, WordSummary> summaryMap = resolveWordSummaries(userId, keys);
-            keys = keys.stream()
-                    .filter(key -> matchesQuery(summaryMap.get(key), key, q))
-                    .toList();
-        }
-
-        if (all) {
-            List<String> limited = keys.stream().limit(UNASSIGNED_ALL_MAX).toList();
-            List<WordSummary> words = toWordSummaries(userId, limited);
-            PageMeta meta = PageMeta.of(0, words.size(), words.size());
-            return UnassignedWordsResponse.of(meta, words);
-        }
-
-        int safePage = Math.max(page, 0);
-        int safeSize = Math.min(Math.max(size, 1), 100);
-        int from = Math.min(safePage * safeSize, keys.size());
-        int to = Math.min(from + safeSize, keys.size());
-        List<String> pageKeys = keys.subList(from, to);
-        List<WordSummary> words = toWordSummaries(userId, pageKeys);
-        PageMeta meta = PageMeta.of(safePage, safeSize, keys.size());
-        return UnassignedWordsResponse.of(meta, words);
+        Long planId = currentPlanId(userId);
+        int safePage = Math.max(page, 1);
+        int safeSize = all ? 5000 : Math.min(Math.max(size, 1), 100);
+        String pattern = query == null || query.isBlank() ? "%" : query.trim() + "%";
+        String base = """
+                FROM user_learning_plans p
+                JOIN book_items bi ON bi.book_id=p.book_id
+                JOIN learning_cards c ON c.book_item_id=bi.id AND c.status='published'
+                JOIN lexemes l ON l.id=bi.lexeme_id
+                WHERE p.id=? AND NOT EXISTS(
+                  SELECT 1 FROM study_group_cards sgc WHERE sgc.plan_id=p.id AND sgc.card_id=c.id
+                ) AND (l.headword LIKE ? OR EXISTS(
+                  SELECT 1 FROM learning_card_senses s WHERE s.card_id=c.id AND s.cn LIKE ?
+                ))
+                """;
+        Long total = jdbc.queryForObject("SELECT COUNT(*) " + base, Long.class, planId, pattern, pattern);
+        List<Long> ids = jdbc.queryForList(
+                "SELECT c.id " + base + " ORDER BY bi.sort_order LIMIT ? OFFSET ?",
+                Long.class, planId, pattern, pattern, safeSize, all ? 0 : (safePage - 1) * safeSize
+        );
+        List<LearningCardDetailResponse> values = ids.stream()
+                .map(cardId -> cards.getCurrentCard(userId, cardId)).toList();
+        long count = total == null ? 0 : total;
+        return new UnassignedCardsResponse(
+                safePage, safeSize, count, (int) Math.ceil((double) count / safeSize), values
+        );
     }
 
-    /** POST /groups/custom：从未入组池创建 custom 分组 */
     @Transactional
     public GroupDetail createCustomGroup(Long userId, CreateCustomGroupRequest request) {
-        List<String> normalized = request.getWordKeys().stream()
-                .map(key -> key == null ? "" : key.trim().toLowerCase(Locale.ROOT))
-                .filter(key -> !key.isEmpty())
-                .distinct()
-                .toList();
-        if (normalized.isEmpty()) {
-            throw new WordflipException("VALIDATION_ERROR", "wordKeys 不能为空");
+        Long planId = currentPlanId(userId);
+        Set<Long> cardIds = new LinkedHashSet<>(request.cardIds());
+        if (cardIds.isEmpty()) {
+            throw new WordflipException("VALIDATION_ERROR", "至少选择一张学习卡");
         }
-
-        Set<String> assigned = groupWordRepository.findWordKeysByUserId(userId);
-        for (String key : normalized) {
-            if (assigned.contains(key)) {
-                throw new WordflipException("CONFLICT", "单词已存在于其他分组: " + key);
+        for (Long cardId : cardIds) {
+            Integer valid = jdbc.queryForObject(
+                    """
+                    SELECT COUNT(*) FROM user_learning_plans p
+                    JOIN book_items bi ON bi.book_id=p.book_id
+                    JOIN learning_cards c ON c.book_item_id=bi.id AND c.status='published'
+                    WHERE p.id=? AND c.id=? AND NOT EXISTS(
+                      SELECT 1 FROM study_group_cards x WHERE x.plan_id=p.id AND x.card_id=c.id
+                    )
+                    """,
+                    Integer.class, planId, cardId
+            );
+            if (valid == null || valid == 0) {
+                throw new WordflipException("CONFLICT", "学习卡已入组或不属于当前计划: " + cardId);
             }
         }
-
-        Set<String> unassigned = new HashSet<>(listUnassignedWordKeys(userId));
-        List<String> validKeys = normalized.stream().filter(unassigned::contains).toList();
-        if (validKeys.isEmpty()) {
-            throw new WordflipException("VALIDATION_ERROR", "wordKeys 均不在未入组词池");
+        Integer next = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(sort_order), -1)+1 FROM study_groups WHERE plan_id=?",
+                Integer.class, planId
+        );
+        int sortOrder = next == null ? 0 : next;
+        String name = request.name() == null || request.name().isBlank()
+                ? "自定义分组 " + (sortOrder + 1) : request.name().trim();
+        jdbc.update(
+                "INSERT INTO study_groups(plan_id, name, source, sort_order) VALUES (?, ?, 'custom', ?)",
+                planId, name, sortOrder
+        );
+        Long groupId = jdbc.queryForObject(
+                "SELECT id FROM study_groups WHERE plan_id=? AND sort_order=?", Long.class, planId, sortOrder
+        );
+        int cardOrder = 0;
+        for (Long cardId : cardIds) {
+            jdbc.update(
+                    "INSERT INTO study_group_cards(group_id, plan_id, card_id, sort_order) VALUES (?, ?, ?, ?)",
+                    groupId, planId, cardId, cardOrder++
+            );
         }
-        if (validKeys.size() != normalized.size()) {
-            throw new WordflipException("CONFLICT", "部分 wordKey 不在未入组词池或已入组");
-        }
-
-        List<Long> selectedBookIds = userBookSelectionRepository.findBookIdsByUserId(userId);
-        bookService.upsertLexiconForNewWords(userId, validKeys, selectedBookIds);
-
-        int customCount = groupRepository.countByUserIdAndSource(userId, GroupSource.custom);
-        int maxSortOrder = groupRepository.findMaxSortOrderByUserId(userId).orElse(0);
-        String groupName = request.getName() != null && !request.getName().isBlank()
-                ? request.getName().trim()
-                : "自定义分组 " + (customCount + 1);
-
-        StudyGroup group = new StudyGroup();
-        group.setUserId(userId);
-        group.setName(groupName);
-        group.setSource(GroupSource.custom);
-        group.setStatus(GroupStatus.not_started);
-        group.setSortOrder(maxSortOrder + 1);
-
-        try {
-            group = groupRepository.save(group);
-            for (int i = 0; i < validKeys.size(); i++) {
-                GroupWord groupWord = new GroupWord();
-                groupWord.setUserId(userId);
-                groupWord.setGroupId(group.getId());
-                groupWord.setWordKey(validKeys.get(i));
-                groupWord.setSortOrder(i);
-                groupWordRepository.save(groupWord);
-            }
-        } catch (DataIntegrityViolationException ex) {
-            throw new WordflipException("CONFLICT", "单词已存在于其他分组");
-        }
-
-        return toGroupDetail(userId, group);
+        return loadGroup(userId, groupId);
     }
 
     /**
-     * 增量追加分组（api-modules §2.1、REQ-BOOK-22~25）：
-     * 按 groupStrategy 合并去重 → delta → 先补齐未满 auto 组 → 切分新组。
+     * 为计划增量追加自动分组；已有分组和记忆状态均不重建。
      */
     @Transactional
-    public AppendedGroups appendGroupsForNewWords(Long userId) {
-        List<Long> selectedBookIds = userBookSelectionRepository.findBookIdsByUserIdOrderBySelectedAtAsc(userId);
-        if (selectedBookIds.isEmpty()) {
-            return AppendedGroups.empty();
-        }
-
-        UserSettings settings = userSettingsRepository.findById(userId).orElseGet(UserSettings::new);
-        int groupSize = settings.getGroupSize() > 0 ? settings.getGroupSize() : 20;
-        GroupStrategy strategy = settings.getGroupStrategy() != null
-                ? settings.getGroupStrategy()
-                : GroupStrategy.book_order;
-
-        List<String> orderedKeys = buildOrderedWordKeys(userId, selectedBookIds, strategy);
-        Set<String> assignedWordKeys = groupWordRepository.findWordKeysByUserId(userId);
-
-        // delta 保持策略顺序，不再字母排序
-        List<String> delta = orderedKeys.stream()
-                .filter(key -> !assignedWordKeys.contains(key))
-                .collect(Collectors.toList());
-
-        if (delta.isEmpty()) {
-            return AppendedGroups.empty();
-        }
-
-        bookService.upsertLexiconForNewWords(userId, delta, selectedBookIds);
-
-        List<AppendedGroups.AppendedGroupItem> appendedItems = new ArrayList<>();
-        List<String> remainingDelta = new ArrayList<>(delta);
-
-        try {
-            // REQ-BOOK-25：最后一个 auto 组未满时先补齐
-            Optional<StudyGroup> lastAutoGroup = groupRepository.findTopByUserIdAndSourceOrderBySortOrderDesc(
-                    userId,
-                    GroupSource.auto
-            );
-            if (lastAutoGroup.isPresent()) {
-                StudyGroup lastGroup = lastAutoGroup.get();
-                int currentCount = (int) groupWordRepository.countByGroupId(lastGroup.getId());
-                int slots = groupSize - currentCount;
-                if (slots > 0 && !remainingDelta.isEmpty()) {
-                    int fillCount = Math.min(slots, remainingDelta.size());
-                    List<String> toFill = new ArrayList<>(remainingDelta.subList(0, fillCount));
-                    appendWordsToGroup(userId, lastGroup.getId(), toFill, currentCount);
-                    remainingDelta = new ArrayList<>(remainingDelta.subList(fillCount, remainingDelta.size()));
-                }
-            }
-
-            if (remainingDelta.isEmpty()) {
-                return new AppendedGroups(0, appendedItems);
-            }
-
-            int existingAutoCount = groupRepository.countByUserIdAndSource(userId, GroupSource.auto);
-            int maxSortOrder = groupRepository.findMaxSortOrderByUserId(userId).orElse(0);
-            List<List<String>> chunks = partition(remainingDelta, groupSize);
-
-            for (int i = 0; i < chunks.size(); i++) {
-                List<String> chunk = chunks.get(i);
-                StudyGroup group = new StudyGroup();
-                group.setUserId(userId);
-                group.setName("第" + (existingAutoCount + i + 1) + "组");
-                group.setSource(GroupSource.auto);
-                group.setStatus(GroupStatus.not_started);
-                group.setSortOrder(maxSortOrder + i + 1);
-                group = groupRepository.save(group);
-
-                appendWordsToGroup(userId, group.getId(), chunk, 0);
-
-                appendedItems.add(new AppendedGroups.AppendedGroupItem(group.getId(), group.getName(), chunk.size()));
-            }
-        } catch (DataIntegrityViolationException ex) {
-            throw new WordflipException("CONFLICT", "单词已存在于其他分组");
-        }
-
-        return new AppendedGroups(appendedItems.size(), appendedItems);
-    }
-
-    /**
-     * 重新分组（REQ-BOOK-26）：删除全部 auto 组，按当前勾选词书 + 策略重建；
-     * custom 组及其单词保留；掌握度/图片/污渍不删。
-     */
-    @Transactional
-    public AppendedGroups regroupAutoGroups(Long userId) {
-        List<Long> selectedBookIds = userBookSelectionRepository.findBookIdsByUserIdOrderBySelectedAtAsc(userId);
-        if (selectedBookIds.isEmpty()) {
-            throw new WordflipException("VALIDATION_ERROR", "请至少勾选一本词书后再重新分组");
-        }
-
-        UserSettings settings = userSettingsRepository.findById(userId).orElseGet(UserSettings::new);
-        int groupSize = settings.getGroupSize() > 0 ? settings.getGroupSize() : 20;
-        GroupStrategy strategy = settings.getGroupStrategy() != null
-                ? settings.getGroupStrategy()
-                : GroupStrategy.book_order;
-
-        // 保留 custom 组内词，避免违反一词一组
-        Set<String> customWordKeys = groupWordRepository.findWordKeysByUserIdAndGroupSource(
-                userId,
-                GroupSource.custom
+    public void appendAutoGroups(Long userId, Long planId) {
+        Integer owned = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM user_learning_plans WHERE id=? AND user_id=?",
+                Integer.class, planId, userId
         );
-
-        groupRepository.deleteByUserIdAndSource(userId, GroupSource.auto);
-
-        List<String> orderedKeys = buildOrderedWordKeys(userId, selectedBookIds, strategy);
-        List<String> toAssign = orderedKeys.stream()
-                .filter(key -> !customWordKeys.contains(key))
-                .collect(Collectors.toList());
-
-        if (toAssign.isEmpty()) {
-            return AppendedGroups.empty();
+        if (owned == null || owned == 0) {
+            throw new WordflipException("NOT_FOUND", "学习计划不存在");
         }
-
-        bookService.upsertLexiconForNewWords(userId, toAssign, selectedBookIds);
-
-        int maxSortOrder = groupRepository.findMaxSortOrderByUserId(userId).orElse(0);
-        List<AppendedGroups.AppendedGroupItem> items = new ArrayList<>();
-        List<List<String>> chunks = partition(toAssign, groupSize);
-
-        try {
-            for (int i = 0; i < chunks.size(); i++) {
-                List<String> chunk = chunks.get(i);
-                StudyGroup group = new StudyGroup();
-                group.setUserId(userId);
-                group.setName("第" + (i + 1) + "组");
-                group.setSource(GroupSource.auto);
-                group.setStatus(GroupStatus.not_started);
-                group.setSortOrder(maxSortOrder + i + 1);
-                group = groupRepository.save(group);
-                appendWordsToGroup(userId, group.getId(), chunk, 0);
-                items.add(new AppendedGroups.AppendedGroupItem(group.getId(), group.getName(), chunk.size()));
-            }
-        } catch (DataIntegrityViolationException ex) {
-            throw new WordflipException("CONFLICT", "单词已存在于其他分组");
-        }
-
-        return new AppendedGroups(items.size(), items);
-    }
-
-    /**
-     * 按 groupStrategy 合并已勾选词书词条（REQ-BOOK-22~24）。
-     * book_order：词书勾选顺序 + 书内 sort_order，去重保序；
-     * frequency：按 word_freq_ranks 全局 rank 升序；无 rank 词排末尾并保持 book_order 相对序；
-     * random：稳定随机（seed = userId + bookIds）。
-     */
-    List<String> buildOrderedWordKeys(Long userId, List<Long> bookIdsOrdered, GroupStrategy strategy) {
-        if (bookIdsOrdered.isEmpty()) {
-            return List.of();
-        }
-
-        List<BookWord> words = new ArrayList<>(
-                bookWordRepository.findByBookIdInOrderByBookIdAscSortOrderAsc(bookIdsOrdered)
+        Integer groupSize = jdbc.queryForObject(
+                "SELECT group_size FROM user_settings WHERE user_id=?", Integer.class, userId
         );
-        Map<Long, Integer> bookRank = new HashMap<>();
-        for (int i = 0; i < bookIdsOrdered.size(); i++) {
-            bookRank.put(bookIdsOrdered.get(i), i);
-        }
-        words.sort(Comparator
-                .comparingInt((BookWord w) -> bookRank.getOrDefault(w.getBookId(), Integer.MAX_VALUE))
-                .thenComparingInt(BookWord::getSortOrder));
-
-        List<String> ordered = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (BookWord word : words) {
-            if (seen.add(word.getWordKey())) {
-                ordered.add(word.getWordKey());
-            }
-        }
-
-        if (strategy == GroupStrategy.random) {
-            Collections.shuffle(ordered, new Random(stableRandomSeed(userId, bookIdsOrdered)));
-        } else if (strategy == GroupStrategy.frequency) {
-            ordered = sortByFrequencyRank(ordered);
-        }
-
-        return ordered;
-    }
-
-    /** 有 rank 的按 freq_rank ASC；无 rank 词保持 book_order 相对顺序排在末尾 */
-    private List<String> sortByFrequencyRank(List<String> bookOrderKeys) {
-        if (bookOrderKeys.isEmpty()) {
-            return bookOrderKeys;
-        }
-        Map<String, Integer> rankByKey = wordFreqRankRepository.findByWordKeyIn(bookOrderKeys).stream()
-                .collect(Collectors.toMap(
-                        w -> w.getWordKey(),
-                        w -> w.getFreqRank(),
-                        (a, b) -> Math.min(a, b)
-                ));
-        Map<String, Integer> bookOrderIndex = new HashMap<>();
-        for (int i = 0; i < bookOrderKeys.size(); i++) {
-            bookOrderIndex.put(bookOrderKeys.get(i), i);
-        }
-        List<String> sorted = new ArrayList<>(bookOrderKeys);
-        sorted.sort((a, b) -> {
-            Integer rankA = rankByKey.get(a);
-            Integer rankB = rankByKey.get(b);
-            if (rankA != null && rankB != null) {
-                return Integer.compare(rankA, rankB);
-            }
-            if (rankA != null) {
-                return -1;
-            }
-            if (rankB != null) {
-                return 1;
-            }
-            return Integer.compare(bookOrderIndex.get(a), bookOrderIndex.get(b));
-        });
-        return sorted;
-    }
-
-    /** 稳定随机种子：相同 userId + bookIds 列表产生相同打乱顺序 */
-    static long stableRandomSeed(Long userId, List<Long> bookIds) {
-        long seed = userId != null ? userId : 0L;
-        for (Long bookId : bookIds) {
-            seed = 31 * seed + (bookId != null ? bookId : 0L);
-        }
-        return seed;
-    }
-
-    private void appendWordsToGroup(Long userId, Long groupId, List<String> wordKeys, int startSortOrder) {
-        for (int i = 0; i < wordKeys.size(); i++) {
-            GroupWord groupWord = new GroupWord();
-            groupWord.setUserId(userId);
-            groupWord.setGroupId(groupId);
-            groupWord.setWordKey(wordKeys.get(i));
-            groupWord.setSortOrder(startSortOrder + i);
-            groupWordRepository.save(groupWord);
-        }
-    }
-
-    /** 按 groupSize 切分 delta 列表 */
-    static List<List<String>> partition(List<String> words, int groupSize) {
-        List<List<String>> result = new ArrayList<>();
-        for (int i = 0; i < words.size(); i += groupSize) {
-            result.add(words.subList(i, Math.min(i + groupSize, words.size())));
-        }
-        return result;
-    }
-
-    private List<StudyGroup> queryGroups(Long userId, GroupSource source, String sort) {
-        boolean byName = "name".equalsIgnoreCase(sort);
-        if (source == null) {
-            return byName
-                    ? groupRepository.findByUserIdOrderByNameAsc(userId)
-                    : groupRepository.findByUserIdOrderByCreatedAtAsc(userId);
-        }
-        return byName
-                ? groupRepository.findByUserIdAndSourceOrderByNameAsc(userId, source)
-                : groupRepository.findByUserIdAndSourceOrderByCreatedAtAsc(userId, source);
-    }
-
-    private StudyGroup requireOwnedGroup(Long userId, Long groupId) {
-        return groupRepository.findByIdAndUserId(groupId, userId)
-                .orElseThrow(() -> new WordflipException("NOT_FOUND", "分组不存在"));
-    }
-
-    private GroupDetail toGroupDetail(Long userId, StudyGroup group) {
-        List<String> wordKeys = groupWordRepository.findByGroupIdOrderBySortOrderAsc(group.getId()).stream()
-                .map(GroupWord::getWordKey)
-                .toList();
-        HeatDisplayMode heatMode = resolveHeatDisplayMode(userId);
-        Map<String, WordProgressSnapshot> progressByKey =
-                reviewService.buildWordProgressMap(userId, wordKeys, heatMode);
-        GroupStats stats = computeStats(wordKeys, progressByKey, heatMode);
-        float progress = computeProgress(wordKeys, progressByKey, heatMode);
-        return GroupDetail.of(group, stats, progress);
-    }
-
-    /** 热力分档统计：按用户 heatDisplayMode 的 displayStability（REQ-GROUP-2） */
-    private GroupStats computeStats(
-            List<String> wordKeys,
-            Map<String, WordProgressSnapshot> progressByKey,
-            HeatDisplayMode heatMode
-    ) {
-        int heat0 = 0;
-        int heat1 = 0;
-        int heat2 = 0;
-        int heat3 = 0;
-        int heat4 = 0;
-        for (String key : wordKeys) {
-            WordProgressSnapshot progress = progressByKey.getOrDefault(
-                    key,
-                    WordProgressSnapshot.empty(heatMode)
+        int chunkSize = groupSize == null ? 20 : groupSize;
+        List<Long> unassigned = jdbc.queryForList(
+                """
+                SELECT c.id FROM user_learning_plans p
+                JOIN book_items bi ON bi.book_id=p.book_id
+                JOIN learning_cards c ON c.book_item_id=bi.id AND c.status='published'
+                WHERE p.id=? AND NOT EXISTS(
+                  SELECT 1 FROM study_group_cards x WHERE x.plan_id=p.id AND x.card_id=c.id
+                ) ORDER BY bi.sort_order
+                """,
+                Long.class, planId
+        );
+        Integer next = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(sort_order), -1)+1 FROM study_groups WHERE plan_id=?",
+                Integer.class, planId
+        );
+        int groupOrder = next == null ? 0 : next;
+        for (int offset = 0; offset < unassigned.size(); offset += chunkSize) {
+            int currentOrder = groupOrder++;
+            jdbc.update(
+                    "INSERT INTO study_groups(plan_id, name, source, sort_order) VALUES (?, ?, 'auto', ?)",
+                    planId, "第 " + (currentOrder + 1) + " 组", currentOrder
             );
-            switch (progress.heatBucket()) {
-                case 1 -> heat1++;
-                case 2 -> heat2++;
-                case 3 -> heat3++;
-                case 4 -> heat4++;
-                default -> heat0++;
-            }
-        }
-        return new GroupStats(heat0, heat1, heat2, heat3, heat4, wordKeys.size());
-    }
-
-    /** progress = count(displayStability >= 80) / total（REQ-GROUP-2） */
-    private float computeProgress(
-            List<String> wordKeys,
-            Map<String, WordProgressSnapshot> progressByKey,
-            HeatDisplayMode heatMode
-    ) {
-        if (wordKeys.isEmpty()) {
-            return 0f;
-        }
-        int numerator = 0;
-        for (String key : wordKeys) {
-            WordProgressSnapshot progress = progressByKey.getOrDefault(
-                    key,
-                    WordProgressSnapshot.empty(heatMode)
+            Long groupId = jdbc.queryForObject(
+                    "SELECT id FROM study_groups WHERE plan_id=? AND sort_order=?", Long.class, planId, currentOrder
             );
-            if (progress.displayStability() >= 80.0) {
-                numerator++;
+            List<Long> chunk = unassigned.subList(offset, Math.min(offset + chunkSize, unassigned.size()));
+            for (int index = 0; index < chunk.size(); index++) {
+                jdbc.update(
+                        "INSERT INTO study_group_cards(group_id, plan_id, card_id, sort_order) VALUES (?, ?, ?, ?)",
+                        groupId, planId, chunk.get(index), index
+                );
             }
         }
-        return (float) numerator / wordKeys.size();
     }
 
-    private HeatDisplayMode resolveHeatDisplayMode(Long userId) {
-        return userSettingsRepository.findById(userId)
-                .map(UserSettings::getHeatDisplayMode)
-                .orElse(HeatDisplayMode.combined);
+    private GroupDetail loadGroup(Long userId, Long groupId) {
+        requireOwnedGroup(userId, groupId);
+        return jdbc.queryForObject(
+                """
+                SELECT g.id, g.name, g.source, g.created_at,
+                       COUNT(sgc.id) AS total,
+                       SUM(CASE WHEN m.reps>0 THEN 1 ELSE 0 END) AS reviewed,
+                       SUM(CASE WHEN m.stability>=30 THEN 1 ELSE 0 END) AS mastered,
+                       SUM(CASE WHEN COALESCE(m.stability,0)=0 THEN 1 ELSE 0 END) AS heat0,
+                       SUM(CASE WHEN m.stability>0 AND m.stability<3 THEN 1 ELSE 0 END) AS heat1,
+                       SUM(CASE WHEN m.stability>=3 AND m.stability<15 THEN 1 ELSE 0 END) AS heat2,
+                       SUM(CASE WHEN m.stability>=15 AND m.stability<30 THEN 1 ELSE 0 END) AS heat3,
+                       SUM(CASE WHEN m.stability>=30 THEN 1 ELSE 0 END) AS heat4
+                  FROM study_groups g
+                  LEFT JOIN study_group_cards sgc ON sgc.group_id=g.id
+                  LEFT JOIN card_skill_memory m ON m.card_id=sgc.card_id
+                   AND m.user_id=? AND m.skill='dictation'
+                 WHERE g.id=? GROUP BY g.id, g.name, g.source, g.created_at
+                """,
+                (rs, row) -> {
+                    int total = rs.getInt("total");
+                    int reviewed = rs.getInt("reviewed");
+                    int mastered = rs.getInt("mastered");
+                    String status = reviewed == 0 ? "not_started"
+                            : mastered == total && total > 0 ? "completed" : "learning";
+                    float progress = total == 0 ? 0 : (float) mastered / total;
+                    return new GroupDetail(
+                            rs.getLong("id"), rs.getString("name"), rs.getString("source"), status,
+                            rs.getTimestamp("created_at").toInstant(),
+                            new GroupStats(
+                                    rs.getInt("heat0"), rs.getInt("heat1"), rs.getInt("heat2"),
+                                    rs.getInt("heat3"), rs.getInt("heat4"), total
+                            ),
+                            progress
+                    );
+                },
+                userId, groupId
+        );
     }
 
-    /** 未入组词 Key 列表（已勾选词书去重 − 已入组） */
-    private List<String> listUnassignedWordKeys(Long userId) {
-        List<Long> selectedBookIds = userBookSelectionRepository.findBookIdsByUserId(userId);
-        if (selectedBookIds.isEmpty()) {
-            return List.of();
+    private void requireOwnedGroup(Long userId, Long groupId) {
+        Integer count = jdbc.queryForObject(
+                """
+                SELECT COUNT(*) FROM study_groups g
+                JOIN user_learning_plans p ON p.id=g.plan_id
+                JOIN user_settings us ON us.active_plan_id=p.id AND us.user_id=p.user_id
+                WHERE g.id=? AND p.user_id=?
+                """,
+                Integer.class, groupId, userId
+        );
+        if (count == null || count == 0) {
+            throw new WordflipException("NOT_FOUND", "当前学习计划中没有该分组");
         }
-        Set<String> selected = new HashSet<>(bookWordRepository.findDistinctWordKeysByBookIds(selectedBookIds));
-        Set<String> assigned = groupWordRepository.findWordKeysByUserId(userId);
-        return selected.stream()
-                .filter(key -> !assigned.contains(key))
-                .sorted()
-                .toList();
     }
 
-    private List<WordSummary> toWordSummaries(Long userId, List<String> wordKeys) {
-        Map<String, WordSummary> map = resolveWordSummaries(userId, wordKeys);
-        return wordKeys.stream()
-                .map(key -> map.getOrDefault(key, new WordSummary(key, key, "", null, null)))
-                .toList();
-    }
-
-    /** 统一走 WordLookup：dict primary → lexicon → book_words */
-    private Map<String, WordSummary> resolveWordSummaries(Long userId, List<String> wordKeys) {
-        return wordLookupService.resolveWordSummaries(userId, wordKeys);
-    }
-
-    private static boolean matchesQuery(WordSummary summary, String wordKey, String q) {
-        if (summary != null) {
-            if (summary.en() != null && summary.en().toLowerCase(Locale.ROOT).startsWith(q)) {
-                return true;
-            }
-            if (summary.cn() != null && summary.cn().toLowerCase(Locale.ROOT).startsWith(q)) {
-                return true;
-            }
+    private Long currentPlanId(Long userId) {
+        List<Long> values = jdbc.queryForList(
+                "SELECT active_plan_id FROM user_settings WHERE user_id=? AND active_plan_id IS NOT NULL",
+                Long.class, userId
+        );
+        if (values.isEmpty()) {
+            throw new WordflipException("NOT_FOUND", "尚未选择当前学习计划");
         }
-        return wordKey.startsWith(q);
+        return values.getFirst();
     }
 }

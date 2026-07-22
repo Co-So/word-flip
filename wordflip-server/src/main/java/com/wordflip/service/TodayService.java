@@ -1,7 +1,5 @@
 package com.wordflip.service;
 
-import com.wordflip.domain.StudyGroup;
-import com.wordflip.domain.UserRecentGroup;
 import com.wordflip.dto.today.RecentGroupDto;
 import com.wordflip.dto.today.RecommendedStudy;
 import com.wordflip.dto.today.StudyReason;
@@ -10,155 +8,153 @@ import com.wordflip.dto.today.TodayDashboard;
 import com.wordflip.dto.today.TodayStats;
 import com.wordflip.dto.today.TodayTask;
 import com.wordflip.dto.today.TodayTasks;
-import com.wordflip.repository.GroupRepository;
-import com.wordflip.repository.GroupWordRepository;
-import com.wordflip.repository.TodayQueryRepository;
-import com.wordflip.repository.UserRecentGroupRepository;
+import com.wordflip.exception.WordflipException;
+import java.sql.Date;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
 /**
- * GET /today 业务编排：统计、任务、推荐分组、最近组（REQ-TODAY-3~12）。
+ * 当前学习计划的今日任务聚合，复习到期时间完全来自卡片 FSRS。
  */
 @Service
 public class TodayService {
 
-    private final TodayQueryRepository todayQueryRepository;
-    private final GroupRepository groupRepository;
-    private final GroupWordRepository groupWordRepository;
-    private final UserRecentGroupRepository userRecentGroupRepository;
-    private final ReviewService reviewService;
-    private final TodayCacheService todayCacheService;
+    private final JdbcTemplate jdbc;
 
-    public TodayService(
-            TodayQueryRepository todayQueryRepository,
-            GroupRepository groupRepository,
-            GroupWordRepository groupWordRepository,
-            UserRecentGroupRepository userRecentGroupRepository,
-            ReviewService reviewService,
-            TodayCacheService todayCacheService
-    ) {
-        this.todayQueryRepository = todayQueryRepository;
-        this.groupRepository = groupRepository;
-        this.groupWordRepository = groupWordRepository;
-        this.userRecentGroupRepository = userRecentGroupRepository;
-        this.reviewService = reviewService;
-        this.todayCacheService = todayCacheService;
+    public TodayService(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
     }
 
     @Transactional(readOnly = true)
     public TodayDashboard getDashboard(Long userId, ZoneId zoneId) {
-        LocalDate today = com.wordflip.util.UserTimeZoneUtil.todayInZone(zoneId);
-        return todayCacheService.get(userId, today)
-                .orElseGet(() -> {
-                    TodayDashboard dashboard = buildDashboard(userId, today);
-                    todayCacheService.put(userId, today, dashboard);
-                    return dashboard;
-                });
-    }
+        Long planId = currentPlanId(userId);
+        LocalDate today = LocalDate.now(zoneId);
+        Instant now = Instant.now();
+        int total = count("SELECT COUNT(*) " + assignedCardsSql(), planId);
+        int newCards = count("""
+                SELECT COUNT(*) FROM study_group_cards sgc
+                WHERE sgc.plan_id=? AND NOT EXISTS(
+                  SELECT 1 FROM review_events r WHERE r.user_id=? AND r.card_id=sgc.card_id
+                )
+                """, planId, userId);
+        int due = count("""
+                SELECT COUNT(DISTINCT sgc.card_id) FROM study_group_cards sgc
+                JOIN card_skill_memory m ON m.card_id=sgc.card_id AND m.user_id=?
+                WHERE sgc.plan_id=? AND m.due_at<=?
+                """, userId, planId, Timestamp.from(now));
+        int mastered = count("""
+                SELECT COUNT(DISTINCT sgc.card_id) FROM study_group_cards sgc
+                JOIN card_skill_memory m ON m.card_id=sgc.card_id AND m.user_id=?
+                WHERE sgc.plan_id=? AND m.skill='dictation' AND m.stability>=30
+                """, userId, planId);
+        int quizPool = count("""
+                SELECT COUNT(DISTINCT sgc.card_id) FROM study_group_cards sgc
+                LEFT JOIN card_skill_memory m ON m.card_id=sgc.card_id AND m.user_id=?
+                WHERE sgc.plan_id=? AND (m.id IS NULL OR m.due_at<=?)
+                """, userId, planId, Timestamp.from(now));
 
-    TodayDashboard buildDashboard(Long userId, LocalDate today) {
-        long totalAssigned = todayQueryRepository.countAssignedWords(userId);
-        long masteredCount = todayQueryRepository.countMastered(userId, today);
-        long dueReviewCount = todayQueryRepository.countDueReview(userId, today);
-        long newWordsCount = todayQueryRepository.countNewWords(userId);
-        long quizCount = todayQueryRepository.countQuizPool(userId, today);
-
-        int completionPercent = totalAssigned == 0
-                ? 0
-                : Math.round((float) masteredCount / totalAssigned * 100f);
-
-        List<StudyGroup> groups = groupRepository.findByUserIdOrderByCreatedAtAsc(userId);
-        List<TaskSource> newWordSources = new ArrayList<>();
-        List<TaskSource> dueReviewSources = new ArrayList<>();
-
-        for (StudyGroup group : groups) {
-            long groupNew = todayQueryRepository.countNewWordsInGroup(userId, group.getId());
-            if (groupNew > 0) {
-                newWordSources.add(new TaskSource(group.getId(), group.getName(), (int) groupNew));
-            }
-            long groupDue = todayQueryRepository.countDueReviewInGroup(userId, group.getId(), today);
-            if (groupDue > 0) {
-                dueReviewSources.add(new TaskSource(group.getId(), group.getName(), (int) groupDue));
-            }
-        }
-
-        newWordSources.sort(Comparator.comparingInt(TaskSource::count).reversed());
-        dueReviewSources.sort(Comparator.comparingInt(TaskSource::count).reversed());
-
-        TodayStats stats = new TodayStats((int) masteredCount, (int) dueReviewCount, completionPercent);
+        List<TaskSource> newSources = groupSources(userId, planId, now, true);
+        List<TaskSource> dueSources = groupSources(userId, planId, now, false);
         TodayTasks tasks = new TodayTasks(
-                TodayTask.of((int) newWordsCount, "新词学习", newWordSources),
-                TodayTask.of((int) dueReviewCount, "到期复习", dueReviewSources),
-                TodayTask.of((int) quizCount, "默写测验")
+                TodayTask.of(newCards, "新词学习", newSources),
+                TodayTask.of(due, "到期复习", dueSources),
+                TodayTask.of(quizPool, "学习卡测验")
         );
-
-        int streakDays = reviewService.calculateStreakDays(userId, today);
-        RecommendedStudy recommended = pickRecommendedStudy(groups, newWordSources, dueReviewSources);
-        List<RecentGroupDto> recentGroups = loadRecentGroups(userId, groups);
-
-        return new TodayDashboard(today, streakDays, stats, tasks, recommended, recentGroups);
+        TodayStats stats = new TodayStats(
+                mastered, due, total == 0 ? 0 : Math.round((float) mastered / total * 100)
+        );
+        RecommendedStudy recommended = recommend(newSources, dueSources);
+        return new TodayDashboard(
+                today, streakDays(userId, today), stats, tasks, recommended, recentGroups(userId, planId)
+        );
     }
 
-    /** 最近学习/测验分组，最多 3 条 */
-    private List<RecentGroupDto> loadRecentGroups(Long userId, List<StudyGroup> groups) {
-        Map<Long, StudyGroup> byId = groups.stream()
-                .collect(Collectors.toMap(StudyGroup::getId, Function.identity(), (a, b) -> a));
-        List<UserRecentGroup> recent = userRecentGroupRepository.findRecentByUserId(userId);
-        List<RecentGroupDto> result = new ArrayList<>();
-        for (UserRecentGroup item : recent) {
-            StudyGroup group = byId.get(item.getGroupId());
-            if (group == null) {
-                group = groupRepository.findByIdAndUserId(item.getGroupId(), userId).orElse(null);
-            }
-            if (group == null) {
-                continue;
-            }
-            result.add(new RecentGroupDto(group.getId(), group.getName(), item.getLastStudiedAt()));
-            if (result.size() >= 3) {
+    private List<TaskSource> groupSources(Long userId, Long planId, Instant now, boolean newOnly) {
+        String condition = newOnly
+                ? "NOT EXISTS(SELECT 1 FROM review_events r WHERE r.user_id=? AND r.card_id=sgc.card_id)"
+                : "EXISTS(SELECT 1 FROM card_skill_memory m WHERE m.user_id=? AND m.card_id=sgc.card_id AND m.due_at<=?)";
+        String sql = """
+                SELECT g.id, g.name, COUNT(*) AS card_count
+                  FROM study_groups g JOIN study_group_cards sgc ON sgc.group_id=g.id
+                 WHERE g.plan_id=? AND %s
+                 GROUP BY g.id, g.name ORDER BY card_count DESC, g.sort_order
+                """.formatted(condition);
+        return newOnly
+                ? jdbc.query(sql, (rs, row) -> new TaskSource(
+                        rs.getLong("id"), rs.getString("name"), rs.getInt("card_count")
+                ), planId, userId)
+                : jdbc.query(sql, (rs, row) -> new TaskSource(
+                        rs.getLong("id"), rs.getString("name"), rs.getInt("card_count")
+                ), planId, userId, Timestamp.from(now));
+    }
+
+    private RecommendedStudy recommend(List<TaskSource> newSources, List<TaskSource> dueSources) {
+        if (!dueSources.isEmpty()) {
+            TaskSource source = dueSources.getFirst();
+            return new RecommendedStudy(source.groupId(), source.groupName(), source.count(), StudyReason.due_review);
+        }
+        if (!newSources.isEmpty()) {
+            TaskSource source = newSources.getFirst();
+            return new RecommendedStudy(source.groupId(), source.groupName(), source.count(), StudyReason.new_words);
+        }
+        return null;
+    }
+
+    private List<RecentGroupDto> recentGroups(Long userId, Long planId) {
+        return jdbc.query(
+                """
+                SELECT g.id, g.name, MAX(sl.created_at) AS last_studied
+                  FROM study_logs sl JOIN study_groups g ON g.id=sl.group_id
+                 WHERE sl.user_id=? AND sl.plan_id=? AND sl.group_id IS NOT NULL
+                 GROUP BY g.id, g.name ORDER BY last_studied DESC LIMIT 3
+                """,
+                (rs, row) -> new RecentGroupDto(
+                        rs.getLong("id"), rs.getString("name"), rs.getTimestamp("last_studied").toInstant()
+                ),
+                userId, planId
+        );
+    }
+
+    private int streakDays(Long userId, LocalDate today) {
+        List<LocalDate> dates = jdbc.query(
+                "SELECT DISTINCT log_date FROM study_logs WHERE user_id=? AND log_date<=? ORDER BY log_date DESC",
+                (rs, row) -> rs.getDate(1).toLocalDate(), userId, Date.valueOf(today)
+        );
+        int streak = 0;
+        LocalDate expected = today;
+        for (LocalDate date : dates) {
+            if (!date.equals(expected)) {
                 break;
             }
+            streak++;
+            expected = expected.minusDays(1);
         }
-        return result;
+        return streak;
     }
 
-    /** 优先新词最多组，其次到期复习；混合时 reason=mixed */
-    private RecommendedStudy pickRecommendedStudy(
-            List<StudyGroup> groups,
-            List<TaskSource> newWordSources,
-            List<TaskSource> dueReviewSources
-    ) {
-        if (groups.isEmpty()) {
-            return null;
+    private Long currentPlanId(Long userId) {
+        List<Long> ids = jdbc.queryForList(
+                "SELECT active_plan_id FROM user_settings WHERE user_id=? AND active_plan_id IS NOT NULL",
+                Long.class, userId
+        );
+        if (ids.isEmpty()) {
+            throw new WordflipException("NOT_FOUND", "尚未选择当前学习计划");
         }
-        TaskSource topNew = newWordSources.isEmpty() ? null : newWordSources.getFirst();
-        TaskSource topDue = dueReviewSources.isEmpty() ? null : dueReviewSources.getFirst();
+        return ids.getFirst();
+    }
 
-        if (topNew != null && (topDue == null || topNew.count() >= topDue.count())) {
-            StudyReason reason = topDue != null && topDue.count() > 0 ? StudyReason.mixed : StudyReason.new_words;
-            if (topDue != null && topDue.groupId() == topNew.groupId() && topDue.count() > 0) {
-                reason = StudyReason.mixed;
-            }
-            return new RecommendedStudy(topNew.groupId(), topNew.groupName(), topNew.count(), reason);
-        }
-        if (topDue != null) {
-            StudyReason reason = topNew != null && topNew.count() > 0 ? StudyReason.mixed : StudyReason.due_review;
-            return new RecommendedStudy(topDue.groupId(), topDue.groupName(), topDue.count(), reason);
-        }
-        StudyGroup first = groups.getFirst();
-        int wordCount = (int) groupWordRepository.countByGroupId(first.getId());
-        if (wordCount <= 0) {
-            wordCount = 1;
-        }
-        return new RecommendedStudy(first.getId(), first.getName(), wordCount, StudyReason.new_words);
+    private int count(String sql, Object... args) {
+        Integer value = jdbc.queryForObject(sql, Integer.class, args);
+        return value == null ? 0 : value;
+    }
+
+    private static String assignedCardsSql() {
+        return "FROM study_group_cards sgc WHERE sgc.plan_id=?";
     }
 }

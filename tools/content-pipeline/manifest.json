@@ -1,0 +1,14 @@
+{
+  "source": "ECDICT",
+  "version": "1.0.28",
+  "license": "MIT",
+  "homepage_url": "https://github.com/skywind3000/ECDICT",
+  "download_url": "https://github.com/skywind3000/ECDICT/releases/download/1.0.28/ecdict-sqlite-28.zip",
+  "zip_path": "../word-lexicon-cleaner/data/ecdict-sqlite-28.zip",
+  "sqlite_path": "../word-lexicon-cleaner/data/ecdict-sqlite/stardict.db",
+  "zip_sha256": "EA01F76A3B3351021CE47077E89234465CC9441C8793054495320D06C0C3F3F6",
+  "sqlite_sha256": "2B5B40C2BDBA04DA0A51C8672E090F166987D5D895F32EB3FBFC5A516455FC75",
+  "zip_size": 216765132,
+  "sqlite_size": 851288064,
+  "entry_count": 3402564
+}

@@ -1,41 +1,15 @@
 package com.wordflip.dto.quiz;
 
 import jakarta.validation.constraints.NotNull;
+import java.util.UUID;
 
 /**
- * POST /quiz/sessions/{sessionId}/answer 请求体。
- * 默写用 answer；选择用 selectedKey。
+ * 测验答案提交；requestId 由客户端生成，重试时必须复用。
  */
-public class SubmitAnswerRequest {
-
-    @NotNull
-    private Integer questionIndex;
-
-    private String answer;
-
-    private String selectedKey;
-
-    public Integer getQuestionIndex() {
-        return questionIndex;
-    }
-
-    public void setQuestionIndex(Integer questionIndex) {
-        this.questionIndex = questionIndex;
-    }
-
-    public String getAnswer() {
-        return answer;
-    }
-
-    public void setAnswer(String answer) {
-        this.answer = answer;
-    }
-
-    public String getSelectedKey() {
-        return selectedKey;
-    }
-
-    public void setSelectedKey(String selectedKey) {
-        this.selectedKey = selectedKey;
-    }
+public record SubmitAnswerRequest(
+        @NotNull UUID requestId,
+        @NotNull Integer questionIndex,
+        String answer,
+        String selectedKey
+) {
 }

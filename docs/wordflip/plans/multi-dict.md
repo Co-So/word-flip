@@ -23,13 +23,13 @@
 ## 3. WordNet 规则
 
 - `Sense.cn` 可空；`enGloss` 存英义
-- `activeDictId=wordnet` 时测验仅 `dictation`（中文选词题自动降级为默写）
+- WordNet 仅作为学习卡详情来源资料，不参与测验考义选择。
 - 缺词回退：优先同 locale；WordNet 无英英释义时回退 curated 中文释义（浏览/学习兜底，测验仍按 locale 降级）
 - 全量 WordNet 数据通过 `tools/import-wordnet/` 工具补充，回退为种子数据期的过渡兼容
 
 ## 4. 设置
 
-`user_settings.active_dict_id` → `GET/PATCH` 的 `activeDictId`；`GET /dicts` 列目录。
+该历史全局词典设置已取消；来源目录由学习卡详情的 `sourceMaterials` 返回。
 
 ## 5. 验收
 

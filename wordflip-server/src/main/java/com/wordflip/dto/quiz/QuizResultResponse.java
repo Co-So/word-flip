@@ -13,6 +13,6 @@ public record QuizResultResponse(
         int wrongCount,
         float accuracy,
         String rating,
-        List<QuizWrongWordDto> wrongWords
+        List<QuizWrongCardDto> wrongCards
 ) {
 }

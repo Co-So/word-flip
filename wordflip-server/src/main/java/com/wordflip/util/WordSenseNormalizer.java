@@ -9,14 +9,13 @@ import java.util.regex.Pattern;
 /**
  * 词条字段清洗与测验可用性判定（<strong>已降级</strong>）。
  * <p>
- * <b>释义真相源</b>是全局 {@code dict_senses} primary（ECDICT 灌库，REQ-LEX）。
- * 本类不再充当词典：仅用于
+ * <b>释义真相源</b>是词书专属学习卡的已发布义项。
+ * 本类不再充当内容来源：仅用于
  * <ul>
- *   <li>{@code lexicon.source=legacy} 或 dict 缺词时的 lexicon/book_words 兜底</li>
- *   <li>词书导入补 dict 前的规则清洗</li>
+ *   <li>用户导入内容生成候选学习卡前的规则清洗</li>
  *   <li>测验池 eligibility / 干扰项词性族等辅助判定</li>
  * </ul>
- * 已带合格 dict senses 的 {@link WordSummary}：{@link #normalizeSummary} / {@link #displayCn}
+ * 已带合格义项的 {@link WordSummary}：{@link #normalizeSummary} / {@link #displayCn}
  * <strong>不再</strong>做正则二次清洗，避免误伤 ECDICT 释义。
  */
 public final class WordSenseNormalizer {

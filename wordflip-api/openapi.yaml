@@ -1,20 +1,19 @@
 openapi: 3.0.3
 info:
   title: WordFlip API
-  version: 1.2.0
+  version: 2.0.0
   description: |
-    WordFlip 单词卡片学习应用 REST API（MVP）。
+    WordFlip 词书学习卡应用 REST API。
 
     **业务文档：** [requirements.md](../docs/wordflip/requirements.md) · [api-modules.md](../docs/wordflip/api-modules.md) · [plans/lexicon-restructure.md](../docs/wordflip/plans/lexicon-restructure.md)
 
     **核心规则：**
-    - 队列三态（unlearned/fuzzy/unknown）与稳定性权值 `stability`（S）**仅**经测验 `POST /quiz/sessions/{id}/answer` 变更
-    - **skill 双轨：** `dictation` / `choice` 各一套热力 S 与 SRS；题型 `dictation`→dictation skill，`choice_en_cn`/`choice_cn_en`→choice skill
-    - 组详情主展示按 `heatDisplayMode` 聚合的 `displayHeatLevel`；单 skill 快照含 `heatLevel`；三态用于今日排队与薄弱角标
-    - 词书 `PUT /settings` 触发**增量追加分组**，不重建已有分组
-    - 单词唯一键 `wordKey` = `en.trim().toLowerCase()`；进度绑 wordKey，不按义项拆
-    - **释义：** 一词多义；展示义 = 用户 `activeDictId` 下 primary（或 exam_sense）；`Sense.enGloss` 用于英英；测验只用合格 primary；英英词典中文选词降级为默写
-    - SRS 间隔（天）：`INTERVALS = [1, 2, 4, 7, 15, 30]`，stage 0..5；答对后 `nextReviewAt = 用户时区当日结束 + INTERVALS[newStage]` 天（按 skill 独立）
+    - 用户一次只有一本当前主词书；切换词书通过学习计划完成，历史计划保留
+    - 学习、分组、今日任务与测验均以 `cardId` 为单位，同时返回 `lexemeId`
+    - 每本词书独立维护考义；默认展示当前词书学习卡，ECDICT/WordNet 仅作为可展开资料来源
+    - **skill 双轨：** `dictation` / `choice` 各自维护权威 FSRS 状态
+    - 答错映射 FSRS `Again`，答对映射 `Good`；浏览和翻卡不写入记忆状态
+    - `card_skill_memory` 是调度依据；`lexeme_skill_memory` 仅记录跨词书词形熟悉度，不能直接将新卡标记为掌握
     - **时区：** 服务端存 UTC；「当日」由 `X-Timezone` 请求头（缺省 `Asia/Shanghai`）或用户 profile 决定
     - **已掌握统计：** `stability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（REQ-EBBING-7）
     - **学习完成度：** `round(masteredCount / 已入组总词数 × 100)`，已入组总词数为 0 时返回 0
@@ -27,9 +26,9 @@ tags:
   - name: Auth
     description: 注册、登录、Token
   - name: Settings
-    description: 词书勾选、分组大小、用户偏好（含 activeDictId）
-  - name: Dicts
-    description: 内置词典目录
+    description: 用户显示与测验偏好
+  - name: LearningPlans
+    description: 当前主词书与历史学习计划
   - name: Books
     description: 词书列表与导入
   - name: Words
@@ -150,34 +149,13 @@ paths:
   /settings:
     get:
       tags: [Settings]
-      summary: 获取用户设置与词书汇总
+      summary: 获取用户偏好与当前学习计划标识
       responses:
         '200':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserSettingsResponse'
-    put:
-      tags: [Settings]
-      summary: 保存词书勾选与分组大小（增量追加或重新分组）
-      description: |
-        持久化 `bookIds`、`groupSize` 与 `groupStrategy`。
-        - 默认（`regroup=false`）：调用 `GroupService.appendGroupsForNewWords`，仅对尚未入组的 wordKey 追加新 auto 组。
-        - `regroup=true`（REQ-BOOK-26）：删除全部 **auto** 分组后，按当前勾选词书 + 策略 **全量重建** auto 组；
-          **custom** 手动分组及其单词保留；掌握度/复习计划/图片/污渍不删除。
-        变更 `groupSize` 在增量模式下仅影响后续 append；重新分组时立即按新 groupSize 切分。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SaveBooksSettingsRequest'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SaveBooksSettingsResponse'
 
   /settings/preferences:
     patch:
@@ -195,22 +173,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserSettingsResponse'
-
-  /dicts:
-    get:
-      tags: [Dicts]
-      summary: 列出内置词典
-      description: |
-        返回可切换的词典目录（wordflip_curated / wiktionary_zh / wordflip_concise / wordnet）。
-        许可署名见各条目 `licenseNote`（REQ-LEX-9）。
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DictionaryItem'
 
   /books:
     get:
@@ -319,13 +281,12 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /books/{bookId}/words:
+  /books/{bookId}/cards:
     get:
       tags: [Books]
-      summary: 词书词条分页
+      summary: 词书学习卡分页
       description: |
-        按 `sort_order` 返回书内词条（只读浏览）。词书须对当前用户可见。
-        不写入掌握度、不改分组。
+        按词书顺序返回当前已发布学习卡。未发布和待补充条目不进入学习或测验池。
       parameters:
         - $ref: '#/components/parameters/BookId'
         - $ref: '#/components/parameters/Page'
@@ -335,16 +296,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BookWordsResponse'
+                $ref: '#/components/schemas/BookCardsResponse'
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /words/unassigned:
+  /learning/cards/unassigned:
     get:
-      tags: [Words]
-      summary: 未入组单词池
+      tags: [Study]
+      summary: 当前计划未入组学习卡池
       description: |
-        已勾选词书合并去重后，不在任何 group_words 中的词。用于手动添加分组（REQ-BOOK-16）。
+        当前学习计划中已发布、但不在任何 study_group_cards 中的卡片。待审核卡片不会返回。
         `all=true` 时返回全量（上限 5000，不分页）；否则分页，默认 size=20。
       parameters:
         - name: all
@@ -354,7 +315,7 @@ paths:
             default: false
         - name: q
           in: query
-          description: 按 en/cn 前缀搜索（可选）
+          description: 按词头或词书考义前缀搜索（可选）
           schema:
             type: string
         - $ref: '#/components/parameters/Page'
@@ -364,24 +325,78 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UnassignedWordsResponse'
+                $ref: '#/components/schemas/UnassignedCardsResponse'
+
+  /learning-plans:
+    post:
+      tags: [LearningPlans]
+      summary: 创建并激活学习计划
+      description: 为指定词书创建计划并原子切换为唯一当前计划；原计划保留历史。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLearningPlanRequest'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPlan'
+
+  /learning-plans/current:
+    get:
+      tags: [LearningPlans]
+      summary: 获取当前学习计划
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPlan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [LearningPlans]
+      summary: 切换或调整当前学习计划
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchLearningPlanRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPlan'
+
+  /learning/cards/{cardId}:
+    get:
+      tags: [Study]
+      summary: 获取学习卡详情
+      parameters:
+        - $ref: '#/components/parameters/CardId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningCardDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /words/{wordKey}:
     get:
       tags: [Words]
-      summary: 按词典查询单词详情
+      summary: 查询当前词书学习卡与来源资料
       description: |
-        返回指定 `dictId` 下的完整义项，用于学习详情抽屉临时切换词典（REQ-LEX-9）。
-        未传 `dictId` 时使用用户 `activeDictId`；查询不修改全局词典设置。
-        指定词典缺词时按服务端词典回退规则返回可用释义。
+        返回当前计划所属词书的学习卡，并按来源分组返回 ECDICT、WordNet 等资料。
+        来源资料仅供详情展示，不改变学习卡考义或 FSRS 进度。
       parameters:
         - $ref: '#/components/parameters/WordKey'
-        - name: dictId
-          in: query
-          required: false
-          description: 要临时查看的词典 ID；缺省使用 activeDictId
-          schema:
-            type: string
       responses:
         '200':
           content:
@@ -419,9 +434,9 @@ paths:
       tags: [Groups]
       summary: 创建自定义分组
       description: |
-        `wordKeys` 须来自已勾选词书的**未入组**词池（`GET /words/unassigned`）。
-        一词一组：`UNIQUE(user_id, word_key)`；已入组 key 返回 409。
-        服务端对重复 wordKey 去重；空数组或全部非法返回 400。
+        `cardIds` 须来自当前计划的未入组卡片池（`GET /learning/cards/unassigned`）。
+        一张学习卡在同一计划内只能属于一个分组；已入组卡片返回 409。
+        服务端对重复 cardId 去重；空数组或全部非法返回 400。
       requestBody:
         required: true
         content:
@@ -435,7 +450,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/GroupDetail'
         '409':
-          description: wordKey 已入组或非法
+          description: cardId 已入组或不属于当前计划
           content:
             application/json:
               schema:
@@ -456,10 +471,10 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /groups/{groupId}/words:
+  /groups/{groupId}/cards:
     get:
       tags: [Groups]
-      summary: 分组单词列表（只读掌握度）
+      summary: 分组学习卡列表（只读 FSRS 进度）
       parameters:
         - $ref: '#/components/parameters/GroupId'
         - $ref: '#/components/parameters/Page'
@@ -469,7 +484,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GroupWordsResponse'
+                $ref: '#/components/schemas/GroupCardsResponse'
 
   /groups/{groupId}/stains/batch:
     post:
@@ -494,12 +509,8 @@ paths:
       tags: [Today]
       summary: 今日仪表盘
       description: |
-        任务计数（REQ-TODAY-9~11）：
-        - `tasks.newWords.count`：已入组、`level=unlearned` 且 `hasQuizHistory=false`
-        - `tasks.dueReview.count` / `stats.dueReviewCount`：`nextReviewAt <= 用户当日`（排序 unknown > fuzzy > unlearned）
-        - `tasks.quiz.count`：默写题目池大小（到期复习 ∪ fuzzy/unknown，已入组词）
-        - `stats.masteredCount`：`stage>=5` 且 `DATEDIFF(next_review_at,today)>=30`
-        - `stats.completionPercent`：`round(masteredCount / 已入组总词数 × 100)`
+        仅统计当前学习计划。新卡来自当前计划已入组且尚无有效测验记录的学习卡；
+        到期复习与测验排序以 `card_skill_memory.due_at` 为准，默写和选择技能分别计算。
       parameters:
         - name: X-Timezone
           in: header
@@ -549,10 +560,8 @@ paths:
       tags: [Quiz]
       summary: 创建测验会话
       description: |
-        每次进入测验页必须新建 session（REQ-NAV-6、REQ-QUIZ-2）。
-        出题范围：当前用户 **已入组**（group_words）的 wordKey。
-        出题池 = `nextReviewAt <= 当日` 的词 ∪ `level` 为 fuzzy/unknown 的词（REQ-TODAY-11）。
-        `source` 行为：`today` 全池抽题；`study` 默认按 `groupId` 过滤；`retry` 重建 session 重新抽题（REQ-QUIZ-10）。
+        每次进入测验页必须新建 session。题目只来自当前计划已发布且已入组的学习卡。
+        到期判断使用对应技能的 `card_skill_memory.due_at`；`study` 可按 `groupId` 过滤。
         实际出题数 = `min(|pool|, questionLimit)`，默认 limit=10。
       requestBody:
         content:
@@ -577,19 +586,9 @@ paths:
       tags: [Quiz]
       summary: 提交单题答案（掌握度唯一写入口）
       description: |
-        **判题：** `answer.trim()` 与标准 `en` 比较，`equalsIgnoreCase`。
-        **掌握度唯一写入口** — 调用 `ReviewService.applyQuizResult`（同事务更新三态/SRS 与稳定性 S）：
-
-        | 条件 | level | stage | nextReviewAt |
-        |------|-------|-------|--------------|
-        | 答对 | unlearned | min(stage+1, 5) | 用户时区当日结束 + INTERVALS[newStage] 天 |
-        | 答错（非连续第2次） | fuzzy | max(stage-1, 0) | 当日结束 + 1 天 |
-        | 连续第2次答错* | unknown | 0 | 当日结束（优先复习队列） |
-
-        *连续判定：写入本条答案**之前**，该 wordKey 最近一条 `quiz_answers` 为 `correct=false`。
-        `hasQuizHistory`：首次对该 wordKey 提交测验答案后恒为 true（无论对错）。
-        **稳定性 S：** 答对按 `(1−R)` 升权（24h 窗累计 ≤1.00）；答错按 R 与窗内连错降权；响应 `masteryUpdate.before/after` 含 `stability`/`heatLevel`。
-        session `completed` 时服务端自动 upsert `study_logs`。
+        服务端判题；答对映射 FSRS `Good`，答错映射 `Again`，客户端不得提交 rating。
+        `requestId` 是提交幂等键，网络重试必须复用同一 UUID。
+        同一事务写答案、`review_events`、卡片技能记忆与词形熟悉度；默写和选择技能相互隔离。
       parameters:
         - $ref: '#/components/parameters/SessionId'
       requestBody:
@@ -605,7 +604,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AnswerResult'
         '409':
-          description: 会话已完成或题号重复
+          description: 会话已完成，或 requestId 与既有请求载荷冲突
           content:
             application/json:
               schema:
@@ -624,12 +623,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/QuizResult'
 
-  /words/{wordKey}/image:
+  /learning/cards/{cardId}/image:
     get:
       tags: [Images]
       summary: 获取卡片图片
       parameters:
-        - $ref: '#/components/parameters/WordKey'
+        - $ref: '#/components/parameters/CardId'
       responses:
         '200':
           content:
@@ -642,7 +641,7 @@ paths:
       tags: [Images]
       summary: 上传或替换卡片图片
       parameters:
-        - $ref: '#/components/parameters/WordKey'
+        - $ref: '#/components/parameters/CardId'
       requestBody:
         required: true
         content:
@@ -667,7 +666,7 @@ paths:
       tags: [Images]
       summary: 仅更新图片 transform（不重传文件）
       parameters:
-        - $ref: '#/components/parameters/WordKey'
+        - $ref: '#/components/parameters/CardId'
       requestBody:
         required: true
         content:
@@ -684,17 +683,17 @@ paths:
       tags: [Images]
       summary: 清除卡片图片
       parameters:
-        - $ref: '#/components/parameters/WordKey'
+        - $ref: '#/components/parameters/CardId'
       responses:
         '204':
           description: 已清除
 
-  /words/{wordKey}/stain:
+  /learning/cards/{cardId}/stain:
     get:
       tags: [Stains]
       summary: 获取污渍配置
       parameters:
-        - $ref: '#/components/parameters/WordKey'
+        - $ref: '#/components/parameters/CardId'
       responses:
         '200':
           content:
@@ -705,7 +704,7 @@ paths:
       tags: [Stains]
       summary: 更新污渍
       parameters:
-        - $ref: '#/components/parameters/WordKey'
+        - $ref: '#/components/parameters/CardId'
       requestBody:
         required: true
         content:
@@ -768,6 +767,13 @@ components:
       bearerFormat: JWT
 
   parameters:
+    CardId:
+      name: cardId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
     BookId:
       name: bookId
       in: path
@@ -954,11 +960,12 @@ components:
 
     WordSummary:
       type: object
-      required: [wordKey, en]
-      description: |
-        词条摘要。顶层 `cn` / `enGloss` / `pos` / `ph` 为展示义：用户 `activeDictId` 下 primary，
-        或已选词书 `exam_sense_id`（须属当前词典）。英汉用 cn；英英用 enGloss。
+      required: [lexemeId, wordKey, en]
+      description: 规范词形摘要；不承载跨词书共享考义。
       properties:
+        lexemeId:
+          type: integer
+          format: int64
         wordKey:
           type: string
           description: en.trim().toLowerCase()
@@ -989,42 +996,24 @@ components:
 
     WordLookupResponse:
       type: object
-      required: [wordKey, en, senses, dictId, dictName, dictLocale]
-      description: |
-        按词典查询的单词详情。顶层字段为该词典展示义，`senses` 为全部义项；
-        `dictId` / `dictName` / `dictLocale` 表示服务端实际命中（或回退）的词典。
+      required: [lexemeId, wordKey, en, currentCard, sourceMaterials]
+      description: 当前词书学习卡与可展开的词典来源资料。
       properties:
+        lexemeId:
+          type: integer
+          format: int64
         wordKey:
           type: string
           description: en.trim().toLowerCase()
         en:
           type: string
           description: 英文词头
-        cn:
-          type: string
-          nullable: true
-          description: 展示义中文（英英可空）
-        pos:
-          type: string
-          nullable: true
-        ph:
-          type: string
-          nullable: true
-        enGloss:
-          type: string
-          nullable: true
-          description: 英英展示义
-        senses:
+        currentCard:
+          $ref: '#/components/schemas/LearningCard'
+        sourceMaterials:
           type: array
           items:
-            $ref: '#/components/schemas/Sense'
-        dictId:
-          type: string
-        dictName:
-          type: string
-        dictLocale:
-          type: string
-          enum: [zh, en]
+            $ref: '#/components/schemas/SourceMaterial'
 
     Sense:
       type: object
@@ -1062,27 +1051,28 @@ components:
           items:
             $ref: '#/components/schemas/Example'
 
-    DictionaryItem:
+    SourceMaterial:
       type: object
-      required: [id, name, locale]
+      required: [sourceId, sourceName, revision, senses]
+      description: 可追溯到具体来源修订和原始词条的详情资料。
       properties:
-        id:
+        sourceId:
           type: string
-          description: dictionaries.id
-        name:
+        sourceName:
           type: string
-        locale:
+        revision:
           type: string
-          enum: [zh, en]
         licenseNote:
           type: string
           nullable: true
-        builtin:
-          type: boolean
-          default: true
-        sortOrder:
+        rawEntryId:
           type: integer
-          minimum: 0
+          format: int64
+          nullable: true
+        senses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sense'
 
     Example:
       type: object
@@ -1171,32 +1161,87 @@ components:
               layerOrder:
                 type: integer
 
-    WordCard:
+    LearningCard:
+      type: object
+      required: [cardId, lexemeId, bookId, wordKey, en, version, senses]
+      description: 词书专属考义学习卡；同一 lexeme 在不同词书中拥有不同卡片。
+      properties:
+        cardId:
+          type: integer
+          format: int64
+        lexemeId:
+          type: integer
+          format: int64
+        bookId:
+          type: integer
+          format: int64
+        wordKey:
+          type: string
+        en:
+          type: string
+        phonetic:
+          type: string
+          nullable: true
+        version:
+          type: integer
+          minimum: 1
+        senses:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Sense'
+
+    LearningCardDetail:
       allOf:
-        - $ref: '#/components/schemas/WordSummary'
+        - $ref: '#/components/schemas/LearningCard'
         - type: object
+          required: [progress, sourceMaterials]
           properties:
-            mastery:
-              $ref: '#/components/schemas/MasterySnapshot'
+            progress:
+              $ref: '#/components/schemas/CardProgress'
+            sourceMaterials:
+              type: array
+              items:
+                $ref: '#/components/schemas/SourceMaterial'
             image:
               $ref: '#/components/schemas/WordImagePayload'
             stain:
               $ref: '#/components/schemas/WordStainPayload'
-            detail:
-              type: object
-              nullable: true
-              description: |
-                过渡期详情块。优先使用 WordSummary.senses[].examples；
-                本字段保留兼容旧客户端（meaning≈primary.cn，examples 为扁平字符串列表）。
-              properties:
-                meaning:
-                  type: string
-                examples:
-                  type: array
-                  items:
-                    type: string
-                etymology:
-                  type: string
+
+    CardProgress:
+      type: object
+      required: [dictation, choice, displayHeatLevel]
+      properties:
+        dictation:
+          $ref: '#/components/schemas/FsrsMemory'
+        choice:
+          $ref: '#/components/schemas/FsrsMemory'
+        displayHeatLevel:
+          type: integer
+          minimum: 0
+          maximum: 4
+          description: 服务端根据默写轨稳定性计算的只读展示热力档
+
+    FsrsMemory:
+      type: object
+      required: [state, dueAt, stability, difficulty, reps, lapses]
+      properties:
+        state:
+          type: string
+          enum: [new, learning, review, relearning]
+        dueAt:
+          type: string
+          format: date-time
+        stability:
+          type: number
+          format: double
+        difficulty:
+          type: number
+          format: double
+        reps:
+          type: integer
+        lapses:
+          type: integer
 
     WordImagePayload:
       type: object
@@ -1297,13 +1342,12 @@ components:
 
     UserSettingsResponse:
       type: object
-      required: [bookIds, groupSize, groupStrategy, autoSpeak, themeMode, activeDictId, summary]
+      required: [activePlanId, groupSize, groupStrategy, autoSpeak, themeMode]
       properties:
-        bookIds:
-          type: array
-          items:
-            type: integer
-            format: int64
+        activePlanId:
+          type: integer
+          format: int64
+          nullable: true
         groupSize:
           $ref: '#/components/schemas/GroupSize'
         groupStrategy:
@@ -1321,54 +1365,6 @@ components:
           minimum: 1
           maximum: 50
           description: 默认测验题数
-        activeDictId:
-          type: string
-          description: 当前词典 dictionaries.id（REQ-LEX-9）
-          default: wordflip_curated
-        summary:
-          $ref: '#/components/schemas/BooksSummary'
-
-    SaveBooksSettingsRequest:
-      type: object
-      required: [bookIds, groupSize]
-      properties:
-        bookIds:
-          type: array
-          items:
-            type: integer
-            format: int64
-        groupSize:
-          $ref: '#/components/schemas/GroupSize'
-        groupStrategy:
-          $ref: '#/components/schemas/GroupStrategy'
-        regroup:
-          type: boolean
-          default: false
-          description: |
-            true 时删除全部 auto 组并按当前词书重建（REQ-BOOK-26）。
-            与增量 append 互斥；custom 组保留。
-
-    SaveBooksSettingsResponse:
-      allOf:
-        - $ref: '#/components/schemas/UserSettingsResponse'
-        - type: object
-          properties:
-            appendedGroups:
-              type: object
-              properties:
-                count:
-                  type: integer
-                groups:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                      name:
-                        type: string
-                      wordCount:
-                        type: integer
 
     PreferencesPatchRequest:
       type: object
@@ -1386,23 +1382,58 @@ components:
           type: integer
           minimum: 1
           maximum: 50
-        activeDictId:
-          type: string
-          description: 切换当前词典（须为 GET /dicts 返回的 id）
 
-    BooksSummary:
+    CreateLearningPlanRequest:
       type: object
-      required: [distinctSelectedCount, estimatedGroupCount, unassignedCount]
+      required: [bookId]
       properties:
-        distinctSelectedCount:
+        bookId:
           type: integer
-          description: 已勾选词书合并去重后的 distinct wordKey 数
-        estimatedGroupCount:
+          format: int64
+        dailyNewCardLimit:
           type: integer
-          description: ceil(distinctSelectedCount / groupSize)；distinct=0 时为 0
-        unassignedCount:
+          minimum: 1
+          maximum: 200
+          default: 20
+
+    PatchLearningPlanRequest:
+      type: object
+      minProperties: 1
+      properties:
+        planId:
           type: integer
-          description: 已勾选词书中尚未入组的 wordKey 数
+          format: int64
+          description: 切换到已有历史计划
+        dailyNewCardLimit:
+          type: integer
+          minimum: 1
+          maximum: 200
+        status:
+          type: string
+          enum: [active, paused, completed]
+
+    LearningPlan:
+      type: object
+      required: [planId, bookId, bookName, status, dailyNewCardLimit, active, createdAt]
+      properties:
+        planId:
+          type: integer
+          format: int64
+        bookId:
+          type: integer
+          format: int64
+        bookName:
+          type: string
+        status:
+          type: string
+          enum: [active, paused, completed]
+        dailyNewCardLimit:
+          type: integer
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
 
     BookListResponse:
       type: object
@@ -1476,26 +1507,26 @@ components:
           $ref: '#/components/schemas/BookItem'
           description: confirm 后 selected=true
 
-    BookWordsResponse:
+    BookCardsResponse:
       allOf:
         - $ref: '#/components/schemas/PageMeta'
         - type: object
-          required: [words]
+          required: [cards]
           properties:
-            words:
+            cards:
               type: array
               items:
-                $ref: '#/components/schemas/WordSummary'
+                $ref: '#/components/schemas/LearningCard'
 
-    UnassignedWordsResponse:
+    UnassignedCardsResponse:
       allOf:
         - $ref: '#/components/schemas/PageMeta'
         - type: object
           properties:
-            words:
+            cards:
               type: array
               items:
-                $ref: '#/components/schemas/WordSummary'
+                $ref: '#/components/schemas/LearningCard'
 
     GroupStats:
       type: object
@@ -1550,35 +1581,27 @@ components:
           items:
             $ref: '#/components/schemas/GroupDetail'
 
-    GroupWordsResponse:
+    GroupCardsResponse:
       allOf:
         - $ref: '#/components/schemas/PageMeta'
         - type: object
           properties:
-            words:
+            cards:
               type: array
               items:
-                allOf:
-                  - $ref: '#/components/schemas/WordSummary'
-                  - type: object
-                    properties:
-                      mastery:
-                        $ref: '#/components/schemas/MasterySnapshot'
-                        description: 兼容字段；默认 dictation skill 快照
-                      progress:
-                        $ref: '#/components/schemas/WordProgressSnapshot'
-                        description: 双 skill 进度 + 展示热力
+                $ref: '#/components/schemas/LearningCardDetail'
 
     CreateCustomGroupRequest:
       type: object
-      required: [wordKeys]
+      required: [cardIds]
       properties:
-        wordKeys:
+        cardIds:
           type: array
           minItems: 1
           maxItems: 500
           items:
-            type: string
+            type: integer
+            format: int64
         name:
           type: string
           maxLength: 64
@@ -1669,6 +1692,7 @@ components:
 
     StudyGroupPayload:
       type: object
+      required: [group, cards]
       properties:
         group:
           type: object
@@ -1679,10 +1703,10 @@ components:
               type: string
             source:
               type: string
-        words:
+        cards:
           type: array
           items:
-            $ref: '#/components/schemas/WordCard'
+            $ref: '#/components/schemas/LearningCard'
 
     StudySessionReportRequest:
       type: object
@@ -1692,7 +1716,7 @@ components:
           type: integer
         durationSec:
           type: integer
-        wordsViewed:
+        cardsViewed:
           type: integer
         completedAt:
           type: string
@@ -1712,12 +1736,13 @@ components:
       properties:
         source:
           type: string
-          enum: [today, study, retry, groups, all, recent]
+          enum: [today, study, retry, groups, all, recent, diagnostic]
           default: today
           description: |
             today/study/retry 沿用原入口；
             groups 按 groupIds（或单 groupId）抽题；
-            all 全已入组词；recent 最近学习组
+            all 为当前计划全部已入组卡片；recent 为最近学习组；
+            diagnostic 仅选择跨书词形已熟悉、但当前卡片尚未建立 FSRS 进度的卡片。
         groupId:
           type: integer
           format: int64
@@ -1744,11 +1769,16 @@ components:
 
     QuizQuestion:
       type: object
+      required: [questionIndex, cardId, lexemeId, type, prompt]
       properties:
         questionIndex:
           type: integer
-        wordKey:
-          type: string
+        cardId:
+          type: integer
+          format: int64
+        lexemeId:
+          type: integer
+          format: int64
         type:
           $ref: '#/components/schemas/QuestionType'
         prompt:
@@ -1796,8 +1826,12 @@ components:
 
     SubmitAnswerRequest:
       type: object
-      required: [questionIndex]
+      required: [requestId, questionIndex]
       properties:
+        requestId:
+          type: string
+          format: uuid
+          description: 客户端生成的稳定幂等键；重试同一答案时必须复用。
         questionIndex:
           type: integer
         answer:
@@ -1828,14 +1862,18 @@ components:
           enum: [correct, wrong]
         masteryUpdate:
           type: object
-          required: [wordKey, before, after]
+          required: [cardId, lexemeId, before, after]
           properties:
-            wordKey:
-              type: string
+            cardId:
+              type: integer
+              format: int64
+            lexemeId:
+              type: integer
+              format: int64
             before:
-              $ref: '#/components/schemas/MasterySnapshot'
+              $ref: '#/components/schemas/FsrsMemory'
             after:
-              $ref: '#/components/schemas/MasterySnapshot'
+              $ref: '#/components/schemas/FsrsMemory'
         session:
           type: object
           properties:
@@ -1871,13 +1909,18 @@ components:
           type: string
           enum: [excellent, good, keep_going]
           description: excellent≥90%, good≥70%, keep_going<70%（REQ-QUIZ-9）
-        wrongWords:
+        wrongCards:
           type: array
           items:
             type: object
+            required: [cardId, lexemeId, en, userAnswer]
             properties:
-              wordKey:
-                type: string
+              cardId:
+                type: integer
+                format: int64
+              lexemeId:
+                type: integer
+                format: int64
               en:
                 type: string
               cn:
@@ -1887,9 +1930,14 @@ components:
 
     WordImageResponse:
       type: object
+      required: [cardId, lexemeId, hasImage]
       properties:
-        wordKey:
-          type: string
+        cardId:
+          type: integer
+          format: int64
+        lexemeId:
+          type: integer
+          format: int64
         hasImage:
           type: boolean
         imageUrl:
@@ -1904,9 +1952,14 @@ components:
 
     WordStainResponse:
       type: object
+      required: [cardId, lexemeId, hidden]
       properties:
-        wordKey:
-          type: string
+        cardId:
+          type: integer
+          format: int64
+        lexemeId:
+          type: integer
+          format: int64
         hidden:
           type: boolean
         config:
@@ -1951,7 +2004,7 @@ components:
       properties:
         masteredCount:
           type: integer
-          description: stage>=5 且 DATEDIFF(next_review_at,today)>=30
+          description: 当前计划默写技能 FSRS stability >= 30 天的学习卡数
         streakDays:
           type: integer
         quizAccuracy:

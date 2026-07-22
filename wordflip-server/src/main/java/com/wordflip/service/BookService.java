@@ -1,174 +1,83 @@
 package com.wordflip.service;
 
-import com.wordflip.domain.Book;
-import com.wordflip.domain.BookWord;
-import com.wordflip.domain.UserWordLexicon;
 import com.wordflip.dto.book.BookListResponse;
-import com.wordflip.dto.book.BookWordsResponse;
-import com.wordflip.dto.common.PageMeta;
-import com.wordflip.dto.settings.BooksSummary;
-import com.wordflip.dto.word.WordSummary;
 import com.wordflip.exception.WordflipException;
-import com.wordflip.repository.BookRepository;
-import com.wordflip.repository.BookWordRepository;
-import com.wordflip.repository.GroupWordRepository;
-import com.wordflip.repository.UserBookSelectionRepository;
-import com.wordflip.repository.UserWordLexiconRepository;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
+import java.util.List;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 /**
- * 词书列表、详情、词条分页与汇总计算。
+ * 按全新 books 表读取公共词书和当前用户的私有词书。
  */
 @Service
 public class BookService {
 
-    private final BookRepository bookRepository;
-    private final UserBookSelectionRepository userBookSelectionRepository;
-    private final BookWordRepository bookWordRepository;
-    private final GroupWordRepository groupWordRepository;
-    private final UserWordLexiconRepository userWordLexiconRepository;
+    private static final String BOOK_SELECT = """
+            SELECT b.id, b.name, b.source_type, b.published_card_count, b.declared_count,
+                   CASE WHEN us.active_plan_id=p.id THEN TRUE ELSE FALSE END AS selected
+              FROM books b
+              LEFT JOIN user_learning_plans p ON p.book_id=b.id AND p.user_id=?
+              LEFT JOIN user_settings us ON us.user_id=?
+            """;
 
-    public BookService(
-            BookRepository bookRepository,
-            UserBookSelectionRepository userBookSelectionRepository,
-            BookWordRepository bookWordRepository,
-            GroupWordRepository groupWordRepository,
-            UserWordLexiconRepository userWordLexiconRepository
-    ) {
-        this.bookRepository = bookRepository;
-        this.userBookSelectionRepository = userBookSelectionRepository;
-        this.bookWordRepository = bookWordRepository;
-        this.groupWordRepository = groupWordRepository;
-        this.userWordLexiconRepository = userWordLexiconRepository;
-    }
+    private final JdbcTemplate jdbc;
 
-    /** GET /books：builtin + 当前用户 imported，含 selected 标记 */
-    @Transactional(readOnly = true)
-    public BookListResponse listBooks(Long userId) {
-        Set<Long> selectedIds = new HashSet<>(userBookSelectionRepository.findBookIdsByUserId(userId));
-        List<BookListResponse.BookItem> items = bookRepository.findVisibleBooks(userId).stream()
-                .map(book -> BookListResponse.BookItem.from(book, selectedIds.contains(book.getId())))
-                .toList();
-        return new BookListResponse(items);
-    }
-
-    /** GET /books/{bookId}：可见性校验后返回单书 */
-    @Transactional(readOnly = true)
-    public BookListResponse.BookItem getBook(Long userId, Long bookId) {
-        Book book = requireVisibleBook(userId, bookId);
-        boolean selected = userBookSelectionRepository.existsByIdUserIdAndIdBookId(userId, bookId);
-        return BookListResponse.BookItem.from(book, selected);
-    }
-
-    /** GET /books/{bookId}/words：按 sort_order 分页，只读 */
-    @Transactional(readOnly = true)
-    public BookWordsResponse listBookWords(Long userId, Long bookId, int page, int size) {
-        requireVisibleBook(userId, bookId);
-        int safePage = Math.max(page, 0);
-        int safeSize = size <= 0 ? 20 : Math.min(size, 100);
-        Page<BookWord> wordPage = bookWordRepository.findByBookIdOrderBySortOrderAsc(
-                bookId,
-                PageRequest.of(safePage, safeSize)
-        );
-        List<WordSummary> words = wordPage.getContent().stream()
-                .map(bw -> new WordSummary(bw.getWordKey(), bw.getEn(), bw.getCn(), bw.getPos(), bw.getPh()))
-                .toList();
-        PageMeta meta = PageMeta.of(safePage, safeSize, wordPage.getTotalElements());
-        return BookWordsResponse.of(meta, words);
-    }
-
-    /** 计算词书汇总（对齐 openapi BooksSummary） */
-    @Transactional(readOnly = true)
-    public BooksSummary buildSummary(Long userId, int groupSize) {
-        List<Long> selectedBookIds = userBookSelectionRepository.findBookIdsByUserId(userId);
-        if (selectedBookIds.isEmpty()) {
-            return new BooksSummary(0, 0, 0);
-        }
-
-        Set<String> selectedWordKeys = new HashSet<>(bookWordRepository.findDistinctWordKeysByBookIds(selectedBookIds));
-        Set<String> assignedWordKeys = groupWordRepository.findWordKeysByUserId(userId);
-
-        long distinctCount = selectedWordKeys.size();
-        long unassigned = selectedWordKeys.stream().filter(k -> !assignedWordKeys.contains(k)).count();
-        int estimatedGroups = distinctCount == 0 ? 0 : (int) Math.ceil((double) distinctCount / groupSize);
-
-        return new BooksSummary(distinctCount, estimatedGroups, unassigned);
+    public BookService(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
     }
 
     /**
-     * append 前对 delta wordKeys 批量 upsert lexicon（已存在不覆盖 cn/en）。
+     * 返回已发布公共词书与当前用户自己的私有词书；selected 仅表示当前计划。
      */
-    @Transactional
-    public void upsertLexiconForNewWords(Long userId, List<String> wordKeys, List<Long> selectedBookIds) {
-        if (wordKeys.isEmpty()) {
-            return;
-        }
-        Set<String> existing = userWordLexiconRepository.findExistingWordKeys(userId, wordKeys);
-        List<BookWord> sourceWords = bookWordRepository.findByBookIdsAndWordKeys(selectedBookIds, wordKeys);
-
-        // 按 book_id、sort_order 取每个 wordKey 的首条作为来源
-        Map<String, BookWord> firstByKey = new LinkedHashMap<>();
-        for (BookWord bw : sourceWords) {
-            firstByKey.putIfAbsent(bw.getWordKey(), bw);
-        }
-
-        for (String wordKey : wordKeys) {
-            if (existing.contains(wordKey)) {
-                continue;
-            }
-            BookWord source = firstByKey.get(wordKey);
-            if (source == null) {
-                continue;
-            }
-            UserWordLexicon lexicon = new UserWordLexicon();
-            lexicon.setUserId(userId);
-            lexicon.setWordKey(wordKey);
-            lexicon.setEn(source.getEn());
-            lexicon.setCn(source.getCn());
-            lexicon.setPos(source.getPos());
-            lexicon.setPh(source.getPh());
-            lexicon.setDetailJson(source.getDetailJson());
-            lexicon.setSourceBookId(source.getBookId());
-            lexicon.setUpdatedAt(Instant.now());
-            userWordLexiconRepository.save(lexicon);
-        }
-    }
-
-    /** 校验 bookIds 对当前用户可见且存在 */
     @Transactional(readOnly = true)
-    public void validateBookSelection(Long userId, List<Long> bookIds) {
-        if (bookIds == null || bookIds.isEmpty()) {
-            return;
-        }
-        Set<Long> visibleIds = bookRepository.findVisibleBooks(userId).stream()
-                .map(Book::getId)
-                .collect(java.util.stream.Collectors.toSet());
-        for (Long bookId : bookIds) {
-            if (!visibleIds.contains(bookId)) {
-                throw new WordflipException("NOT_FOUND", "词书不存在或不可访问: " + bookId);
-            }
-        }
+    public BookListResponse listBooks(Long userId) {
+        List<BookListResponse.BookItem> books = jdbc.query(
+                BOOK_SELECT + " WHERE b.status='published' AND (b.visibility='public' OR b.owner_user_id=?) ORDER BY b.id",
+                (rs, row) -> mapBook(rs),
+                userId, userId, userId
+        );
+        return new BookListResponse(books);
     }
 
-    /** builtin 全员可见；imported 须归属当前用户 */
-    private Book requireVisibleBook(Long userId, Long bookId) {
-        Book book = bookRepository.findById(bookId)
-                .orElseThrow(() -> new WordflipException("NOT_FOUND", "词书不存在"));
-        boolean visible = book.getSource() == com.wordflip.domain.BookSource.builtin
-                || userId.equals(book.getUserId());
-        if (!visible) {
+    /**
+     * 获取当前用户可见的单本词书。
+     */
+    @Transactional(readOnly = true)
+    public BookListResponse.BookItem getBook(Long userId, Long bookId) {
+        List<BookListResponse.BookItem> values = jdbc.query(
+                BOOK_SELECT + " WHERE b.id=? AND (b.visibility='public' OR b.owner_user_id=?)",
+                (rs, row) -> mapBook(rs),
+                userId, userId, bookId, userId
+        );
+        if (values.isEmpty()) {
             throw new WordflipException("NOT_FOUND", "词书不存在或不可访问");
         }
-        return book;
+        return values.getFirst();
+    }
+
+    /**
+     * 校验词书可见且已发布，可用于创建学习计划。
+     */
+    @Transactional(readOnly = true)
+    public void requirePublishedBook(Long userId, Long bookId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM books WHERE id=? AND status='published' AND (visibility='public' OR owner_user_id=?)",
+                Integer.class,
+                bookId,
+                userId
+        );
+        if (count == null || count == 0) {
+            throw new WordflipException("NOT_FOUND", "词书不存在或尚未发布");
+        }
+    }
+
+    private BookListResponse.BookItem mapBook(java.sql.ResultSet rs) throws java.sql.SQLException {
+        String source = rs.getString("source_type");
+        return new BookListResponse.BookItem(
+                rs.getLong("id"), rs.getString("name"), source,
+                rs.getInt("published_card_count"), rs.getObject("declared_count", Integer.class),
+                rs.getBoolean("selected"), "imported".equals(source)
+        );
     }
 }

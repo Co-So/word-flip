@@ -18,8 +18,8 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
-    locations: classpath:db/migration
-    baseline-on-migrate: true
+    locations: classpath:db/migration-v2
+    baseline-on-migrate: false
 
 server:
   port: 8080
@@ -39,6 +39,6 @@ wordflip:
     refresh-expiration-days: 7
   minio:
     bucket: wordflip
-  # 释义读源：dict=dict_* primary（默认）；legacy=仅 lexicon/book_words
-  lexicon:
-    source: ${WORDFLIP_LEXICON_SOURCE:dict}
+  fsrs:
+    desired-retention: 0.90
+    maximum-interval-days: 36500

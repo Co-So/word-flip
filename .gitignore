@@ -46,3 +46,16 @@ docker/data/
 wordflip-server/scripts/vocabulary/raw/
 wordflip-server/scripts/vocabulary/processed/book_*.json
 wordflip-server/scripts/vocabulary/raw/wordfreq-en-25000-log.json
+
+# 本地 Agent / 自动化运行状态
+.agents/
+.superpowers/
+skills-lock.json
+
+# 本地构建与解释器缓存
+*.dex
+__pycache__/
+*.py[cod]
+
+# 本地内容管线覆盖配置
+tools/content-pipeline/overrides.json

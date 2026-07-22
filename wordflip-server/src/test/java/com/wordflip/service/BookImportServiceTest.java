@@ -1,247 +1,47 @@
 package com.wordflip.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.wordflip.domain.Book;
-import com.wordflip.domain.BookSource;
-import com.wordflip.dto.book.BookImportPreviewResponse;
-import com.wordflip.dto.book.BookListResponse;
-import com.wordflip.dto.book.BookWordsResponse;
-import com.wordflip.dto.word.WordSummary;
-import com.wordflip.exception.WordflipException;
-import com.wordflip.repository.BookRepository;
-import com.wordflip.repository.BookWordRepository;
-import com.wordflip.repository.DictSenseRepository;
-import com.wordflip.repository.DictWordRepository;
-import com.wordflip.repository.GroupWordRepository;
-import com.wordflip.repository.UserBookSelectionRepository;
-import com.wordflip.repository.UserWordLexiconRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.mock.web.MockMultipartFile;
-
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyCollection;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+
 /**
- * 词书详情/导入/删除单测。
+ * 私有词书预览解析测试。
  */
 @ExtendWith(MockitoExtension.class)
 class BookImportServiceTest {
 
     @Mock
-    private BookRepository bookRepository;
+    private JdbcTemplate jdbc;
     @Mock
-    private BookWordRepository bookWordRepository;
+    private StringRedisTemplate redis;
     @Mock
-    private UserBookSelectionRepository userBookSelectionRepository;
-    @Mock
-    private UserWordLexiconRepository userWordLexiconRepository;
-    @Mock
-    private DictWordRepository dictWordRepository;
-    @Mock
-    private DictSenseRepository dictSenseRepository;
-    @Mock
-    private GroupWordRepository groupWordRepository;
-    @Mock
-    private StringRedisTemplate redisTemplate;
-    @Mock
-    private ValueOperations<String, String> valueOperations;
-
-    private BookImportService importService;
-    private BookService bookService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @BeforeEach
-    void setUp() {
-        org.mockito.Mockito.lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        importService = new BookImportService(
-                bookRepository,
-                bookWordRepository,
-                userBookSelectionRepository,
-                userWordLexiconRepository,
-                dictWordRepository,
-                dictSenseRepository,
-                redisTemplate,
-                objectMapper
-        );
-        bookService = new BookService(
-                bookRepository,
-                userBookSelectionRepository,
-                bookWordRepository,
-                groupWordRepository,
-                userWordLexiconRepository
-        );
-    }
+    private ValueOperations<String, String> values;
 
     @Test
-    void preview_parsesCsvAndStoresRedis() {
-        when(valueOperations.increment(anyString())).thenReturn(1L);
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "demo.csv",
-                "text/csv",
-                "apple,苹果\nbanana,香蕉\napple,重复\n".getBytes(StandardCharsets.UTF_8)
+    void acceptsChineseDefinitionsAndEnglishOnlyRows() {
+        when(redis.opsForValue()).thenReturn(values);
+        when(values.increment(anyString())).thenReturn(1L);
+        var file = new MockMultipartFile(
+                "file", "my-book.txt", "text/plain", "apple,苹果\nbanana\n".getBytes()
         );
 
-        BookImportPreviewResponse response = importService.preview(1L, file);
+        var response = new BookImportService(jdbc, redis, new ObjectMapper()).preview(7L, file);
 
-        assertThat(response.suggestedName()).isEqualTo("demo");
         assertThat(response.totalCount()).isEqualTo(2);
-        assertThat(response.deduplicatedCount()).isEqualTo(1);
-        assertThat(response.previewWords()).hasSize(2);
-        verify(valueOperations).set(anyString(), anyString(), any());
-    }
-
-    @Test
-    void preview_rejectsEmptyFile() {
-        when(valueOperations.increment(anyString())).thenReturn(1L);
-        MockMultipartFile file = new MockMultipartFile("file", "empty.txt", "text/plain", new byte[0]);
-        assertThatThrownBy(() -> importService.preview(1L, file))
-                .isInstanceOf(WordflipException.class)
-                .extracting(ex -> ((WordflipException) ex).getCode())
-                .isEqualTo("PARSE_ERROR");
-    }
-
-    @Test
-    void deleteImported_rejectsBuiltin() {
-        Book builtin = new Book();
-        builtin.setId(1L);
-        builtin.setSource(BookSource.builtin);
-        when(bookRepository.findById(1L)).thenReturn(Optional.of(builtin));
-
-        assertThatThrownBy(() -> importService.deleteImportedBook(9L, 1L))
-                .isInstanceOf(WordflipException.class)
-                .extracting(ex -> ((WordflipException) ex).getCode())
-                .isEqualTo("FORBIDDEN");
-        verify(bookRepository, never()).delete(any());
-    }
-
-    @Test
-    void deleteImported_removesOwnBook() {
-        Book imported = new Book();
-        imported.setId(5L);
-        imported.setSource(BookSource.imported);
-        imported.setUserId(9L);
-        when(bookRepository.findById(5L)).thenReturn(Optional.of(imported));
-
-        importService.deleteImportedBook(9L, 5L);
-
-        verify(bookRepository).delete(imported);
-    }
-
-    @Test
-    void getBook_returnsVisibleBuiltin() {
-        Book builtin = new Book();
-        builtin.setId(1L);
-        builtin.setName("雅思");
-        builtin.setSource(BookSource.builtin);
-        builtin.setWordCount(100);
-        when(bookRepository.findById(1L)).thenReturn(Optional.of(builtin));
-        when(userBookSelectionRepository.existsByIdUserIdAndIdBookId(2L, 1L)).thenReturn(true);
-
-        BookListResponse.BookItem item = bookService.getBook(2L, 1L);
-
-        assertThat(item.id()).isEqualTo(1L);
-        assertThat(item.selected()).isTrue();
-        assertThat(item.canDelete()).isFalse();
-    }
-
-    @Test
-    void listBookWords_paginates() {
-        Book builtin = new Book();
-        builtin.setId(1L);
-        builtin.setSource(BookSource.builtin);
-        when(bookRepository.findById(1L)).thenReturn(Optional.of(builtin));
-
-        com.wordflip.domain.BookWord bw = new com.wordflip.domain.BookWord();
-        bw.setWordKey("apple");
-        bw.setEn("apple");
-        bw.setCn("苹果");
-        when(bookWordRepository.findByBookIdOrderBySortOrderAsc(eq(1L), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(bw), Pageable.ofSize(20), 1));
-
-        BookWordsResponse response = bookService.listBookWords(2L, 1L, 0, 20);
-
-        assertThat(response.words()).hasSize(1);
-        assertThat(response.words().getFirst().en()).isEqualTo("apple");
-        assertThat(response.totalElements()).isEqualTo(1);
-    }
-
-    @Test
-    void getBook_hidesOthersImported() {
-        Book other = new Book();
-        other.setId(8L);
-        other.setSource(BookSource.imported);
-        other.setUserId(99L);
-        when(bookRepository.findById(8L)).thenReturn(Optional.of(other));
-
-        assertThatThrownBy(() -> bookService.getBook(1L, 8L))
-                .isInstanceOf(WordflipException.class)
-                .extracting(ex -> ((WordflipException) ex).getCode())
-                .isEqualTo("NOT_FOUND");
-    }
-
-    @Test
-    void confirm_upsertsDictOnlyWhenMissing() throws Exception {
-        when(valueOperations.increment(anyString())).thenReturn(1L);
-        String redisJson = """
-                {"userId":1,"suggestedName":"demo","deduplicatedCount":0,"words":[\
-                {"wordKey":"neo","en":"neo","cn":"新的 (adj.)","pos":"adj.","ph":null,"senses":[]},\
-                {"wordKey":"be","en":"be","cn":"是","pos":"v.","ph":null,"senses":[]}\
-                ]}
-                """;
-        when(valueOperations.get(anyString())).thenReturn(redisJson);
-        when(bookRepository.existsByUserIdAndName(1L, "我的词书")).thenReturn(false);
-
-        Book saved = new Book();
-        saved.setId(10L);
-        saved.setSource(BookSource.imported);
-        saved.setUserId(1L);
-        saved.setName("我的词书");
-        saved.setWordCount(2);
-        when(bookRepository.save(any(Book.class))).thenReturn(saved);
-        when(userBookSelectionRepository.existsByIdUserIdAndIdBookId(1L, 10L)).thenReturn(false);
-        when(userWordLexiconRepository.findExistingWordKeys(eq(1L), any())).thenReturn(Set.of());
-        when(dictWordRepository.existsByDictIdAndWordKey(eq("wordflip_curated"), eq("neo"))).thenReturn(false);
-        when(dictWordRepository.existsByDictIdAndWordKey(eq("wordflip_curated"), eq("be"))).thenReturn(true);
-        when(dictSenseRepository.findPrimariesByDictIdAndWordKeyInAndQuality(any(), any(), any()))
-                .thenReturn(List.of());
-
-        importService.confirm(1L, "token-x", "我的词书");
-
-        ArgumentCaptor<com.wordflip.domain.DictWord> headCap =
-                ArgumentCaptor.forClass(com.wordflip.domain.DictWord.class);
-        verify(dictWordRepository).save(headCap.capture());
-        assertThat(headCap.getValue().getWordKey()).isEqualTo("neo");
-
-        ArgumentCaptor<com.wordflip.domain.DictSense> senseCap =
-                ArgumentCaptor.forClass(com.wordflip.domain.DictSense.class);
-        verify(dictSenseRepository).save(senseCap.capture());
-        assertThat(senseCap.getValue().getCn()).isEqualTo("新的");
-        assertThat(senseCap.getValue().isPrimary()).isTrue();
-        // be 已在 ECDICT：exists=true → 不 save 第二次
-        verify(dictWordRepository, org.mockito.Mockito.times(1)).save(any());
-        verify(dictSenseRepository, org.mockito.Mockito.times(1)).save(any());
+        assertThat(response.previewWords().get(0).cn()).isEqualTo("苹果");
+        assertThat(response.previewWords().get(1).cn()).isEmpty();
+        verify(values).set(anyString(), anyString(), any());
     }
 }

@@ -1,99 +1,30 @@
 package com.wordflip.service;
 
-import com.wordflip.domain.GroupStrategy;
-import com.wordflip.domain.UserBookSelection;
 import com.wordflip.domain.UserSettings;
-import com.wordflip.dto.settings.AppendedGroups;
 import com.wordflip.dto.settings.PreferencesPatchRequest;
-import com.wordflip.dto.settings.SaveBooksSettingsRequest;
-import com.wordflip.dto.settings.SaveBooksSettingsResponse;
 import com.wordflip.dto.settings.UserSettingsResponse;
 import com.wordflip.exception.WordflipException;
-import com.wordflip.repository.DictionaryRepository;
-import com.wordflip.repository.UserBookSelectionRepository;
 import com.wordflip.repository.UserSettingsRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.List;
-
 /**
- * 用户设置：词书勾选、分组大小、偏好；PUT /settings 触发增量 append。
+ * 用户显示偏好设置；选书和切书统一由学习计划服务负责。
  */
 @Service
 public class SettingsService {
 
     private final UserSettingsRepository userSettingsRepository;
-    private final UserBookSelectionRepository userBookSelectionRepository;
-    private final DictionaryRepository dictionaryRepository;
-    private final BookService bookService;
-    private final GroupService groupService;
-    private final TodayCacheService todayCacheService;
 
-    public SettingsService(
-            UserSettingsRepository userSettingsRepository,
-            UserBookSelectionRepository userBookSelectionRepository,
-            DictionaryRepository dictionaryRepository,
-            BookService bookService,
-            GroupService groupService,
-            TodayCacheService todayCacheService
-    ) {
+    public SettingsService(UserSettingsRepository userSettingsRepository) {
         this.userSettingsRepository = userSettingsRepository;
-        this.userBookSelectionRepository = userBookSelectionRepository;
-        this.dictionaryRepository = dictionaryRepository;
-        this.bookService = bookService;
-        this.groupService = groupService;
-        this.todayCacheService = todayCacheService;
     }
 
     @Transactional(readOnly = true)
     public UserSettingsResponse getSettings(Long userId) {
         UserSettings settings = requireSettings(userId);
-        List<Long> bookIds = userBookSelectionRepository.findBookIdsByUserId(userId);
-        var summary = bookService.buildSummary(userId, settings.getGroupSize());
-        return UserSettingsResponse.of(settings, bookIds, summary);
-    }
-
-    /**
-     * 保存词书勾选与分组大小，并调用 appendGroupsForNewWords（REQ-BOOK-17 增量追加）。
-     */
-    @Transactional
-    public SaveBooksSettingsResponse saveBooksSettings(Long userId, SaveBooksSettingsRequest request) {
-        if (!request.isGroupSizeValid()) {
-            throw new WordflipException("VALIDATION_ERROR", "groupSize 须为 10、20、30 或 50");
-        }
-
-        List<Long> bookIds = request.getBookIds() == null ? List.of() : request.getBookIds();
-        if (Boolean.TRUE.equals(request.getRegroup()) && bookIds.isEmpty()) {
-            throw new WordflipException("VALIDATION_ERROR", "重新分组需至少勾选一本词书");
-        }
-        bookService.validateBookSelection(userId, bookIds);
-
-        UserSettings settings = requireSettings(userId);
-        settings.setGroupSize(request.getGroupSize());
-        if (request.getGroupStrategy() != null) {
-            settings.setGroupStrategy(request.getGroupStrategy());
-        }
-        settings.setUpdatedAt(Instant.now());
-        userSettingsRepository.save(settings);
-
-        // 全量替换勾选列表；selected_at 递增以保留 PUT body 中的词书顺序（REQ-BOOK-23）
-        userBookSelectionRepository.deleteAllByUserId(userId);
-        Instant selectionBase = Instant.now();
-        for (int i = 0; i < bookIds.size(); i++) {
-            UserBookSelection selection = new UserBookSelection(userId, bookIds.get(i));
-            selection.setSelectedAt(selectionBase.plusMillis(i));
-            userBookSelectionRepository.save(selection);
-        }
-
-        AppendedGroups appended = Boolean.TRUE.equals(request.getRegroup())
-                ? groupService.regroupAutoGroups(userId)
-                : groupService.appendGroupsForNewWords(userId);
-        // regroup 会重建 auto 组（groupId 变化），须清 Today 缓存避免 stale recommendedStudy
-        todayCacheService.invalidateAllForUser(userId);
-        UserSettingsResponse response = getSettings(userId);
-        return new SaveBooksSettingsResponse(response, appended);
+        return UserSettingsResponse.of(settings);
     }
 
     /** PATCH /settings/preferences：仅更新偏好，不触发 append */
@@ -122,16 +53,9 @@ public class SettingsService {
             }
             settings.setDefaultQuestionLimit(limit);
         }
-        if (request.getActiveDictId() != null) {
-            String dictId = request.getActiveDictId().trim();
-            if (dictId.isEmpty() || !dictionaryRepository.existsById(dictId)) {
-                throw new WordflipException("VALIDATION_ERROR", "未知词典: " + request.getActiveDictId());
-            }
-            settings.setActiveDictId(dictId);
-        }
         settings.setUpdatedAt(Instant.now());
         userSettingsRepository.save(settings);
-        return getSettings(userId);
+        return UserSettingsResponse.of(settings);
     }
 
     private UserSettings requireSettings(Long userId) {

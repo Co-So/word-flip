@@ -107,7 +107,7 @@ Android → PUT /api/v1/settings { bookIds, groupSize }
 **保存卡拍图片：**
 
 ```
-Android 本地编辑 → POST /api/v1/words/{wordKey}/image (multipart + transform JSON)
+Android 本地编辑 → POST /api/v1/learning/cards/{cardId}/image (multipart + transform JSON)
               → ImageService 压缩 WebP → 上传 MinIO
               → 写入 word_images 表
               → 返回 presigned URL 或 CDN 路径
@@ -396,7 +396,7 @@ DELETE /books/{bookId}             # 仅 imported
 GET    /settings
 PUT    /settings                   # bookIds + groupSize → 增量 append 分组
 PATCH  /settings/preferences       # autoSpeak、themeMode（不触发 append）
-GET    /words/unassigned             # 未入组词池（手动分组）
+GET    /learning/cards/unassigned    # 当前计划未入组卡片池（手动分组）
 ```
 
 ### 6.3 分组与学习
@@ -405,7 +405,7 @@ GET    /words/unassigned             # 未入组词池（手动分组）
 GET    /groups
 POST   /groups/custom              # 手动分组
 GET    /groups/{groupId}
-GET    /groups/{groupId}/words
+GET    /groups/{groupId}/cards
 POST   /groups/{groupId}/stains/batch  # 一键生成污渍
 GET    /today                      # 今日任务（新词/到期/测验池）
 GET    /study/groups/{groupId}     # 学习页卡片数据（含只读掌握度）
@@ -425,12 +425,12 @@ GET    /quiz/sessions/{sessionId}/result  # 结果页
 ### 6.5 图片与污渍
 
 ```
-GET    /words/{wordKey}/image
-POST   /words/{wordKey}/image      # multipart + transform JSON
-PATCH  /words/{wordKey}/image      # 仅更新 transform
-DELETE /words/{wordKey}/image
-GET    /words/{wordKey}/stain
-PUT    /words/{wordKey}/stain
+GET    /learning/cards/{cardId}/image
+POST   /learning/cards/{cardId}/image      # multipart + transform JSON
+PATCH  /learning/cards/{cardId}/image      # 仅更新 transform
+DELETE /learning/cards/{cardId}/image
+GET    /learning/cards/{cardId}/stain
+PUT    /learning/cards/{cardId}/stain
 ```
 
 ### 6.6 统计

@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 污渍 API：GET/PUT /words/{wordKey}/stain、POST /groups/{groupId}/stains/batch（P3-B04~B05）。
+ * 污渍 API：污渍按用户与学习卡隔离。
  * <p>
  * 主要错误码：VALIDATION_ERROR、NOT_FOUND（分组不存在）。
  */
@@ -31,22 +31,22 @@ public class StainController {
     }
 
     /**
-     * GET /words/{wordKey}/stain — 无行时返回默认 seed，不落库。
+     * GET /learning/cards/{cardId}/stain：无行时返回默认 seed，不落库。
      */
-    @GetMapping("/words/{wordKey}/stain")
-    public WordStainResponse getStain(@PathVariable String wordKey) {
-        return stainService.getStain(SecurityUtils.getCurrentUserId(), wordKey);
+    @GetMapping("/learning/cards/{cardId}/stain")
+    public WordStainResponse getStain(@PathVariable Long cardId) {
+        return stainService.getStain(SecurityUtils.getCurrentUserId(), cardId);
     }
 
     /**
-     * PUT /words/{wordKey}/stain — regenerate / set_hidden / set_visible / replace。
+     * PUT /learning/cards/{cardId}/stain：regenerate / set_hidden / set_visible / replace。
      */
-    @PutMapping("/words/{wordKey}/stain")
+    @PutMapping("/learning/cards/{cardId}/stain")
     public WordStainResponse updateStain(
-            @PathVariable String wordKey,
+            @PathVariable Long cardId,
             @Valid @RequestBody StainUpdateRequest request
     ) {
-        return stainService.updateStain(SecurityUtils.getCurrentUserId(), wordKey, request);
+        return stainService.updateStain(SecurityUtils.getCurrentUserId(), cardId, request);
     }
 
     /**

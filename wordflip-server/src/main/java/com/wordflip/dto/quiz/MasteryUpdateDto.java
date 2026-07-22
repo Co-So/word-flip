@@ -1,13 +1,14 @@
 package com.wordflip.dto.quiz;
 
-import com.wordflip.dto.word.MasterySnapshot;
+import com.wordflip.dto.learning.FsrsMemoryResponse;
 
 /**
- * 掌握度变更快照，对齐 openapi AnswerResult.masteryUpdate。
+ * 一次判题前后的权威卡片 FSRS 状态。
  */
 public record MasteryUpdateDto(
-        String wordKey,
-        MasterySnapshot before,
-        MasterySnapshot after
+        Long cardId,
+        Long lexemeId,
+        FsrsMemoryResponse before,
+        FsrsMemoryResponse after
 ) {
 }

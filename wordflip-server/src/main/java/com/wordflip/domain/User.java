@@ -29,15 +29,15 @@ public class User {
     @Column(unique = true)
     private String email;
 
-    @Column(unique = true, length = 20)
+    @Column(unique = true, length = 32)
     private String phone;
 
-    @Column(name = "password_hash", nullable = false, length = 72)
+    @Column(name = "password_hash", nullable = false, length = 100)
     private String passwordHash;
 
-    /** 对齐 Flyway users.status ENUM('active','disabled') */
+    /** 用户状态以稳定字符串存储，便于后续扩展。 */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "ENUM('active', 'disabled')")
+    @Column(nullable = false, length = 20)
     private UserStatus status = UserStatus.active;
 
     @Column(nullable = false, length = 64)

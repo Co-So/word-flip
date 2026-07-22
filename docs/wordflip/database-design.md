@@ -1,903 +1,141 @@
 # WordFlip 数据库设计
 
-> 版本：v1.3  
-> 日期：2026-07-10  
-> 状态：**已定稿（MVP + 词库结构化契约；dict_* 已落地）**  
-> 关联：[requirements.md](./requirements.md) · [architecture.md](./architecture.md) · [api-modules.md](./api-modules.md) · [openapi.yaml](../../wordflip-api/openapi.yaml) · [plans/lexicon-restructure.md](./plans/lexicon-restructure.md)
+> 版本：v2.0
+> 日期：2026-07-16
+> 状态：词书专属学习卡 + FSRS 全新基线
+> 关联：[requirements.md](./requirements.md) · [api-modules.md](./api-modules.md) · [openapi.yaml](../../wordflip-api/openapi.yaml)
 
-本文档为 WordFlip MVP 的 **MySQL 8 逻辑模型** 与 **Redis 辅助存储** 设计。业务规则以 `requirements.md` / `api-modules.md` / `openapi.yaml` 为准；Flyway 脚本应与本设计一一对应（含 `V10__word_skill_progress.sql`）。
+本设计对应空数据库上的全新 Flyway V1。旧数据库只做只读备份，不迁移用户进度，也不在新代码中保留旧表、双写或兼容接口。大批内容由幂等发布工具写入，不生成巨型 Flyway SQL。
 
-> **词库结构化：** `dict_*` 释义真相为 **ECDICT + learning-primary**（V16 灌库，V18 重选 primary）；V19 `exam_sense_id`；V20 例句。`book_words` 趋近 membership + 可选考义。
+## 1. 核心不变量
 
----
+- 用户可保留多本词书和历史计划，但 `user_settings.active_plan_id` 只指向一个当前计划。
+- 学习单位是 `learning_cards.id`，规范词形单位是 `lexemes.id`；API 同时返回 `cardId` 与 `lexemeId`。
+- `(book_id, lexeme_id)` 在 `book_items` 中唯一。
+- 每个词书条目最多一个当前发布版学习卡；发布卡至少有一个合格主义项。
+- `card_skill_memory` 是 FSRS 调度真相；`lexeme_skill_memory` 不能直接使新卡变为掌握。
+- 浏览和翻卡不写记忆；有效答题在同一事务写 `review_events` 并更新双层记忆。
+- 用户导入释义只属于该用户的词书，不进入公共词汇资料。
+- 来源原始记录不可被结构化清洗结果覆盖；所有派生义项均可追溯到来源修订和原始条目。
 
-## 1. 设计原则
-
-| 原则 | 说明 |
-|------|------|
-| 服务端权威 | 掌握度、SRS、分组增量规则仅存 MySQL，Redis 仅缓存/会话 |
-| 用户域 wordKey | `word_key = LOWER(TRIM(en))`；学习进度、图片、污渍、掌握度均绑定 `(user_id, word_key)` |
-| 释义真相 | 全局 `dict_senses`；展示/测验默认 `is_primary=1` 且 `quality=ok`；`cn` 不含词性 |
-| 一词一组 | `group_words.UNIQUE(user_id, word_key)` |
-| 掌握度仅测验写 | 无 mastery 手动 PATCH；仅 `applyQuizResult` 按 skill 写入 `word_skill_progress` |
-| 分组增量追加 | `PUT /settings` 只 INSERT 新组，不 DELETE/重建已有 `groups` |
-| 勾选与入组解耦 | 取消勾选词书 **不** 删除 `group_words` |
-| InnoDB + utf8mb4 | 字符集 `utf8mb4_unicode_ci`；主键 `BIGINT UNSIGNED`（雪花或自增，全库统一） |
-| 时区 | 服务端 DATETIME 存 UTC；`next_review_at` 用 **DATE**（用户日历日）；「当日」由 `users.timezone` 或 `X-Timezone` 决定 |
-
----
-
-## 2. 模块划分与表映射
-
-与 [api-modules.md](./api-modules.md) 模块一一对应：
-
-| 模块 | Service | 表（MySQL） | Redis |
-|------|---------|-------------|-------|
-| **Auth** | AuthService | `users` | Refresh Token、黑名单、登录限流 |
-| **Settings** | SettingsService | `user_settings` | — |
-| **Books** | BookService, BookImportService | `books`, `book_words`, `user_book_selection`, `dict_*` | 导入 preview payload、导入限流 |
-| **Words** | GroupService, WordLookupService | `book_words`, `user_book_selection`, `group_words`, `user_word_lexicon`, `dict_*` | — |
-| **Groups** | GroupService | `groups`, `group_words` | — |
-| **Study** | StudyService | `groups`, `group_words`, `user_word_lexicon`, `word_learning_state`* | — |
-| **Today** | ReviewService | `group_words`, `word_skill_progress`, `user_recent_groups` | `today:{userId}:{yyyyMMdd}` |
-| **Quiz** | QuizService → ReviewService | `quiz_sessions`, `quiz_questions`, `quiz_answers`, `word_skill_progress` | — |
-| **Images** | ImageService | `word_images` | — |
-| **Stains** | StainService | `word_stains` | — |
-| **Stats** | StatsService | `study_logs`, `achievement_definitions`, `user_achievements`, `quiz_answers` | 可选 stats 缓存 |
-
-\* Study 读取掌握度时 JOIN `word_skill_progress`（按 skill；展示热力见 `heat_display_mode`）。
-
-### 2.1 表清单
-
-```
-【Auth / Settings】  users, user_settings
-【Dict（目标）】     dict_words, dict_senses, dict_examples
-【Books / Lexicon】   books, book_words, user_book_selection, user_word_lexicon
-【Groups】           groups, group_words, user_recent_groups
-【SRS / Quiz】       word_skill_progress, word_mastery*, review_plans*, quiz_sessions, quiz_questions, quiz_answers
-【Media】            word_images, word_stains
-【Stats】            study_logs, achievement_definitions, user_achievements
-【Import 可选】      book_import_previews（MVP 主用 Redis）
-```
-
-\* `word_mastery` / `review_plans` 为历史表；V10 起权威进度在 `word_skill_progress`（按 skill 合并三态+S+SRS）。
-\* `dict_*`：V13 建表、V14 灌入清洗 ok 词、V15 回填 `user_word_lexicon` primary。
----
-
-## 3. 总体 ER 图
+## 2. 关系概览
 
 ```mermaid
 erDiagram
+  content_sources ||--o{ source_revisions : has
+  source_revisions ||--o{ source_entries : contains
+  lexemes ||--o{ source_entries : matches
+  source_entries ||--o{ dictionary_senses : derives
+  dictionary_senses ||--o{ dictionary_examples : has
+  lexemes ||--o{ word_forms : has
+
+  books ||--o{ book_items : contains
+  lexemes ||--o{ book_items : appears_in
+  book_items ||--o{ learning_cards : versions
+  learning_cards ||--o{ learning_card_senses : has
+  learning_card_senses ||--o{ learning_card_examples : has
+
   users ||--|| user_settings : has
-  users ||--o{ books : owns_imported
-  users ||--o{ user_book_selection : selects
-  users ||--o{ user_word_lexicon : dictionary
-  users ||--o{ groups : owns
-  users ||--o{ group_words : assigns
-  users ||--o{ word_mastery : mastery_legacy
-  users ||--o{ review_plans : schedule_legacy
-  users ||--o{ word_skill_progress : skill_progress
-  users ||--o{ user_recent_groups : recent
-  users ||--o{ word_images : images
-  users ||--o{ word_stains : stains
-  users ||--o{ study_logs : logs
-  users ||--o{ quiz_sessions : quizzes
-  users ||--o{ user_achievements : unlocks
+  users ||--o{ user_learning_plans : owns
+  books ||--o{ user_learning_plans : studies
+  user_learning_plans ||--o{ study_groups : groups
+  study_groups ||--o{ study_group_cards : contains
+  learning_cards ||--o{ study_group_cards : assigned
 
-  dict_words ||--o{ dict_senses : senses
-  dict_senses ||--o{ dict_examples : examples
-  dict_words ||--o{ book_words : referenced_by
-
-  books ||--o{ book_words : contains
-  books ||--o{ user_book_selection : selected_by
-
-  groups ||--o{ group_words : contains
-  groups ||--o{ user_recent_groups : recent_by
-
-  group_words }o--|| user_word_lexicon : "word_key"
-  word_mastery }o--|| review_plans : "1:1 user+word_key (legacy)"
-
-  quiz_sessions ||--o{ quiz_questions : contains
-  quiz_sessions ||--o{ quiz_answers : answers
-  quiz_questions ||--o| quiz_answers : "one answer"
-
-  achievement_definitions ||--o{ user_achievements : unlocked
+  users ||--o{ lexeme_skill_memory : knows_form
+  users ||--o{ card_skill_memory : learns_meaning
+  learning_cards ||--o{ card_skill_memory : schedules
+  card_skill_memory ||--o{ review_events : audited_by
 ```
 
----
-
-## 4. 全局约定
-
-### 4.1 命名与类型
-
-| 项 | 约定 |
-|----|------|
-| 表名 | 小写蛇形复数 |
-| 主键 | `id BIGINT UNSIGNED` |
-| 时间 | `DATETIME(3)` UTC；业务日期 `DATE` |
-| JSON | `transform_json`, `detail_json`, `stain_config_json` |
-| 枚举 | MySQL `ENUM` 或 `VARCHAR` + CHECK（Flyway 任选） |
-| `word_key` | `VARCHAR(191)`（utf8mb4 索引字节上限） |
-
-### 4.2 核心不变量
-
-| ID | 不变量 |  enforcement |
-|----|--------|--------------|
-| I1 | `word_key = normalize(en)` | 应用层写入校验 |
-| I2 | 一书内词条唯一 | `uk_book_words_book_key` |
-| I3 | 用户一词一组 | `uk_group_words_user_word` |
-| I4 | `group_words.user_id = groups.user_id` | Service 单事务 + 可选 TRIGGER |
-| I5 | PUT /settings 只 append | GroupService 禁止删旧组 |
-| I6 | 取消勾选不撤词 | 无 DELETE group_words on deselect |
-| I7 | distinct 词数跨书去重 | SQL DISTINCT，非 sum(word_count) |
-| I8 | mastery 与 review 1:1 | 首次测验同事务 INSERT 两表 |
-| I9 | `has_quiz_history` 不回退 | 首次答题后恒为 1 |
-| I10 | 掌握度仅经测验 | 无 mastery 更新 API |
-
-### 4.3 architecture.md 表名对照
-
-| architecture.md | 本设计 | 说明 |
-|-----------------|--------|------|
-| `words` | **`book_words`** | 词书词条；目标引用 `dict_words` |
-| `canonical_words` | **`dict_words` + `user_word_lexicon`** | 全局词头 + 用户域 primary 冗余 |
-| — | **`quiz_questions`** | 新增：会话题面快照 |
-| — | **`achievement_definitions`** | 新增：成就定义 seed |
-
----
-
-## 5. Auth / Settings 模块
-
-### 5.1 `users`
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `email` | VARCHAR(255) | YES | NULL | 唯一（允许多 NULL） |
-| `phone` | VARCHAR(20) | YES | NULL | E.164，唯一 |
-| `password_hash` | VARCHAR(72) | NO | — | BCrypt |
-| `status` | ENUM('active','disabled') | NO | active | |
-| `timezone` | VARCHAR(64) | NO | Asia/Shanghai | 用户默认时区 |
-| `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
-| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
-| `last_login_at` | DATETIME(3) | YES | NULL | |
-
-**索引：** `PRIMARY KEY (id)` · `UNIQUE uk_users_email (email)` · `UNIQUE uk_users_phone (phone)`
-
-**约束：** `email IS NOT NULL OR phone IS NOT NULL`（CHECK 或应用层）
-
-### 5.2 `user_settings`
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `user_id` | BIGINT UNSIGNED | NO | — | PK，FK → users |
-| `group_size` | TINYINT UNSIGNED | NO | 20 | 10/20/30/50 |
-| `group_strategy` | ENUM('book_order','frequency','random') | NO | book_order | REQ-BOOK-22~24 |
-| `auto_speak` | TINYINT(1) | NO | 1 | REQ-SETTINGS-1 |
-| `theme_mode` | ENUM('system','light','dark') | NO | system | REQ-SETTINGS-7 |
-| `study_guide_completed` | TINYINT(1) | NO | 0 | REQ-STUDY-23 |
-| `reminder_enabled` | TINYINT(1) | NO | 0 | 规划项占位 |
-| `review_reminder_enabled` | TINYINT(1) | NO | 0 | 规划项占位 |
-| `heat_display_mode` | ENUM('combined','dictation','choice','free') | NO | combined | 组详情热力展示 |
-| `quiz_launch_mode` | ENUM('mixed','free_select') | NO | mixed | 开测模式 |
-| `default_question_limit` | TINYINT UNSIGNED | NO | 10 | 默认测验题数 |
-| `active_dict_id` | VARCHAR(32) | NO | wordflip_curated | 当前词典 FK → dictionaries.id（REQ-LEX-9） |
-| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
-
-**FK：** `user_id → users(id) ON DELETE CASCADE`；`active_dict_id → dictionaries(id)`
-
-**生命周期：** 注册成功时同事务 INSERT 默认行。
-
----
-
-## 6. Books / Lexicon 模块
-
-### 6.0 全局词典 `dict_*`（V13+，多词典 V21+）
-
-内置多本词典共享表结构；释义真相来源为 `(dict_id, word_key)`。进度键仍为 `word_key`。
-
-**Flyway：** V13 建表 → … → V16 ECDICT → V18 learning-primary → V19 exam_sense → V20 例句 → **V21 多词典 catalog + dict_id** → V22 concise → V23 wordnet 种子 → V24 active_dict_id。
-
-#### 6.0.0 `dictionaries`（词典目录）
-
-| 列 | 类型 | 说明 |
-|----|------|------|
-| `id` | VARCHAR(32) PK | 如 `wordflip_curated` / `wiktionary_zh` / `wordflip_concise` / `wordnet` |
-| `name` | VARCHAR(64) | 展示名 |
-| `locale` | ENUM('zh','en') | zh=英汉；en=英英 |
-| `license_note` | VARCHAR(512) | 署名/许可摘要 |
-| `is_builtin` | TINYINT(1) | 内置 |
-| `sort_order` | INT UNSIGNED | 列表序 |
-
-#### 6.0.1 `dict_words`（Headword）
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `dict_id` | VARCHAR(32) | NO | — | PK 之一；FK → dictionaries |
-| `word_key` | VARCHAR(191) | NO | — | PK 之一；`LOWER(TRIM(en))` |
-| `en` | VARCHAR(191) | NO | — | 展示原文 |
-| `ph` | VARCHAR(64) | YES | NULL | 音标（英式或通用） |
-| `ph_us` | VARCHAR(64) | YES | NULL | 美音（可选） |
-| `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
-| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
-
-**PK：** `(dict_id, word_key)`
-
-#### 6.0.2 `dict_senses`（义项）
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `dict_id` | VARCHAR(32) | NO | — | 所属词典 |
-| `word_key` | VARCHAR(191) | NO | — | 与 dict_id 组成词头 FK |
-| `pos` | VARCHAR(32) | YES | NULL | 词性；**禁止**写入 cn |
-| `cn` | VARCHAR(512) | YES | NULL | 纯中文释义；英汉词典须含汉字；WordNet 可空 |
-| `en_gloss` | VARCHAR(512) | YES | NULL | 英英释义（WordNet）；英汉可空 |
-| `is_primary` | TINYINT(1) | NO | 0 | 主义项 |
-| `sort_order` | INT UNSIGNED | NO | 0 | 展示序 |
-| `quality` | ENUM('ok','uncertain','reject') | NO | ok | 清洗质量 |
-| `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
-
-**索引：** `idx_dict_senses_dict_word (dict_id, word_key, sort_order)` · 应用层保证：每个 `(dict_id, word_key)` 至多一个合格 primary。
-
-**约束（应用 + 尽量 DB）：**
-- 英汉：`cn` 不得含词性尾巴；词性只在 `pos`
-- 英英：`en_gloss` 非空即可出默写池（REQ-LEX-10）
-- `quality=reject` 或无合格 primary → 该词**禁止入测验池**（REQ-LEX-4）
-
-#### 6.0.3 `dict_examples`（例句）
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `sense_id` | BIGINT UNSIGNED | NO | — | FK → dict_senses ON DELETE CASCADE |
-| `en` | VARCHAR(512) | NO | — | 英文例句 |
-| `cn` | VARCHAR(512) | YES | NULL | 中文翻译 |
-| `sort_order` | INT UNSIGNED | NO | 0 | |
-
-**索引：** `idx_dict_examples_sense (sense_id, sort_order)`
-
-MVP 允许例句为空；详情抽屉无例句时展示「暂无例句」。
-
-### 6.1 `books`
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `source` | ENUM('builtin','imported') | NO | — | |
-| `user_id` | BIGINT UNSIGNED | YES | NULL | imported 必填；builtin 为 NULL |
-| `name` | VARCHAR(64) | NO | — | |
-| `declared_count` | INT UNSIGNED | YES | NULL | 内置「约 3000 词」展示 |
-| `word_count` | INT UNSIGNED | NO | 0 | 该书去重后词条数（冗余维护） |
-| `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
-| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
-
-**索引：** `UNIQUE uk_books_user_name (user_id, name)`（imported 同名 → 409）· `idx_books_source`
-
-**CHECK：** `(source='builtin' AND user_id IS NULL) OR (source='imported' AND user_id IS NOT NULL)`
-
-### 6.2 `book_words`
-
-词书内词条（architecture 原 `words` 表）。
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `book_id` | BIGINT UNSIGNED | NO | — | FK → books |
-| `word_key` | VARCHAR(191) | NO | — | normalize(en) |
-| `en` | VARCHAR(191) | NO | — | 展示原文 |
-| `cn` | VARCHAR(512) | NO | — | **过渡期**：primary 冗余；目标只读后废弃展示职责 |
-| `pos` | VARCHAR(32) | YES | NULL | 过渡期 primary 词性冗余 |
-| `ph` | VARCHAR(64) | YES | NULL | 过渡期音标冗余 |
-| `detail_json` | JSON | YES | NULL | 过渡期例句等；目标改由 `dict_examples` |
-| `exam_sense_id` | BIGINT UNSIGNED | YES | NULL | 词书考义 → `dict_senses.id`（REQ-LEX-7）；NULL 用全局 primary |
-| `sort_order` | INT UNSIGNED | NO | 0 | 书内顺序 |
-| `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
-
-**索引：** `UNIQUE uk_book_words_book_key (book_id, word_key)` · `idx_book_words_word_key (word_key)` · `idx_book_words_exam_sense (exam_sense_id)`
-
-**FK：** `book_id → books(id) ON DELETE CASCADE`；`exam_sense_id → dict_senses(id) ON DELETE SET NULL`
-
-**演进：**
-| 阶段 | 形态 |
-|------|------|
-| 过渡（现行→Phase C） | 保留 `cn/pos/ph/detail_json`；灌 `dict_*` 后读路径可切 dict |
-| 质量（Q4） | 增加 `exam_sense_id`；导入默认绑 learning-primary |
-| 目标 | 语义为 `(book_id, word_key, sort_order[, exam_sense_id])` 引用 dict；旧释义列只读或后续迁移删除 |
-
-### 6.2.1 `word_freq_ranks`
-
-全局英文词频序（`GroupStrategy.frequency`）；与词书无关，按 `word_key` 查 rank。
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `word_key` | VARCHAR(128) | NO | — | PK；normalize(en) |
-| `freq_rank` | INT UNSIGNED | NO | — | 1=最高频（wordfreq/COCA） |
-| `source` | VARCHAR(32) | NO | wordfreq | 语料标识 |
-
-**索引：** `PRIMARY KEY (word_key)` · `idx_word_freq_ranks_rank (freq_rank)`
-
-**分组逻辑：** 合并去重后按 `freq_rank ASC` 排序；无 rank 的词排末尾，保持 book_order 相对序（REQ-BOOK-24）。
-
-### 6.3 `user_book_selection`
-
-持久化 `PUT /settings` 的 `bookIds`（存在即选中）。
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `user_id` | BIGINT UNSIGNED | NO | — | |
-| `book_id` | BIGINT UNSIGNED | NO | — | |
-| `selected_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
-
-**PK：** `(user_id, book_id)`
-
-**写入：** `PUT /settings` 全量替换（DELETE 不在列表 + INSERT 新增）。
-
-**去重词数查询：**
-
-```sql
-SELECT COUNT(DISTINCT bw.word_key)
-FROM user_book_selection ubs
-JOIN book_words bw ON bw.book_id = ubs.book_id
-WHERE ubs.user_id = :userId;
-```
-
-### 6.4 `user_word_lexicon`
-
-用户学习域词典：按 `(user_id, word_key)` 绑定；`cn/pos/ph` 为 **primary 冗余缓存**（由 `dict_*` 同步，避免旧客户端空窗）。多义详情以 `dict_senses` / API `senses` 为准。
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `user_id` | BIGINT UNSIGNED | NO | — | FK → users |
-| `word_key` | VARCHAR(191) | NO | — | |
-| `en` | VARCHAR(191) | NO | — | 判题标准英文 |
-| `cn` | VARCHAR(512) | NO | — | primary.cn 冗余 |
-| `pos` | VARCHAR(32) | YES | NULL | primary.pos 冗余 |
-| `ph` | VARCHAR(64) | YES | NULL | 词头音标冗余 |
-| `detail_json` | JSON | YES | NULL | 过渡期；目标可空 |
-| `source_book_id` | BIGINT UNSIGNED | YES | NULL | 首次来源书 |
-| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
-
-**索引：** `UNIQUE uk_lexicon_user_word (user_id, word_key)`
-
-**Upsert 时机：**
-
-1. `POST /books/import` confirm — 批量 upsert 该书词条  
-2. `PUT /settings` append 前 — 对 delta wordKeys upsert  
-3. `POST /groups/custom` — 对选中 keys upsert  
-4. Phase C 灌数后 — 从 `dict_senses` primary 回填/刷新 `cn/pos/ph`
-
-**合并策略（定稿）：** 已存在 `(user_id, word_key)` **不覆盖** `en`（保留首次学习语义）；`cn/pos/ph` 在 dict 同步任务中可按 primary 刷新。导入 confirm 仅插入新 key。
-
-### 6.5 导入 Preview（Redis 为主）
-
-| 存储 | Key | TTL | 内容 |
-|------|-----|-----|------|
-| Redis | `import:preview:{token}` | 15min | `{ userId, suggestedName, words[], deduplicatedCount }` |
-
-**可选表 `book_import_previews`**（审计/Redis 降级）：
-
-| 列 | 类型 | 说明 |
-|----|------|------|
-| `token` | CHAR(36) | PK |
-| `user_id` | BIGINT | FK |
-| `suggested_name` | VARCHAR(64) | |
-| `payload_json` | JSON | 解析结果 |
-| `expires_at` | DATETIME(3) | |
-| `consumed_at` | DATETIME(3) | confirm 后标记 |
-
-**Confirm 流程：** INSERT `books` + bulk `book_words` + `user_book_selection` + upsert `user_word_lexicon`；**不**自动 append groups。
-
----
-
-## 7. Groups 模块
-
-### 7.1 `groups`
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `user_id` | BIGINT UNSIGNED | NO | — | FK → users |
-| `name` | VARCHAR(64) | NO | — | auto:「第 N 组」；custom 可命名 |
-| `source` | ENUM('auto','custom') | NO | — | |
-| `status` | ENUM('not_started','learning','completed') | NO | not_started | 可运行时聚合回写 |
-| `sort_order` | INT UNSIGNED | NO | 0 | |
-| `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
-
-**索引：** `idx_groups_user_created (user_id, created_at)` · `idx_groups_user_source (user_id, source)`
-
-### 7.2 `group_words`
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `user_id` | BIGINT UNSIGNED | NO | — | **冗余**，支撑 UNIQUE |
-| `group_id` | BIGINT UNSIGNED | NO | — | FK → groups |
-| `word_key` | VARCHAR(191) | NO | — | |
-| `sort_order` | INT UNSIGNED | NO | 0 | |
-| `created_at` | DATETIME(3) | NO | CURRENT_TIMESTAMP(3) | |
-
-**索引：**
-
-```sql
-UNIQUE uk_group_words_user_word (user_id, word_key)   -- 一词一组 ★
-UNIQUE uk_group_words_group_word (group_id, word_key)
-KEY idx_group_words_group_sort (group_id, sort_order)
-```
-
-**增量 append 伪代码：**
-
-```
-delta = DISTINCT word_key FROM selected_books
-        MINUS word_key FROM group_words WHERE user_id=?
-ORDER BY word_key ASC   -- 确定性切分，保证幂等
-→ 按 group_size 切分 → INSERT groups + group_words
-```
-
-**`groups.status` / `progress`：** MVP 推荐 **查询时聚合**（JOIN mastery），避免双写；列表 API 可缓存。
-
-**progress 公式：** `COUNT(level='unlearned' AND has_quiz_history=1) / COUNT(*)` per group。
-
----
-
-## 8. SRS / Quiz 模块
-
-### 8.0 `word_skill_progress`（权威进度，V10）
-
-按 `(user_id, word_key, skill)` 各一套队列三态 + 稳定性 S + SRS。`skill`=`dictation`|`choice`。
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `user_id` | BIGINT UNSIGNED | NO | — | |
-| `word_key` | VARCHAR(191) | NO | — | |
-| `skill` | ENUM('dictation','choice') | NO | — | 题型技能 |
-| `level` | ENUM('unlearned','fuzzy','unknown') | NO | unlearned | 队列三态 |
-| `has_quiz_history` | TINYINT(1) | NO | 0 | 该 skill 首次答题后恒 1 |
-| `first_quiz_at` | DATETIME(3) | YES | NULL | |
-| `stability` | DECIMAL(6,2) | NO | 0.00 | 稳定性权值 S（0–100） |
-| `window_correct_gain` | DECIMAL(6,2) | NO | 0.00 | 短窗答对累计升幅 |
-| `window_started_at` | DATETIME(3) | YES | NULL | 短窗起点 |
-| `recent_wrong_count` | INT UNSIGNED | NO | 0 | 短窗内答错次数 |
-| `stage` | TINYINT UNSIGNED | NO | 0 | SRS stage 0..5 |
-| `next_review_at` | DATE | YES | NULL | 下次复习日 |
-| `last_quiz_at` | DATETIME(3) | YES | NULL | |
-| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
-
-**索引：**
-
-```sql
-UNIQUE uk_wsp_user_word_skill (user_id, word_key, skill)
-KEY idx_wsp_due (user_id, skill, next_review_at)
-KEY idx_wsp_stability (user_id, skill, stability)
-KEY idx_wsp_level (user_id, skill, level)
-```
-
-**迁移：** V10 将旧 `word_mastery`+`review_plans` 写入 `skill='dictation'` 行。
-
-### 8.0.1 `user_recent_groups`
-
-今日页「最近学习」最多 3 条。
-
-| 列 | 类型 | NULL | 说明 |
-|----|------|------|------|
-| `user_id` | BIGINT UNSIGNED | NO | PK 之一 |
-| `group_id` | BIGINT UNSIGNED | NO | PK 之一 |
-| `last_studied_at` | DATETIME(3) | NO | 最近学习/测验时间 |
-
-**索引：** `PRIMARY KEY (user_id, group_id)` · `KEY idx_urg_user_time (user_id, last_studied_at DESC)`
-
-### 8.1 设计决策：历史 `word_mastery` + `review_plans`
-
-| 方案 | 结论 |
-|------|------|
-| 拆分（V1–V9） | `word_mastery`=语义状态，`review_plans`=调度 |
-| 按 skill 合并（V10 采用） | `word_skill_progress` 为权威；旧表保留兼容/迁移源 |
-
-**写入：** `applyQuizResult` 同事务 UPSERT `word_skill_progress`（按 skill）。
-
-### 8.2 `word_mastery`（历史，迁移源）
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `user_id` | BIGINT UNSIGNED | NO | — | |
-| `word_key` | VARCHAR(191) | NO | — | |
-| `level` | ENUM('unlearned','fuzzy','unknown') | NO | unlearned | 队列三态 |
-| `has_quiz_history` | TINYINT(1) | NO | 0 | 首次答题后恒 1 |
-| `first_quiz_at` | DATETIME(3) | YES | NULL | |
-| `stability` | DECIMAL(6,2) | NO | 0.00 | 稳定性权值 S（0–100） |
-| `window_correct_gain` | DECIMAL(6,2) | NO | 0.00 | 当前短窗内答对已计入升幅 |
-| `window_started_at` | DATETIME(3) | YES | NULL | 短窗起点 |
-| `recent_wrong_count` | INT UNSIGNED | NO | 0 | 短窗内答错次数 |
-| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
-
-**索引：**
-
-```sql
-UNIQUE uk_wm_user_word (user_id, word_key)
-KEY idx_wm_new_words (user_id, level, has_quiz_history)
-KEY idx_wm_quiz_pool (user_id, level)
-KEY idx_wm_stability (user_id, stability)
-```
-
-**无行语义（API 层）：** `level=unlearned`, `hasQuizHistory=false`, `stage=0`, `nextReviewAt=null`, `stability=0`, `heatLevel=0`
-
-### 8.3 `review_plans`（历史，迁移源）
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | — | PK |
-| `user_id` | BIGINT UNSIGNED | NO | — | |
-| `word_key` | VARCHAR(191) | NO | — | |
-| `stage` | TINYINT UNSIGNED | NO | 0 | 0..5，对应 INTERVALS 下标 |
-| `next_review_at` | DATE | YES | NULL | 用户日历日 |
-| `last_quiz_at` | DATETIME(3) | YES | NULL | |
-| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
-
-**索引：**
-
-```sql
-UNIQUE uk_rp_user_word (user_id, word_key)
-KEY idx_rp_due (user_id, next_review_at)
-KEY idx_rp_mastered (user_id, stage, next_review_at)
-```
-
-### 8.4 applyQuizResult 状态机（定稿，按 skill）
-
-`INTERVALS = [1, 2, 4, 7, 15, 30]`（天）；作用在 `word_skill_progress` 对应 skill 行。
-
-| 条件 | level | stage | next_review_at |
-|------|-------|-------|----------------|
-| 答对 | unlearned | min(stage+1, 5) | 用户时区**当日结束**对应日历日 + INTERVALS[newStage] |
-| 答错（非连续第2次） | fuzzy | max(stage-1, 0) | 当日 + **1** 天 |
-| 连续第2次答错 | unknown | 0 | **当日**（DATE，优先复习） |
-
-**连续判定：** 写入本条 `quiz_answers` **之前**：
-
-```sql
-SELECT correct FROM quiz_answers
-WHERE user_id=? AND word_key=? AND skill=?
-ORDER BY answered_at DESC, id DESC LIMIT 1;
-```
-
-若存在且 `correct=0` → 本次答错 → `unknown`。
-
-**已掌握统计：** `stability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（按展示轨 / 综合轨，见 api-modules §2.2）。
-
-### 8.5 `quiz_sessions`
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `id` | CHAR(36) | NO | — | PK，UUID |
-| `user_id` | BIGINT UNSIGNED | NO | — | |
-| `source` | ENUM('today','study','retry','groups','all','recent') | NO | today | |
-| `group_id` | BIGINT UNSIGNED | YES | NULL | 单组过滤 |
-| `group_ids_json` | JSON | YES | NULL | 多组测验 |
-| `status` | ENUM('in_progress','completed') | NO | in_progress | |
-| `question_limit` | INT | NO | 10 | |
-| `question_types_json` | JSON | YES | NULL | 本场题型列表 |
-| `launch_mode` | VARCHAR(32) | YES | NULL | mixed|free_select |
-| `total_questions` | INT | NO | — | 实际出题数 |
-| `current_index` | INT | NO | 0 | |
-| `score` | INT | NO | 0 | 答对数 |
-| `started_at` | DATETIME(3) | NO | — | |
-| `completed_at` | DATETIME(3) | YES | NULL | |
-
-**索引：** `idx_qs_user_started (user_id, started_at DESC)` · `idx_qs_user_status (user_id, status)`
-
-### 8.6 `quiz_questions`（会话题面）
-
-Create session 时写入；支持 409 防重复题号。
-
-| 列 | 类型 | NULL | 说明 |
-|----|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | PK |
-| `session_id` | CHAR(36) | NO | FK → quiz_sessions |
-| `question_index` | INT | NO | 与 API 一致（0-based） |
-| `word_key` | VARCHAR(191) | NO | 同 session 内 DISTINCT |
-| `question_type` | ENUM('dictation','choice_en_cn','choice_cn_en') | NO | 题型 |
-| `expected_en` | VARCHAR(191) | NO | 判题快照 |
-| `prompt_cn` | VARCHAR(512) | NO | |
-| `prompt_pos` | VARCHAR(32) | YES | |
-| `prompt_ph` | VARCHAR(64) | YES | |
-| `options_json` | JSON | YES | 选择题选项 |
-| `correct_key` | VARCHAR(191) | YES | 选择题正确 key |
-
-**索引：** `UNIQUE uk_qq_session_index (session_id, question_index)`
-
-### 8.7 `quiz_answers`
-
-| 列 | 类型 | NULL | 说明 |
-|----|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | PK，单调递增 |
-| `user_id` | BIGINT UNSIGNED | NO | 冗余，连续错题查询 |
-| `session_id` | CHAR(36) | NO | FK |
-| `question_id` | BIGINT UNSIGNED | NO | FK → quiz_questions |
-| `word_key` | VARCHAR(191) | NO | |
-| `skill` | ENUM('dictation','choice') | NO | 作答对应 skill |
-| `question_type` | ENUM('dictation','choice_en_cn','choice_cn_en') | NO | 题型快照 |
-| `question_index` | INT | NO | |
-| `user_answer` | VARCHAR(512) | NO | trim 后存储 |
-| `correct` | TINYINT(1) | NO | |
-| `is_consecutive_wrong` | TINYINT(1) | NO | 审计：是否触发 unknown |
-| `answered_at` | DATETIME(3) | NO | |
-
-**索引：**
-
-```sql
-UNIQUE uk_qa_session_index (session_id, question_index)
-KEY idx_qa_user_word_time (user_id, word_key, answered_at DESC, id DESC)  -- 连续错题 ★
-KEY idx_qa_user_time (user_id, answered_at DESC)
-```
-
-### 8.8 applyQuizResult 事务顺序
-
-```
-BEGIN;
-  1. SELECT last correct FROM quiz_answers (同 wordKey+skill 连续错题)
-  2. 计算 newLevel, newStage, newNextReviewAt + ΔS
-  3. INSERT quiz_answers
-  4. UPSERT word_skill_progress (has_quiz_history=1)
-  5. UPDATE quiz_sessions
-COMMIT;
-→ DEL Redis today:{userId}:{yyyyMMdd}
-→ IF session completed: upsert study_logs；刷新 user_recent_groups
-```
-
----
-
-## 9. Media 模块
-
-### 9.1 `word_images`
-
-| 列 | 类型 | NULL | 说明 |
-|----|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | PK |
-| `user_id` | BIGINT UNSIGNED | NO | |
-| `word_key` | VARCHAR(191) | NO | |
-| `storage_key` | VARCHAR(512) | NO | MinIO：`card-images/{userId}/{wordKey}.webp` |
-| `transform_json` | JSON | NO | rotate/scale/offset/showCn/filters |
-| `created_at` | DATETIME(3) | NO | |
-| `updated_at` | DATETIME(3) | NO | |
-
-**索引：** `UNIQUE uk_wi_user_word (user_id, word_key)`
-
-**MinIO：** Bucket `wordflip`；DELETE 图片时删对象 + 删行。
-
-### 9.2 `word_stains`
-
-| 列 | 类型 | NULL | 说明 |
-|----|------|------|------|
-| `id` | BIGINT UNSIGNED | NO | PK |
-| `user_id` | BIGINT UNSIGNED | NO | |
-| `word_key` | VARCHAR(191) | NO | |
-| `hidden` | TINYINT(1) | NO | 0 | REQ-STAIN-5 |
-| `stain_config_json` | JSON | YES | NULL | seed/mode/density/stains[] |
-| `updated_at` | DATETIME(3) | NO | |
-
-**索引：** `UNIQUE uk_ws_user_word (user_id, word_key)`
-
-**默认 seed（无行时）：** `stableHash(userId + wordKey)`，不落库直至用户 regenerate。
-
----
-
-## 10. Stats 模块
-
-### 10.1 `study_logs`
-
-每日学习聚合；热力图、打卡、连续天数的数据源。
-
-| 列 | 类型 | NULL | 默认 | 说明 |
-|----|------|------|------|------|
-| `user_id` | BIGINT UNSIGNED | NO | — | |
-| `log_date` | DATE | NO | — | 用户时区日历日 |
-| `study_duration_sec` | INT UNSIGNED | NO | 0 | POST /study/sessions 累加 |
-| `words_viewed` | INT UNSIGNED | NO | 0 | |
-| `quiz_answered` | INT UNSIGNED | NO | 0 | 测验完成时累加 |
-| `quiz_correct` | INT UNSIGNED | NO | 0 | |
-| `activity_score` | INT UNSIGNED | NO | 0 | 热力图分级用（算法见下） |
-| `updated_at` | DATETIME(3) | NO | ON UPDATE | |
-
-**PK：** `(user_id, log_date)`
-
-**写入：**
-
-| 触发 | 行为 |
-|------|------|
-| `POST /study/sessions` | UPSERT 累加 duration、words_viewed |
-| Quiz session completed | UPSERT 累加 quiz_answered、quiz_correct |
-
-**activity_score（热力图 4 级，REQ-STATS-2）：**
-
-```
-score = words_viewed + quiz_answered * 2 + quiz_correct
-level 0..3 由当日 score 四分位或固定阈值映射
-```
-
-**连续打卡 `streakDays`：**
-
-```sql
--- 从 today 向前数 study_logs 中 activity_score>0 或 quiz_answered>0 的连续 log_date
-```
-
-### 10.2 `achievement_definitions` + `user_achievements`
-
-| achievement_definitions | 说明 |
-|-------------------------|------|
-| `id` VARCHAR(64) PK | 如 `streak_7`, `mastered_100` |
-| `name`, `description` | 展示文案 |
-| `icon_key` | Material icon 名 |
-| `rule_json` | 解锁规则（MVP 可硬编码在 Service） |
-| `sort_order` | |
-
-| user_achievements | 说明 |
-|-------------------|------|
-| `user_id`, `achievement_id` | PK |
-| `unlocked_at` | DATETIME(3) |
-
-**MVP：** `achievement_definitions` Flyway seed；`StatsService` 在读取时计算是否解锁并 lazy INSERT。
-
-### 10.3 统计 API 数据来源
-
-| 字段 | 来源 |
-|------|------|
-| masteredCount | `group_words` JOIN `review_plans`（§8.4 公式） |
-| streakDays | `study_logs` 连续日 |
-| quizAccuracy | `quiz_answers` 近 30 天 `SUM(correct)/COUNT(*)` |
-| totalStudyDays | `COUNT(DISTINCT log_date) FROM study_logs WHERE activity_score>0` |
-| heatmap | `study_logs` 近 N 月 |
-
----
-
-## 11. Today 仪表盘关键查询
-
-前提：`:today` = 用户时区 `DATE`；所有统计 **限定已入组** `group_words`。
-
-### 11.1 新词（REQ-TODAY-9）
-
-```sql
-SELECT COUNT(*)
-FROM group_words gw
-LEFT JOIN word_mastery wm
-  ON wm.user_id = gw.user_id AND wm.word_key = gw.word_key
-WHERE gw.user_id = :userId
-  AND (wm.id IS NULL OR (wm.level = 'unlearned' AND wm.has_quiz_history = 0));
-```
-
-### 11.2 到期复习（REQ-TODAY-10）
-
-```sql
-SELECT COUNT(*)
-FROM group_words gw
-INNER JOIN review_plans rp
-  ON rp.user_id = gw.user_id AND rp.word_key = gw.word_key
-WHERE gw.user_id = :userId
-  AND rp.next_review_at IS NOT NULL AND rp.next_review_at <= :today;
--- 排序：FIELD(wm.level, 'unknown','fuzzy','unlearned'), rp.next_review_at
-```
-
-### 11.3 测验池（REQ-TODAY-11）
-
-```sql
-SELECT COUNT(DISTINCT gw.word_key)
-FROM group_words gw
-LEFT JOIN word_mastery wm ON ...
-LEFT JOIN review_plans rp ON ...
-WHERE gw.user_id = :userId
-  AND ((rp.next_review_at IS NOT NULL AND rp.next_review_at <= :today)
-    OR wm.level IN ('fuzzy', 'unknown'));
-```
-
-### 11.4 未入组词池
-
-```sql
-SELECT bw.word_key, uwl.en, uwl.cn, ...
-FROM (
-  SELECT DISTINCT bw.word_key
-  FROM user_book_selection ubs
-  JOIN book_words bw ON bw.book_id = ubs.book_id
-  WHERE ubs.user_id = :userId
-) sel
-LEFT JOIN group_words gw ON gw.user_id = :userId AND gw.word_key = sel.word_key
-JOIN user_word_lexicon uwl ON uwl.user_id = :userId AND uwl.word_key = sel.word_key
-WHERE gw.id IS NULL;
-```
-
----
-
-## 12. Redis 使用（非 MySQL，但属数据架构）
-
-| 用途 | Key | TTL | 失效 |
-|------|-----|-----|------|
-| Refresh Token | `refresh:{userId}:{tokenId}` | 7d | logout / 轮换 |
-| Access 黑名单 | `bl:{jti}` | ≤ access 过期 | — |
-| 今日仪表盘 | `today:{userId}:{yyyyMMdd}` | 10min | mastery/review 变更 |
-| 词书列表 | `books:{userId}` | 1h | 导入/勾选变更 |
-| 导入 preview | `import:preview:{token}` | 15min | confirm |
-| 导入限流 | `rl:import:{userId}` | 1min | — |
-| 登录限流 | `rl:login:{account}` | 1min | — |
-
-**原则：** 掌握度、复习计划 **只持久化 MySQL**；Redis 故障降级直查库。
-
----
-
-## 13. Flyway 迁移规划
-
-```
-db/migration/
-├── V1__init_schema.sql           # 全表 + 索引 + CHECK
-├── V2__seed_builtin_books.sql    # 三本内置词书 + achievement_definitions
-└── V{n}__*.sql                   # 后续增量
-```
-
-**V1 建表顺序（满足 FK）：**
-
-```
-users → user_settings
-books → book_words
-users → user_book_selection, user_word_lexicon, groups
-groups → group_words
-users → word_mastery, review_plans, word_images, word_stains, study_logs
-users → quiz_sessions → quiz_questions, quiz_answers
-achievement_definitions → user_achievements
-```
-
-**Flyway 脚本注释规范（与 [coding-standards.md](./coding-standards.md) 一致）：**
-
-- 每张表：`COMMENT='中文表说明'`
-- 业务字段：列级 `COMMENT '中文说明'`
-- 模块分区：脚本内 `--` 中文段落标题
-- 在 Navicat / DBeaver 中可通过 `SHOW FULL COLUMNS FROM 表名` 查看
-
----
-
-## 14. 子 agent 评审闭合项
-
-| 议题 | 评审结论 | 定稿 |
-|------|----------|------|
-| `words` vs `book_words` | 语义混淆 | **`book_words`** |
-| 是否需要 `user_word_lexicon` | quiz/image 需稳定 cn/en | **需要**；多书同词不覆盖 |
-| mastery/review 拆或合 | 查询 JOIN vs 单表 upsert | **拆分** + 同事务；性能瓶颈再合并 |
-| `quiz_questions` | OpenAPI 409 题号 | **新增表** |
-| `group_words.user_id` 冗余 | MySQL UNIQUE 限制 | **保留冗余** + Service 校验 |
-| delta 切分顺序 | 幂等性 | **`ORDER BY word_key ASC`** |
-| import preview | Redis vs MySQL | **Redis 主** + 可选 DB 审计表 |
-| 连续错题 | quiz_answers vs 反范式列 | **查 quiz_answers** + `idx_qa_user_word_time` |
-| masteredCount `>` paradox | stage5 时 next=today+30 | **`DATEDIFF >= 30`** |
-| unknown next_review_at | 文档分歧 | **当日 DATE** |
-| achievements | v5 演示 | **definitions seed + user_achievements** |
-| groups.status | 存 vs 算 | **MVP 查询时聚合** |
-| unassigned 全量 | 分页 vs chips | **`?all=true` 上限 5000**（openapi 已定） |
-
----
-
-## 15. 索引优先级（实现顺序）
-
-1. `uk_group_words_user_word` — 一词一组  
-2. `idx_qa_user_word_time` — 连续错题  
-3. `idx_rp_due` / `idx_rp_mastered` — Today  
-4. `uk_lexicon_user_word` — 展示/判题  
-5. `uk_book_words_book_key` — 导入去重  
-6. `study_logs PK (user_id, log_date)` — 热力图  
-
----
-
-## 16. 修订记录
-
-| 日期 | 版本 | 说明 |
-|------|------|------|
-| 2026-06-30 | v1.0 | 初版：22 表 + Redis + 评审闭合；对齐 openapi v1.0 / api-modules v1.1 |
-| 2026-07-09 | v1.1 | 增加 word_skill_progress / user_recent_groups；测验题型与设置列；对齐 openapi v1.1 |
-| 2026-07-10 | v1.2 | Phase A：`dict_words` / `dict_senses` / `dict_examples`；book_words / lexicon primary 冗余演进 |
-| 2026-07-10 | v1.3 | Phase C：V13–V15 建表灌数与 lexicon 同步落地 |
-| 2026-07-10 | v1.4 | 释义真相改为 ECDICT 覆盖（V16/V17）；规则清洗降级为导入兜底 |
-
----
-
-## 17. 下一步
-
-1. 生成 `wordflip-server/src/main/resources/db/migration/V1__init_schema.sql`  
-2. 生成 `V2__seed_builtin_books.sql`  
-3. 同步修订 openapi `masteredCount` 口径为 `DATEDIFF >= 30`  
-4. 更新 `architecture.md` §5 指向本文档  
+## 3. 内容来源与词汇资料
+
+| 表 | 关键字段 | 约束与职责 |
+|---|---|---|
+| `content_sources` | `id`, `code`, `name`, `license_name`, `license_url`, `homepage_url` | `code` 唯一；描述 ECDICT、WordNet、词书原文或用户输入等来源 |
+| `source_revisions` | `id`, `source_id`, `version`, `download_url`, `sha256`, `file_size`, `entry_count`, `manifest_json`, `verified_at` | `(source_id, version)` 唯一；固定可复现修订 |
+| `lexemes` | `id`, `word_key`, `headword`, `language`, `phonetic`, `status` | `(language, word_key)` 唯一；`word_key=lower(trim(headword))` |
+| `source_entries` | `id`, `revision_id`, `lexeme_id`, `source_key`, `raw_payload`, `raw_definition`, `raw_translation`, `match_status` | `(revision_id, source_key)` 唯一；保留原始字段，不做破坏性覆盖 |
+| `dictionary_senses` | `id`, `source_entry_id`, `pos`, `cn`, `en_gloss`, `quality`, `sort_order`, `derivation_json` | 派生义项；`derivation_json` 记录规则、覆盖文件与原始片段 |
+| `dictionary_examples` | `id`, `sense_id`, `en`, `cn`, `sort_order` | 例句隶属具体来源义项 |
+| `word_forms` | `id`, `lexeme_id`, `form`, `form_key`, `form_type` | `(lexeme_id, form_key, form_type)` 唯一；保存复数、时态、变体等 |
+
+完整 ECDICT SQLite 保留在离线内容目录；线上 MySQL 只发布首批三本词书实际涉及的 `lexemes/source_entries/dictionary_*`。
+
+## 4. 词书与学习卡
+
+| 表 | 关键字段 | 约束与职责 |
+|---|---|---|
+| `books` | `id`, `owner_user_id`, `code`, `name`, `source_type`, `visibility`, `status`, `declared_count`, `published_card_count`, `content_version` | 公共词书 `owner_user_id` 为空；用户导入词书只能归属一个用户 |
+| `book_items` | `id`, `book_id`, `lexeme_id`, `sort_order`, `raw_headword`, `raw_meaning`, `status`, `metadata_json` | `UNIQUE(book_id, lexeme_id)`；保存书内顺序与原始考义 |
+| `learning_cards` | `id`, `book_item_id`, `version`, `status`, `published_at`, `created_by`, `review_note` | `UNIQUE(book_item_id, version)`；同一条目最多一个 `status='published'` |
+| `learning_card_senses` | `id`, `card_id`, `source_sense_id`, `pos`, `cn`, `en_gloss`, `is_primary`, `quality`, `sort_order`, `provenance_json` | 发布卡至少一个 `quality='ok'`；恰好一个合格主义项 |
+| `learning_card_examples` | `id`, `card_sense_id`, `source_example_id`, `en`, `cn`, `sort_order` | 卡片专属例句，可引用来源例句 |
+
+`learning_cards.status` 使用 `draft/review_required/published/retired`。数据库用生成列或事务内唯一锁保证每个 `book_item` 只有一个发布版本；发布工具还会做完整性校验。
+
+## 5. 用户、计划与分组
+
+| 表 | 关键字段 | 约束与职责 |
+|---|---|---|
+| `users` | `id`, `email`, `phone`, `password_hash`, `status`, `timezone`, timestamps | 邮箱与手机号分别唯一 |
+| `user_settings` | `user_id`, `active_plan_id`, `group_size`, `group_strategy`, `auto_speak`, `theme_mode`, `quiz_launch_mode`, `default_question_limit` | 每用户一行；`active_plan_id` 可空且必须属于该用户 |
+| `user_learning_plans` | `id`, `user_id`, `book_id`, `status`, `daily_new_card_limit`, timestamps | `(user_id, book_id)` 可保留一条长期计划；切换只更新当前指针 |
+| `study_groups` | `id`, `plan_id`, `name`, `source`, `sort_order`, timestamps | 分组严格属于一个学习计划 |
+| `study_group_cards` | `id`, `group_id`, `plan_id`, `card_id`, `sort_order`, `added_at` | `UNIQUE(plan_id, card_id)`，确保当前计划内一卡一组 |
+
+切换当前计划必须锁定 `user_settings`，校验计划归属后原子更新 `active_plan_id`。旧计划、分组和进度不删除。
+
+## 6. 双层 FSRS 记忆与审计
+
+`skill` 固定为 `dictation/choice`；`state` 固定为 `new/learning/review/relearning`。
+
+| 表 | 关键字段 | 约束与职责 |
+|---|---|---|
+| `lexeme_skill_memory` | `id`, `user_id`, `lexeme_id`, `skill`, `familiarity`, `last_review_at`, `successful_reviews`, `failed_reviews`, `version` | `UNIQUE(user_id, lexeme_id, skill)`；跨书诊断参考 |
+| `card_skill_memory` | `id`, `user_id`, `card_id`, `skill`, `state`, `step`, `stability`, `difficulty`, `due_at`, `last_review_at`, `reps`, `lapses`, `elapsed_days`, `scheduled_days`, `fsrs_version`, `version` | `UNIQUE(user_id, card_id, skill)`；乐观锁 `version`；权威调度状态 |
+| `review_events` | `id`, `user_id`, `plan_id`, `card_id`, `lexeme_id`, `skill`, `question_type`, `rating`, `correct`, `answered_at`, `old_state_json`, `new_state_json`, `fsrs_version`, `request_id` | `request_id` 唯一防重；评分仅 `again/good`；不可变审计日志 |
+
+判题事务顺序：
+
+1. 校验会话、题目、当前计划和 `cardId/lexemeId` 快照。
+2. 锁定或创建 `card_skill_memory` 与 `lexeme_skill_memory`。
+3. 服务端把错误映射 `Again`、正确映射 `Good`，调用锁定版本 FSRS。
+4. 插入包含旧/新状态的 `review_events`。
+5. 更新双层记忆并提交；任何一步失败则全部回滚。
+
+默认配置：目标保持率 `0.90`，最大间隔 `36500` 天，官方默认权重，首版不做个人参数训练。
+
+## 7. 测验、媒体、统计与成就
+
+| 表 | 关键字段 | 约束与职责 |
+|---|---|---|
+| `quiz_sessions` | `id` UUID, `user_id`, `plan_id`, `status`, `source`, `question_count`, `score`, timestamps | 会话固定到创建时的学习计划 |
+| `quiz_questions` | `id`, `session_id`, `card_id`, `lexeme_id`, `skill`, `question_type`, `prompt_json`, `answer_json`, `sort_order` | `(session_id, sort_order)` 唯一；保存不可变题面快照 |
+| `quiz_answers` | `id`, `session_id`, `question_id`, `user_id`, `answer_json`, `correct`, `review_event_id`, `answered_at` | `question_id` 唯一，防重复作答 |
+| `card_images` | `id`, `user_id`, `card_id`, `storage_key`, `transform_json`, timestamps | `UNIQUE(user_id, card_id)` |
+| `card_stains` | `id`, `user_id`, `card_id`, `hidden`, `config_json`, timestamps | `UNIQUE(user_id, card_id)` |
+| `study_logs` | `id`, `user_id`, `plan_id`, `group_id`, `log_date`, `duration_sec`, `cards_viewed`, `quiz_count` | 按用户日历日统计；浏览日志不改记忆 |
+| `achievement_definitions` | `id`, `code`, `name`, `rule_json`, `enabled` | 成就定义 |
+| `user_achievements` | `id`, `user_id`, `achievement_id`, `plan_id`, `unlocked_at`, `snapshot_json` | `(user_id, achievement_id, plan_id)` 唯一 |
+
+## 8. 索引与查询
+
+- `card_skill_memory(user_id, due_at, card_id)`：当前用户到期队列。
+- `study_group_cards(plan_id, group_id, sort_order)`：当前计划分组卡片。
+- `learning_cards(book_item_id, status)` 与 `book_items(book_id, sort_order)`：词书发布卡读取。
+- `source_entries(lexeme_id, revision_id)`：详情来源展开。
+- `review_events(user_id, card_id, skill, answered_at)`：审计与统计。
+- `quiz_sessions(user_id, created_at)`、`study_logs(user_id, log_date)`：今日与统计。
+
+## 9. 内容发布与 Flyway
+
+- Flyway 新目录只含结构、少量系统枚举与必要成就定义；首个文件为全新 `V1__init_wordflip_v2.sql`。
+- ECDICT manifest 固定版本、许可、下载地址、SHA-256、文件大小与词条数。
+- 内容管线命令为 `download`、`verify`、`build`、`publish`；`publish` 以来源修订、词书 code、条目和卡片版本作为幂等键。
+- 只有 `published` 卡片进入 App；异常项不得静默发布。
+- 上线前执行旧 MySQL 备份，再创建空数据库、运行 V1、发布三本词书内容并做冒烟测试。
+
+## 10. 明确废弃
+
+新基线不包含 `dictionaries`、`dict_words`、`dict_senses`、`book_words`、`user_book_selection`、`user_word_lexicon`、`groups`、`group_words`、`word_mastery`、`review_plans`、`word_skill_progress` 及任何 `active_dict_id`。旧表只存在于只读备份和历史迁移目录。

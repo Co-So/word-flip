@@ -1,10 +1,11 @@
 package com.wordflip.dto.stain;
 
 /**
- * GET/PUT /words/{wordKey}/stain 响应，对齐 openapi WordStainResponse。
+ * 学习卡污渍响应。
  */
 public record WordStainResponse(
-        String wordKey,
+        Long cardId,
+        Long lexemeId,
         boolean hidden,
         StainConfig config
 ) {

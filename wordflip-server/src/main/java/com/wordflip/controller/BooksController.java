@@ -4,7 +4,6 @@ import com.wordflip.dto.book.BookImportConfirmRequest;
 import com.wordflip.dto.book.BookImportConfirmResponse;
 import com.wordflip.dto.book.BookImportPreviewResponse;
 import com.wordflip.dto.book.BookListResponse;
-import com.wordflip.dto.book.BookWordsResponse;
 import com.wordflip.security.SecurityUtils;
 import com.wordflip.service.BookImportService;
 import com.wordflip.service.BookService;
@@ -18,15 +17,13 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 词书 API：列表/详情/词条、导入 preview+confirm、删除 imported。
- * 对应 openapi /books*；浏览不改分组，confirm 不自动 append。
+ * 词书 API：列表、详情、导入 preview+confirm 与删除私有词书。
  */
 @RestController
 @RequestMapping("/api/v1/books")
@@ -48,15 +45,6 @@ public class BooksController {
     @GetMapping("/{bookId}")
     public BookListResponse.BookItem getBook(@PathVariable Long bookId) {
         return bookService.getBook(SecurityUtils.getCurrentUserId(), bookId);
-    }
-
-    @GetMapping("/{bookId}/words")
-    public BookWordsResponse listBookWords(
-            @PathVariable Long bookId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
-    ) {
-        return bookService.listBookWords(SecurityUtils.getCurrentUserId(), bookId, page, size);
     }
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

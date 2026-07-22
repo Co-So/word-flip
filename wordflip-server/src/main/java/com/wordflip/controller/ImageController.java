@@ -19,11 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 卡片图片 API：GET/POST/PATCH/DELETE /words/{wordKey}/image（P3-B02/B03）。
+ * 卡片图片 API：图片严格绑定当前计划中的 cardId。
  * <p>主要错误码：NOT_FOUND（无图）、VALIDATION_ERROR（MIME/大小/transform）。
  */
 @RestController
-@RequestMapping("/api/v1/words/{wordKey}/image")
+@RequestMapping("/api/v1/learning/cards/{cardId}/image")
 public class ImageController {
 
     private final ImageService imageService;
@@ -33,30 +33,30 @@ public class ImageController {
     }
 
     @GetMapping
-    public WordImageResponse get(@PathVariable String wordKey) {
-        return imageService.get(SecurityUtils.getCurrentUserId(), wordKey);
+    public WordImageResponse get(@PathVariable Long cardId) {
+        return imageService.get(SecurityUtils.getCurrentUserId(), cardId);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public WordImageResponse upload(
-            @PathVariable String wordKey,
+            @PathVariable Long cardId,
             @RequestPart("file") MultipartFile file,
             @RequestPart("transform") String transform
     ) {
-        return imageService.uploadOrReplace(SecurityUtils.getCurrentUserId(), wordKey, file, transform);
+        return imageService.uploadOrReplace(SecurityUtils.getCurrentUserId(), cardId, file, transform);
     }
 
     @PatchMapping
     public WordImageResponse patchTransform(
-            @PathVariable String wordKey,
+            @PathVariable Long cardId,
             @RequestBody ImageTransform transform
     ) {
-        return imageService.patchTransform(SecurityUtils.getCurrentUserId(), wordKey, transform);
+        return imageService.patchTransform(SecurityUtils.getCurrentUserId(), cardId, transform);
     }
 
     @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String wordKey) {
-        imageService.delete(SecurityUtils.getCurrentUserId(), wordKey);
+    public void delete(@PathVariable Long cardId) {
+        imageService.delete(SecurityUtils.getCurrentUserId(), cardId);
     }
 }

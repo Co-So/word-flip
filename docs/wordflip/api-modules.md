@@ -1,242 +1,111 @@
 # WordFlip API 模块划分说明
 
-> 版本：v1.3  
-> 日期：2026-07-10  
-> 契约文件：[../../wordflip-api/openapi.yaml](../../wordflip-api/openapi.yaml)  
-> 数据库：[database-design.md](./database-design.md)  
-> 关联：[architecture.md](./architecture.md) · [requirements.md](./requirements.md) · [plans/lexicon-restructure.md](./plans/lexicon-restructure.md)
+> 版本：v2.0
+> 日期：2026-07-16
+> 契约真相：[openapi.yaml](../../wordflip-api/openapi.yaml)
 
----
+## 1. 模块边界
 
-## 1. 总览
+| 模块 | 主要职责 | 主要标识 |
+|---|---|---|
+| Auth | 注册、登录、刷新与资源隔离 | `userId` |
+| Books | 公共/用户词书、导入预览与内容状态 | `bookId`, `lexemeId` |
+| LearningPlans | 创建、切换唯一当前主词书，保留历史计划 | `planId`, `bookId` |
+| Cards | 词书专属学习卡、考义和来源资料 | `cardId`, `lexemeId` |
+| Groups | 当前计划内学习卡分组 | `planId`, `groupId`, `cardId` |
+| Study | 浏览学习卡与学习日志；不写记忆 | `cardId`, `lexemeId` |
+| Quiz | 服务端出题、判题与防重 | `sessionId`, `cardId` |
+| Review | FSRS 调度、双层记忆与审计事务 | `cardId`, `lexemeId`, `skill` |
+| Today | 当前计划的新卡、到期复习和任务排序 | `activePlanId`, `dueAt` |
+| Media | 卡片图片与污渍 | `userId`, `cardId` |
+| Stats | 学习日志、复习事件和成就聚合 | `userId`, `planId` |
 
-| 模块 | Tag | 职责 | 后端 Service |
-|------|-----|------|--------------|
-| Auth | `Auth` | 注册、登录、刷新、登出 | `AuthService` |
-| Settings | `Settings` | 用户偏好、词书勾选、分组大小 | `SettingsService` + `BookService` |
-| Books | `Books` | 词书列表/详情/词条、导入、删除 | `BookService` + `BookImportService` |
-| Words | `Words` | 未入组词池 | `GroupService` |
-| Groups | `Groups` | 分组 CRUD 视图、自定义分组 | `GroupService` |
-| Study | `Study` | 学习页聚合、学习 session 上报 | `StudyService` |
-| Today | `Today` | 今日仪表盘 | `ReviewService` + `StatsService` |
-| Quiz | `Quiz` | 测验会话、判题、**唯一掌握度写入口** | `QuizService` → `ReviewService` |
-| Images | `Images` | 卡拍图片元数据 | `ImageService` |
-| Stains | `Stains` | 污渍配置 | `StainService` |
-| Stats | `Stats` | 统计、热力图、成就 | `StatsService` |
+系统不提供 Dicts 模块或全局词典设置。ECDICT、WordNet 等由 Cards 模块作为 `sourceMaterials` 返回。
 
-**Base URL：** `/api/v1`  
-**认证：** JWT Bearer（除 Auth 外全部必需）
+## 2. 学习计划
 
-> **释义真相：** WordLookup / Study / Quiz 以 `dict_senses` 的 **primary（quality=ok）** 为默认释义；openapi `Sense` / `Example` 见契约。缺词时可回退 lexicon 扁平列（语义仍应等同 primary）。`WordSenseNormalizer` 仅 legacy/导入兜底。计划：[plans/lexicon-restructure.md](./plans/lexicon-restructure.md)。
+- `POST /learning-plans` 为一本词书创建计划并激活；同用户同词书已有计划时返回或恢复该计划。
+- `GET /learning-plans/current` 读取 `user_settings.active_plan_id`。
+- `PATCH /learning-plans/current` 切换历史计划或更新计划参数。
+- 切换必须锁定用户设置、校验计划归属并原子更新；旧计划数据不删除。
+- Today、Groups、Study、Quiz 的服务层必须先解析当前计划，禁止客户端用任意 `bookId` 绕过当前计划。
 
----
+## 3. 学习卡与来源资料
 
-## 2. 核心业务流程
+- `GET /books/{bookId}/cards` 只返回当前发布版卡片。
+- `GET /learning/cards/{cardId}` 返回卡片考义、双 skill 进度和来源资料。
+- `GET /words/{wordKey}` 返回当前计划中对应卡片与来源资料，不接受词典参数。
+- 默认展示和测验始终使用学习卡考义；来源资料只在详情区展示。
+- 未发布、待补充或没有合格主义项的卡片不得进入分组、今日任务或测验池。
 
-### 2.1 词书保存 → 增量分组
+## 4. 导入词书
 
-```
-PUT /settings { bookIds, groupSize, groupStrategy? }
-  → SettingsService 持久化（bookIds 顺序写入 user_book_selection.selected_at 递增）
-  → GroupService.appendGroupsForNewWords(userId)
-       按 groupStrategy 合并已勾选词书 wordKey（去重保序）：
-         book_order — 词书勾选顺序 + 书内 sort_order
-         frequency  — 暂回退 book_order（无词频数据）
-         random     — 稳定随机（seed = userId + bookIds）
-       delta = 有序词表 − 已在 group_words 中的 wordKey
-       若 delta 非空：
-         若最后一个 auto 组未满 groupSize → 先补齐该组
-         剩余 delta 按 groupSize 切分 → INSERT 新 groups(source=auto) + group_words
-  → 响应 appendedGroups
-  → TodayCacheService.invalidateAllForUser(userId)
-```
+导入分为 preview 与 confirm：
 
-**不变量（增量模式）：** 不 DELETE/重建已有 auto groups；`UNIQUE(user_id, word_key)`。
+1. 服务端解析 JSON/CSV/TXT，规范化 `wordKey` 并保留用户原文。
+2. 有中文释义时创建用户词书专属候选义项。
+3. 只有英文时，从已发布公共内容生成候选，并记录来源。
+4. 无可靠候选时标记 `review_required`，不进入测验池。
+5. confirm 创建用户私有词书；用户释义绝不写入公共 `dictionary_senses`。
 
-### 2.1.1 重新分组（REQ-BOOK-26）
+## 5. 分组
 
-```
-PUT /settings { bookIds, groupSize, groupStrategy?, regroup: true }
-  → SettingsService 持久化
-  → GroupService.regroupAutoGroups(userId)
-       DELETE 全部 groups(source=auto)（group_words CASCADE）
-       custom 组内 wordKey 保留，不参与重建
-       按 groupStrategy 对当前勾选词书全量排序去重
-       减去 custom 已占 wordKey → 按 groupSize 切分新建 auto 组
-  → 响应 appendedGroups（新建组列表）
-  → TodayCacheService.invalidateAllForUser(userId)  // regroup 后 groupId 变更，须清 Today 缓存
-```
+- 自动和手动分组都严格属于一个 `planId`。
+- `study_group_cards.UNIQUE(plan_id, card_id)` 保证当前计划内一卡一组。
+- 增量分组只追加当前词书中尚未入组的已发布卡。
+- 重新分组只替换当前计划的自动分组成员，不删除双层记忆、复习事件、图片或污渍。
 
-**保留：** custom 分组、`word_mastery`、`review_plans`、图片、污渍。
+## 6. FSRS 与判题事务
 
-### 2.2 掌握度、稳定性 S 与 SRS（仅测验写入；按 skill 双轨）
+配置固定为 FSRS 官方默认权重、目标保持率 `0.90`、最大间隔 `36500` 天，首版不训练个人参数。
 
-```
-POST /quiz/sessions/{id}/answer
-  → QuizService 判题
-       默写：trim + equalsIgnoreCase(answer, expectedEn)
-       选择：selectedKey == correctKey
-       答错返回 expectedEn（巩固默写）+ expectedAnswer（按题型展示：英选中=清洗后中文）
-  → 题型映射 skill：dictation→dictation；choice_en_cn/choice_cn_en→choice
-  → ReviewService.applyQuizResult(userId, wordKey, skill, correct)
-  → 更新 word_skill_progress（该 skill 的 level + S + SRS）+ quiz_answers
-  → 失效 Redis today/stats 缓存
-```
+题型映射：
 
-**出题质量（服务端权威，REQ-LEX / REQ-QUIZ-13）：**
-- 字段分清：`wordKey` / `en`（词头）/ 展示义.`cn` 或 `enGloss` / `pos` / 词头.`ph`；多义在 `senses[]`。
-- 出题池过滤：无合格 primary → **不出题**（英汉须汉字 cn；英英须 enGloss）。
-- **释义真相** = 用户 `activeDictId` 下 `dict_senses`；已选词书 `exam_sense_id` 若属于当前词典则覆盖展示义（REQ-LEX-7/9）。
-- **WordNet（locale=en）：** 中文选词题降级为默写（REQ-LEX-10）。
-- `WordSenseNormalizer` **已降级**，仅 legacy 缺词 / 导入补 dict 时清洗脏扁平 `cn`。
-- 选择题：正确项与干扰项均用各词展示义干净 label；同词性优先、label 互异、长度相近。
-- 答错反馈：`expectedEn` + `expectedAnswer` 须与正确项一致。
-- 无法凑出 ≥2 个互异选项时降级为默写。
-**不提供** `PATCH /words/{wordKey}/mastery`。学习翻卡不写 S。
+| 题型 | skill |
+|---|---|
+| `dictation` | `dictation` |
+| `choice_en_cn` | `choice` |
+| `choice_cn_en` | `choice` |
 
-#### skill 双轨与题型
+评分映射：
 
-| QuestionType | Skill | 作答字段 |
-|--------------|-------|----------|
-| `dictation` | `dictation` | `answer`（英文拼写） |
-| `choice_en_cn` | `choice` | `selectedKey` |
-| `choice_cn_en` | `choice` | `selectedKey` |
+| 判题结果 | FSRS rating |
+|---|---|
+| 错误 | `Again` |
+| 正确 | `Good` |
 
-- **热力 / SRS 按 skill 独立：** 同一 `wordKey` 的默写与选择互不影响对方的 `stability`、`stage`、`nextReviewAt`、队列三态。
-- **展示热力：** `WordProgressSnapshot` 含 `dictation` + `choice` 两份 `MasterySnapshot`，以及按用户 `heatDisplayMode` 算出的 `displayHeatLevel` / `displayStability`（`combined`/`free`：仅对已有测验史的 skill 取较低档；单轨已测则用该轨）。
-- **开测：** `CreateQuizSessionRequest` 支持 `source`=`today|study|retry|groups|all|recent`，`groupIds` 多组，`questionTypes`，`launchMode`=`mixed|free_select`。
+`ReviewService.applyQuizResult` 是双层记忆唯一写入口，事务流程：
 
-#### applyQuizResult — 队列三态 + SRS（单 skill）
+1. `QuizService` 校验会话、当前题、答案与 `requestId`。
+2. 锁定或创建 `(userId, cardId, skill)` 卡片记忆和 `(userId, lexemeId, skill)` 词形记忆。
+3. 服务端完成 rating 映射并计算新 FSRS 状态。
+4. 写不可变 `review_events`，保存旧/新状态、题型、评分和算法版本。
+5. 更新卡片记忆和词形熟悉度，关联 `quiz_answers.review_event_id`。
+6. 任一步失败则整个事务回滚；重复 `requestId` 返回原结果，不重复调度。
 
-SRS 间隔数组（天）：`INTERVALS = [1, 2, 4, 7, 15, 30]`，索引 `0..5` 对应 `stage`。
+卡片浏览、翻转、发音、详情展开和 `POST /study/sessions` 均不得调用该入口。
 
-| 条件 | level | stage | nextReviewAt |
-|------|-------|-------|--------------|
-| 答对 | `unlearned` | `min(stage+1, 5)` | 用户时区当日结束 + `INTERVALS[newStage]` 天 |
-| 答错（非连续第 2 次） | `fuzzy` | `max(stage-1, 0)` | 当日结束 + 1 天 |
-| 同一 wordKey+**skill** **跨 session** 连续第 2 次答错 | `unknown` | `0` | **当日结束**（优先队列） |
+## 7. 跨词书诊断
 
-#### applyQuizResult — 稳定性 S（与上表同事务，按 skill）
+- 新计划遇到已有 `lexeme_skill_memory` 的词形时，卡片仍保持 `new`，先加入诊断队列。
+- 诊断题仍经正常判题与 FSRS 事务，结果初始化新 `card_skill_memory`。
+- 词形熟悉度只能影响诊断优先级和题型，不能直接复制旧书卡片稳定性或 due 时间。
 
-常量：`WINDOW_HOURS=24`，`CAP_CORRECT_IN_WINDOW=1.00`，`GAIN_MAX=4.0`，单次答对夹紧 `[0.05, 3.00]`；
-`INITIAL_CORRECT_STABILITY=12`（首次答对或仍处 heat0 时抬到「初识」档，避免 gap=0→R=1 只涨 0.05）。
+## 8. Today 与统计
 
-```
-S_days = 0.5 + (S/100)*59.5
-gapDays = hours(lastQuizAt, now)/24   // 无历史 → 0
-R = exp(-gapDays / S_days)
+- 所有查询限定当前 `activePlanId`。
+- 到期复习由 `card_skill_memory.due_at <= now` 决定。
+- 新卡来自当前词书已发布且未建立有效复习状态的卡片，并受每日新卡上限约束。
+- 学习日志用于打卡和时长；`review_events` 用于正确率、复习量和算法审计。
+- 统计与成就可按当前计划或用户全局聚合，但响应必须明确口径。
 
-答对:
-  若无测验史或当前 heatLevel==0 → S = max(S, INITIAL_CORRECT_STABILITY)，当日窗记满
-  否则 delta = clamp(GAIN_MAX*(1-R), 0.05, 3.00)
-        再 min(delta, CAP - windowCorrectGain)；窗满则 0
-答错: deltaMinus = 1.5 + 2.0*R
-      窗内第 2 次 ×1.5；第 3 次及以上 ×2.0；上限 8.0
-S = clamp(S ± delta, 0, 100)
-```
+## 9. 内容管线
 
-heatLevel 映射：`0(0–9.9) 1(10–29.9) 2(30–54.9) 3(55–79.9) 4(80–100)`。
+内容工具提供：
 
-- **展示热力（combined/free）：** 只对 `hasQuizHistory=true` 的 skill 取较低档；仅测过一轨时用该轨，避免未测轨把展示锁在 0。
-- **连续答错判定：** 查 `quiz_answers` 该用户该 wordKey+**skill** 最近一条历史记录；若存在且 `correct=false`，则本次答错视为连续第 2 次。
-- **`unlearned` 双义：** 用响应字段 `hasQuizHistory` 区分「该 skill 新词未测验」与「测验通过后 SRS 在档」。
-- **已掌握统计：** 展示口径按 `heatDisplayMode`；默认综合轨 `displayStability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（REQ-EBBING-7）。
-- **分组 progress：** `count(displayStability >= 80) / total`（或按设置单轨）。
-- **学习完成度：** `round(masteredCount / 已入组总词数 × 100)`，总词数为 0 时返回 0。
+- `download`：仅在本地文件缺失或校验失败时从 manifest 官方地址下载。
+- `verify`：校验 SHA-256、ZIP 完整性、SQLite `quick_check`、表结构、行数与中文覆盖。
+- `build`：只抽取三本词书涉及的词条，保留原始数据，生成候选卡、异常报告和可版本控制覆盖文件。
+- `publish`：将来源修订、词条、卡片和义项幂等发布到 MySQL；仅发布通过审核的卡。
 
-### 2.3 词书浏览与导入
-
-```
-GET /books
-  → builtin + 当前用户 imported，含 selected / canDelete
-
-GET /books/{bookId}
-GET /books/{bookId}/words?page&size
-  → 只读详情与词条分页；不改勾选、不改 group_words
-  → 词条 WordSummary：顶层 cn/pos/ph = primary；可选 senses
-
-GET /words/{wordKey}?dictId={dictId}
-  → 详情抽屉临时按词典查看完整义项；缺省 dictId 时使用 activeDictId
-  → 不修改用户全局词典设置；缺词按服务端词典回退规则处理
-
-POST /books/import/preview  (multipart file)
-  → 解析 JSON/CSV/TXT，规则拆 sense（REQ-LEX-5），Redis 暂存 previewToken（TTL 15min）
-  → 限流 rl:import:{userId}
-
-POST /books/import  { previewToken, name }
-  → 确认入库（book_words + 目标 upsert dict_*），自动勾选，不自动追加分组
-  → 用户需「增加书籍」向导 PUT /settings 触发 append
-
-DELETE /books/{bookId}
-  → 仅 imported；去勾选并删书；已入组词保留（REQ-BOOK-11/20）
-```
-
-**WordLookup（Study / Groups / Quiz 共用）：** 优先读 `dict_words` + `dict_senses`（及 examples）；兼容填充 `WordSummary.cn/pos/ph` = primary，详情带 `senses`。`GET /words/{wordKey}` 仅临时查询指定词典，不写 `activeDictId`。配置可回退 `lexicon.source=legacy`（应急）。
-
-### 2.4 污渍默认 seed
-
-- 无自定义记录时：`seed = stableHash(userId + wordKey)`，保证 REQ-STAIN-1 确定性。
-- `regenerate` / `batch` 使用新随机 seed 并持久化。
-
-### 2.5 学习日志
-
-| 触发 | 行为 |
-|------|------|
-| `POST /study/sessions` | 客户端学习结束上报；upsert `study_logs` + `user_recent_groups` |
-| Quiz session `completed` | 服务端自动 upsert `study_logs`（按答对/总题数计分） |
-
----
-
-## 3. 模块依赖
-
-```mermaid
-flowchart TB
-  Auth --> Settings
-  Settings --> Groups
-  Books --> Settings
-  Groups --> Study
-  Today --> ReviewService
-  Quiz --> ReviewService
-  ReviewService --> Today
-  ReviewService --> Stats
-  Study --> Images
-  Study --> Stains
-  Images --> MinIO
-```
-
----
-
-## 4. 横切约定
-
-| 项 | 约定 |
-|----|------|
-| wordKey | `en.trim().toLowerCase()`，URL 路径需 encode |
-| 分页 | `page`（1-based）、`size`（默认 20，最大 100） |
-| 错误体 | `{ code, message, timestamp, path, details? }` |
-| 时区 | 服务端存 UTC；`GET /today` 按 `X-Timezone: Asia/Shanghai` 或用户 profile 计算「当日」 |
-| 幂等 | DELETE 图片、重复 PUT settings 相同 body |
-
----
-
-## 5. 评审闭合项（相对初稿）
-
-| 问题 | 定稿 |
-|------|------|
-| 未入组词池无读 API | 新增 `GET /words/unassigned` |
-| 导入单阶段模糊 | 拆 preview + confirm |
-| Settings 职责分裂 | `PUT /settings` 触发 append；`PATCH /settings/preferences` 仅偏好 |
-| study_logs 无写 API | 新增 `POST /study/sessions` + Quiz 内部写入 |
-| 仅改图片 transform | 新增 `PATCH /words/{wordKey}/image` |
-| openapi 缺失 | `wordflip-api/openapi.yaml` |
-
----
-
-## 6. 修订记录
-
-| 日期 | 版本 | 说明 |
-|------|------|------|
-| 2026-06-30 | v1.0 | 初版：模块划分 + 业务规则定稿 |
-| 2026-06-30 | v1.1 | 补充 completionPercent 口径；对齐 openapi.yaml v1.0 |
-| 2026-07-09 | v1.2 | skill 双轨 dictation/choice；题型与组测/最近组；对齐 openapi v1.1 |
-| 2026-07-10 | v1.3 | Phase A：dict primary 释义真相；Quiz/Import/Lookup 规则；对齐 Sense/Example |
-| 2026-07-10 | v1.4 | Phase F：Normalizer 降级；dict 出题不再二次清洗 |
+异常包括缺中文、释义过长、多词性、技术标签、匹配歧义和无可靠候选。首版审核全部异常，并对每本书确定性抽检至少 100 条。

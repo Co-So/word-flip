@@ -1,0 +1,4 @@
+out/
+*.db
+*.zip
+__pycache__/

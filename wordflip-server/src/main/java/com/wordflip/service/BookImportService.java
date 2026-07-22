@@ -3,48 +3,31 @@ package com.wordflip.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.wordflip.domain.Book;
-import com.wordflip.domain.BookSource;
-import com.wordflip.domain.BookWord;
-import com.wordflip.domain.DictSense;
-import com.wordflip.domain.DictSenseQuality;
-import com.wordflip.domain.DictWord;
-import com.wordflip.domain.DictionaryIds;
-import com.wordflip.domain.UserBookSelection;
-import com.wordflip.domain.UserWordLexicon;
 import com.wordflip.dto.book.BookImportConfirmResponse;
 import com.wordflip.dto.book.BookImportPreviewResponse;
 import com.wordflip.dto.book.BookListResponse;
 import com.wordflip.dto.word.WordSummary;
 import com.wordflip.exception.WordflipException;
-import com.wordflip.repository.BookRepository;
-import com.wordflip.repository.BookWordRepository;
-import com.wordflip.repository.DictSenseRepository;
-import com.wordflip.repository.DictWordRepository;
-import com.wordflip.repository.UserBookSelectionRepository;
-import com.wordflip.repository.UserWordLexiconRepository;
+import com.wordflip.util.WordKeyUtil;
 import com.wordflip.util.WordSenseNormalizer;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 词书导入两阶段：preview（Redis 15min）→ confirm 入库；不自动 append 分组。
+ * 用户私有词书两阶段导入：用户释义只写私有学习卡，不进入公共来源库。
  */
 @Service
 public class BookImportService {
@@ -55,41 +38,18 @@ public class BookImportService {
     private static final int RATE_LIMIT_MAX = 10;
     private static final int PREVIEW_WORD_LIMIT = 6;
 
-    private static final Pattern JSON_OBJECT_PATTERN = Pattern.compile(
-            "\\{\\s*\"en\"\\s*:\\s*\"([^\"]*)\"\\s*,\\s*\"cn\"\\s*:\\s*\"([^\"]*)\"\\s*\\}"
-    );
-
-    private final BookRepository bookRepository;
-    private final BookWordRepository bookWordRepository;
-    private final UserBookSelectionRepository userBookSelectionRepository;
-    private final UserWordLexiconRepository userWordLexiconRepository;
-    private final DictWordRepository dictWordRepository;
-    private final DictSenseRepository dictSenseRepository;
-    private final StringRedisTemplate redisTemplate;
+    private final JdbcTemplate jdbc;
+    private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;
 
-    public BookImportService(
-            BookRepository bookRepository,
-            BookWordRepository bookWordRepository,
-            UserBookSelectionRepository userBookSelectionRepository,
-            UserWordLexiconRepository userWordLexiconRepository,
-            DictWordRepository dictWordRepository,
-            DictSenseRepository dictSenseRepository,
-            StringRedisTemplate redisTemplate,
-            ObjectMapper objectMapper
-    ) {
-        this.bookRepository = bookRepository;
-        this.bookWordRepository = bookWordRepository;
-        this.userBookSelectionRepository = userBookSelectionRepository;
-        this.userWordLexiconRepository = userWordLexiconRepository;
-        this.dictWordRepository = dictWordRepository;
-        this.dictSenseRepository = dictSenseRepository;
-        this.redisTemplate = redisTemplate;
+    public BookImportService(JdbcTemplate jdbc, StringRedisTemplate redis, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.redis = redis;
         this.objectMapper = objectMapper;
     }
 
     /**
-     * POST /books/import/preview：解析文件并暂存 Redis。
+     * 解析 JSON、CSV 或 TXT；允许只提供英文词头，候选释义在确认阶段生成。
      */
     public BookImportPreviewResponse preview(Long userId, MultipartFile file) {
         checkRateLimit(userId);
@@ -99,40 +59,29 @@ public class BookImportService {
         if (file.getSize() > MAX_FILE_BYTES) {
             throw new WordflipException("PAYLOAD_TOO_LARGE", "文件过大，上限 5MB");
         }
-
-        String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "import.txt";
         String content;
         try {
             content = new String(file.getBytes(), StandardCharsets.UTF_8).trim();
-        } catch (IOException e) {
+        } catch (IOException error) {
             throw new WordflipException("PARSE_ERROR", "读取文件失败");
         }
-        if (content.isEmpty()) {
-            throw new WordflipException("PARSE_ERROR", "未识别到有效单词");
-        }
-
-        String suggestedName = suggestName(originalName);
         ParsedImport parsed = parseContent(content);
         String token = UUID.randomUUID().toString();
-        PreviewPayload payload = new PreviewPayload(userId, suggestedName, parsed.words(), parsed.deduplicatedCount());
+        String fileName = file.getOriginalFilename() == null ? "导入词书" : file.getOriginalFilename();
+        PreviewPayload payload = new PreviewPayload(userId, suggestName(fileName), parsed.words(), parsed.duplicates());
         try {
-            redisTemplate.opsForValue().set(previewKey(token), objectMapper.writeValueAsString(payload), PREVIEW_TTL);
-        } catch (JsonProcessingException e) {
+            redis.opsForValue().set(previewKey(token), objectMapper.writeValueAsString(payload), PREVIEW_TTL);
+        } catch (JsonProcessingException error) {
             throw new WordflipException("INTERNAL_ERROR", "暂存预览失败");
         }
-
-        List<WordSummary> previewWords = parsed.words().stream().limit(PREVIEW_WORD_LIMIT).toList();
         return new BookImportPreviewResponse(
-                token,
-                suggestedName,
-                parsed.words().size(),
-                parsed.deduplicatedCount(),
-                previewWords
+                token, payload.suggestedName(), payload.words().size(), payload.deduplicatedCount(),
+                payload.words().stream().limit(PREVIEW_WORD_LIMIT).toList()
         );
     }
 
     /**
-     * POST /books/import：确认入库并自动勾选；不调用 appendGroups。
+     * 创建私有词书和专属学习卡：中文输入优先，否则使用可靠公共候选；无候选则待补充。
      */
     @Transactional
     public BookImportConfirmResponse confirm(Long userId, String previewToken, String name) {
@@ -141,211 +90,257 @@ public class BookImportService {
         if (trimmedName.isEmpty() || trimmedName.length() > 64) {
             throw new WordflipException("VALIDATION_ERROR", "词书名称无效");
         }
-
-        String raw = redisTemplate.opsForValue().get(previewKey(previewToken));
-        if (raw == null) {
-            // 区分无效与过期：token 格式合法但无值 → 410；否则 404
-            throw new WordflipException("GONE", "预览已过期，请重新导入");
-        }
-
-        PreviewPayload payload;
-        try {
-            payload = objectMapper.readValue(raw, PreviewPayload.class);
-        } catch (JsonProcessingException e) {
-            redisTemplate.delete(previewKey(previewToken));
-            throw new WordflipException("GONE", "预览已过期，请重新导入");
-        }
-        if (!userId.equals(payload.userId())) {
-            throw new WordflipException("FORBIDDEN", "无权使用该预览");
-        }
-        if (payload.words() == null || payload.words().isEmpty()) {
-            throw new WordflipException("PARSE_ERROR", "未识别到有效单词");
-        }
-        if (bookRepository.existsByUserIdAndName(userId, trimmedName)) {
+        PreviewPayload payload = readPreview(userId, previewToken);
+        Integer duplicate = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM books WHERE owner_user_id=? AND name=? AND status<>'archived'",
+                Integer.class, userId, trimmedName
+        );
+        if (duplicate != null && duplicate > 0) {
             throw new WordflipException("CONFLICT", "同名词书已存在");
         }
 
-        Book book = new Book();
-        book.setSource(BookSource.imported);
-        book.setUserId(userId);
-        book.setName(trimmedName);
-        book.setDeclaredCount(null);
-        book.setWordCount(payload.words().size());
-        book.setCreatedAt(Instant.now());
-        book.setUpdatedAt(Instant.now());
-        book = bookRepository.save(book);
-
-        List<BookWord> entities = new ArrayList<>(payload.words().size());
+        String code = "user-" + UUID.randomUUID();
+        jdbc.update(
+                """
+                INSERT INTO books(owner_user_id, code, name, source_type, visibility, status,
+                                  declared_count, published_card_count, content_version)
+                VALUES (?, ?, ?, 'imported', 'private', 'published', ?, 0, 'user-v1')
+                """,
+                userId, code, trimmedName, payload.words().size()
+        );
+        Long bookId = jdbc.queryForObject(
+                "SELECT id FROM books WHERE owner_user_id=? AND code=?", Long.class, userId, code
+        );
+        int published = 0;
         int order = 0;
-        // 批量取已有 dict primary，导入时绑定 exam_sense（REQ-LEX-7）
-        List<String> importKeys = payload.words().stream()
-                .map(WordSummary::wordKey)
-                .filter(k -> k != null && !k.isBlank())
-                .toList();
-        Map<String, DictSense> primaryByKey = dictSenseRepository
-                .findPrimariesByDictIdAndWordKeyInAndQuality(
-                        DictionaryIds.CURATED, importKeys, DictSenseQuality.ok)
-                .stream()
-                .collect(Collectors.toMap(DictSense::getWordKey, s -> s, (a, b) -> a));
-
         for (WordSummary word : payload.words()) {
-            BookWord bw = new BookWord();
-            bw.setBookId(book.getId());
-            bw.setWordKey(word.wordKey());
-            bw.setEn(word.en());
-            DictSense dictPrimary = primaryByKey.get(word.wordKey());
-            if (dictPrimary != null) {
-                // 全局词典优先：词书仅 membership + 考义绑定
-                bw.setCn(dictPrimary.getCn());
-                bw.setPos(dictPrimary.getPos());
-                bw.setExamSenseId(dictPrimary.getId());
-            } else {
-                bw.setCn(word.cn());
-                bw.setPos(word.pos());
+            Long lexemeId = upsertLexeme(word);
+            Candidate candidate = chooseCandidate(lexemeId, word);
+            String itemStatus = candidate == null ? "review_required" : "ready";
+            jdbc.update(
+                    """
+                    INSERT INTO book_items(book_id, lexeme_id, sort_order, raw_headword, raw_meaning, status)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    bookId, lexemeId, order++, word.en(), blankToNull(word.cn()), itemStatus
+            );
+            Long itemId = jdbc.queryForObject(
+                    "SELECT id FROM book_items WHERE book_id=? AND lexeme_id=?", Long.class, bookId, lexemeId
+            );
+            String cardStatus = candidate == null ? "review_required" : "published";
+            jdbc.update(
+                    """
+                    INSERT INTO learning_cards(book_item_id, version, status, published_at, created_by, review_note)
+                    VALUES (?, 1, ?, ?, 'user-import', ?)
+                    """,
+                    itemId, cardStatus,
+                    "published".equals(cardStatus) ? Timestamp.from(Instant.now()) : null,
+                    candidate == null ? "未找到可靠中文候选" : null
+            );
+            Long cardId = jdbc.queryForObject(
+                    "SELECT id FROM learning_cards WHERE book_item_id=? AND version=1", Long.class, itemId
+            );
+            if (candidate != null) {
+                jdbc.update(
+                        """
+                        INSERT INTO learning_card_senses(
+                          card_id, source_sense_id, pos, cn, en_gloss, is_primary, quality,
+                          sort_order, provenance_json
+                        ) VALUES (?, ?, ?, ?, ?, TRUE, 'ok', 0, ?)
+                        """,
+                        cardId, candidate.sourceSenseId(), candidate.pos(), candidate.cn(),
+                        candidate.enGloss(), candidate.provenanceJson()
+                );
+                published++;
             }
-            bw.setPh(word.ph());
-            bw.setSortOrder(order++);
-            bw.setCreatedAt(Instant.now());
-            entities.add(bw);
         }
-        bookWordRepository.saveAll(entities);
-
-        // 自动勾选（REQ-BOOK-8）；不触发分组追加
-        if (!userBookSelectionRepository.existsByIdUserIdAndIdBookId(userId, book.getId())) {
-            userBookSelectionRepository.save(new UserBookSelection(userId, book.getId()));
-        }
-        upsertLexiconForImport(userId, book.getId(), payload.words());
-        // 仅对 dict 中尚不存在的词头补 primary sense；不覆盖 ECDICT
-        upsertDictForMissingKeys(payload.words());
-        // 补完 dict 后回填仍缺 exam_sense 的词条
-        bindExamSenseForBook(book.getId(), payload.words());
-
-        redisTemplate.delete(previewKey(previewToken));
-        return new BookImportConfirmResponse(BookListResponse.BookItem.from(book, true));
+        jdbc.update("UPDATE books SET published_card_count=? WHERE id=?", published, bookId);
+        redis.delete(previewKey(previewToken));
+        return new BookImportConfirmResponse(new BookListResponse.BookItem(
+                bookId, trimmedName, "imported", published, payload.words().size(), false, true
+        ));
     }
 
     /**
-     * DELETE /books/{bookId}：仅 imported；已入组词保留。
+     * 未使用的私有词书直接删除；已有历史计划时仅归档，避免破坏学习历史。
      */
     @Transactional
     public void deleteImportedBook(Long userId, Long bookId) {
-        Book book = bookRepository.findById(bookId)
-                .orElseThrow(() -> new WordflipException("NOT_FOUND", "词书不存在"));
-        if (book.getSource() == BookSource.builtin) {
-            throw new WordflipException("FORBIDDEN", "内置词书不可删除");
-        }
-        if (!userId.equals(book.getUserId())) {
+        List<String> sourceTypes = jdbc.query(
+                "SELECT source_type FROM books WHERE id=? AND owner_user_id=?",
+                (rs, row) -> rs.getString(1), bookId, userId
+        );
+        if (sourceTypes.isEmpty()) {
+            Integer publicBook = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM books WHERE id=? AND owner_user_id IS NULL", Integer.class, bookId
+            );
+            if (publicBook != null && publicBook > 0) {
+                throw new WordflipException("FORBIDDEN", "内置词书不可删除");
+            }
             throw new WordflipException("NOT_FOUND", "词书不存在或不可访问");
         }
-        // selection / book_words 随 books CASCADE 删除；group_words 无 FK，保留
-        bookRepository.delete(book);
-    }
-
-    private void upsertLexiconForImport(Long userId, Long bookId, List<WordSummary> words) {
-        List<String> keys = words.stream().map(WordSummary::wordKey).toList();
-        Set<String> existing = userWordLexiconRepository.findExistingWordKeys(userId, keys);
-        Instant now = Instant.now();
-        for (WordSummary word : words) {
-            if (existing.contains(word.wordKey())) {
-                continue;
-            }
-            UserWordLexicon lexicon = new UserWordLexicon();
-            lexicon.setUserId(userId);
-            lexicon.setWordKey(word.wordKey());
-            lexicon.setEn(word.en());
-            lexicon.setCn(word.cn());
-            lexicon.setPos(word.pos());
-            lexicon.setPh(word.ph());
-            lexicon.setSourceBookId(bookId);
-            lexicon.setUpdatedAt(now);
-            userWordLexiconRepository.save(lexicon);
+        Integer plans = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM user_learning_plans WHERE book_id=?", Integer.class, bookId
+        );
+        if (plans != null && plans > 0) {
+            jdbc.update("UPDATE books SET status='archived' WHERE id=? AND owner_user_id=?", bookId, userId);
+        } else {
+            jdbc.update("DELETE FROM books WHERE id=? AND owner_user_id=?", bookId, userId);
         }
     }
 
-    /**
-     * 导入后回填 exam_sense_id：对新写入的 dict primary 绑定到本书词条。
-     */
-    private void bindExamSenseForBook(Long bookId, List<WordSummary> words) {
-        List<String> keys = words.stream()
-                .map(WordSummary::wordKey)
-                .filter(k -> k != null && !k.isBlank())
-                .toList();
-        if (keys.isEmpty()) {
-            return;
-        }
-        Map<String, DictSense> primaryByKey = dictSenseRepository
-                .findPrimariesByDictIdAndWordKeyInAndQuality(
-                        DictionaryIds.CURATED, keys, DictSenseQuality.ok)
-                .stream()
-                .collect(Collectors.toMap(DictSense::getWordKey, s -> s, (a, b) -> a));
-        if (primaryByKey.isEmpty()) {
-            return;
-        }
-        List<BookWord> rows = bookWordRepository.findByBookIdsAndWordKeys(List.of(bookId), keys);
-        for (BookWord row : rows) {
-            if (row.getExamSenseId() != null) {
-                continue;
-            }
-            DictSense primary = primaryByKey.get(row.getWordKey());
-            if (primary == null) {
-                continue;
-            }
-            row.setExamSenseId(primary.getId());
-            row.setCn(primary.getCn());
-            row.setPos(primary.getPos());
-        }
-        bookWordRepository.saveAll(rows);
+    private Long upsertLexeme(WordSummary word) {
+        jdbc.update(
+                """
+                INSERT INTO lexemes(word_key, headword, phonetic)
+                VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE headword=VALUES(headword),
+                                        phonetic=COALESCE(lexemes.phonetic, VALUES(phonetic))
+                """,
+                word.wordKey(), word.en(), blankToNull(word.ph())
+        );
+        return jdbc.queryForObject(
+                "SELECT id FROM lexemes WHERE language='en' AND word_key=?", Long.class, word.wordKey()
+        );
     }
 
-    /**
-     * 导入补 dict：仅 word_key 不存在时写入词头 + 规则清洗后的 primary sense。
-     * 已有 ECDICT 条目一律跳过，禁止覆盖。
-     */
-    private void upsertDictForMissingKeys(List<WordSummary> words) {
-        Instant now = Instant.now();
-        for (WordSummary word : words) {
-            if (word.wordKey() == null || word.wordKey().isBlank()) {
-                continue;
-            }
-            if (dictWordRepository.existsByDictIdAndWordKey(DictionaryIds.CURATED, word.wordKey())) {
-                continue;
-            }
-            String cleanedCn = WordSenseNormalizer.cleanDisplayCn(word.cn());
-            // 无汉字释义不入 dict（测验池会过滤）；避免污染全局词典
-            if (!WordSenseNormalizer.hasHan(cleanedCn)) {
-                continue;
-            }
-            DictWord head = new DictWord();
-            head.setDictId(DictionaryIds.CURATED);
-            head.setWordKey(word.wordKey());
-            head.setEn(word.en() != null && !word.en().isBlank() ? word.en() : word.wordKey());
-            head.setPh(word.ph());
-            head.setCreatedAt(now);
-            head.setUpdatedAt(now);
-            dictWordRepository.save(head);
+    private Candidate chooseCandidate(Long lexemeId, WordSummary word) {
+        String cleaned = WordSenseNormalizer.cleanDisplayCn(word.cn());
+        if (WordSenseNormalizer.hasHan(cleaned)) {
+            String provenance = writeJson(Map.of("type", "user_import", "raw", word.cn()));
+            return new Candidate(null, word.pos(), cleaned, word.enGloss(), provenance);
+        }
+        List<Candidate> candidates = jdbc.query(
+                """
+                SELECT ds.id, ds.pos, ds.cn, ds.en_gloss, cs.code, sr.version
+                  FROM dictionary_senses ds
+                  JOIN source_entries se ON se.id=ds.source_entry_id
+                  JOIN source_revisions sr ON sr.id=se.revision_id
+                  JOIN content_sources cs ON cs.id=sr.source_id
+                 WHERE se.lexeme_id=? AND ds.quality='ok' AND ds.cn IS NOT NULL AND ds.cn<>''
+                 ORDER BY CASE WHEN cs.code='ecdict' THEN 0 ELSE 1 END, ds.sort_order, ds.id
+                 LIMIT 1
+                """,
+                (rs, row) -> new Candidate(
+                        rs.getLong("id"), rs.getString("pos"), rs.getString("cn"),
+                        rs.getString("en_gloss"), writeJson(Map.of(
+                                "type", "public_candidate", "source", rs.getString("code"),
+                                "revision", rs.getString("version")
+                        ))
+                ),
+                lexemeId
+        );
+        return candidates.stream().findFirst().orElse(null);
+    }
 
-            DictSense sense = new DictSense();
-            sense.setDictId(DictionaryIds.CURATED);
-            sense.setWordKey(word.wordKey());
-            sense.setPos(word.pos());
-            sense.setCn(cleanedCn);
-            sense.setPrimary(true);
-            sense.setSortOrder(0);
-            sense.setQuality(DictSenseQuality.ok);
-            sense.setCreatedAt(now);
-            dictSenseRepository.save(sense);
+    private PreviewPayload readPreview(Long userId, String token) {
+        String raw = redis.opsForValue().get(previewKey(token));
+        if (raw == null) {
+            throw new WordflipException("GONE", "预览已过期，请重新导入");
+        }
+        try {
+            PreviewPayload payload = objectMapper.readValue(raw, PreviewPayload.class);
+            if (!userId.equals(payload.userId())) {
+                throw new WordflipException("FORBIDDEN", "无权使用该预览");
+            }
+            return payload;
+        } catch (JsonProcessingException error) {
+            throw new WordflipException("GONE", "预览已失效，请重新导入");
         }
     }
 
-    /** 导入限流：每用户每分钟最多 RATE_LIMIT_MAX 次 preview/confirm */
+    private ParsedImport parseContent(String content) {
+        if (content == null || content.isBlank()) {
+            throw new WordflipException("PARSE_ERROR", "未识别到有效单词");
+        }
+        List<RawWord> raw = content.stripLeading().startsWith("[") || content.stripLeading().startsWith("{")
+                ? parseJson(content) : parseLines(content);
+        Map<String, WordSummary> unique = new LinkedHashMap<>();
+        int duplicates = 0;
+        for (RawWord item : raw) {
+            if (item.en() == null || item.en().isBlank()) {
+                continue;
+            }
+            String key = WordKeyUtil.normalize(item.en());
+            if (key.isBlank()) {
+                continue;
+            }
+            if (unique.containsKey(key)) {
+                duplicates++;
+                continue;
+            }
+            unique.put(key, new WordSummary(
+                    key, item.en().trim(), blankToEmpty(item.cn()), item.pos(), item.ph()
+            ));
+        }
+        if (unique.isEmpty()) {
+            throw new WordflipException("PARSE_ERROR", "未识别到有效单词");
+        }
+        return new ParsedImport(List.copyOf(unique.values()), duplicates);
+    }
+
+    private List<RawWord> parseJson(String content) {
+        try {
+            JsonNode root = objectMapper.readTree(content);
+            JsonNode array = root.isArray() ? root : root.path("words");
+            if (!array.isArray()) {
+                return List.of();
+            }
+            List<RawWord> values = new ArrayList<>();
+            for (JsonNode node : array) {
+                if (node.isTextual()) {
+                    values.add(new RawWord(node.asText(), null, null, null));
+                } else {
+                    values.add(new RawWord(
+                            text(node, "en"), text(node, "cn"), text(node, "pos"), text(node, "ph")
+                    ));
+                }
+            }
+            return values;
+        } catch (JsonProcessingException error) {
+            throw new WordflipException("PARSE_ERROR", "JSON 格式无效");
+        }
+    }
+
+    private static List<RawWord> parseLines(String content) {
+        List<RawWord> values = new ArrayList<>();
+        for (String rawLine : content.split("\\R")) {
+            String line = rawLine.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            String[] parts = splitLine(line);
+            values.add(new RawWord(parts[0].trim(), parts.length > 1 ? parts[1].trim() : null, null, null));
+        }
+        return values;
+    }
+
+    private static String[] splitLine(String line) {
+        for (String delimiter : List.of("\\t", "\\|", ";", " - ", ",")) {
+            String[] parts = line.split(delimiter, 2);
+            if (parts.length == 2) {
+                return parts;
+            }
+        }
+        return new String[]{line};
+    }
+
     private void checkRateLimit(Long userId) {
         String key = "rl:import:" + userId;
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1L) {
-            redisTemplate.expire(key, RATE_LIMIT_TTL);
+        Long count = redis.opsForValue().increment(key);
+        if (count != null && count == 1) {
+            redis.expire(key, RATE_LIMIT_TTL);
         }
         if (count != null && count > RATE_LIMIT_MAX) {
             throw new WordflipException("TOO_MANY_REQUESTS", "导入过于频繁，请稍后再试");
+        }
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException error) {
+            throw new IllegalStateException("无法生成内容追溯信息", error);
         }
     }
 
@@ -354,154 +349,38 @@ public class BookImportService {
     }
 
     private static String suggestName(String fileName) {
-        String base = fileName;
-        int slash = Math.max(base.lastIndexOf('/'), base.lastIndexOf('\\'));
-        if (slash >= 0) {
-            base = base.substring(slash + 1);
-        }
+        String base = fileName.replace('\\', '/');
+        base = base.substring(base.lastIndexOf('/') + 1);
         int dot = base.lastIndexOf('.');
-        if (dot > 0) {
-            base = base.substring(0, dot);
-        }
-        return base.isBlank() ? "导入词书" : base;
+        return dot > 0 ? base.substring(0, dot) : base;
     }
 
-    private ParsedImport parseContent(String content) {
-        List<EnCn> raw;
-        String trimmed = content.trim();
-        if (trimmed.startsWith("{")) {
-            raw = parseJsonObject(trimmed);
-        } else if (trimmed.startsWith("[")) {
-            raw = parseJsonArray(trimmed);
-        } else {
-            raw = parseDelimitedLines(trimmed);
-        }
-        if (raw.isEmpty()) {
-            throw new WordflipException("PARSE_ERROR", "未识别到有效单词");
-        }
-
-        Map<String, WordSummary> unique = new LinkedHashMap<>();
-        int dedup = 0;
-        for (EnCn pair : raw) {
-            String en = pair.en() == null ? "" : pair.en().trim();
-            String cn = pair.cn() == null ? "" : pair.cn().trim();
-            if (en.isEmpty() || cn.isEmpty()) {
-                continue;
-            }
-            String wordKey = en.toLowerCase();
-            if (unique.containsKey(wordKey)) {
-                dedup++;
-                continue;
-            }
-            unique.put(wordKey, new WordSummary(
-                    wordKey,
-                    en,
-                    WordSenseNormalizer.cleanDisplayCn(cn),
-                    pair.pos(),
-                    pair.ph()
-            ));
-        }
-        if (unique.isEmpty()) {
-            throw new WordflipException("PARSE_ERROR", "未识别到有效单词");
-        }
-        return new ParsedImport(List.copyOf(unique.values()), dedup);
+    private static String text(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() || value.asText().isBlank() ? null : value.asText();
     }
 
-    private List<EnCn> parseJsonObject(String content) {
-        try {
-            JsonNode root = objectMapper.readTree(content);
-            if (root.has("words") && root.get("words").isArray()) {
-                return parseJsonWordNodes(root.get("words"));
-            }
-            // 回退：当作数组文本再试
-            return parseJsonArray(content);
-        } catch (JsonProcessingException e) {
-            return parseJsonArray(content);
-        }
-    }
-
-    private List<EnCn> parseJsonArray(String content) {
-        try {
-            JsonNode root = objectMapper.readTree(content);
-            if (root.isArray()) {
-                return parseJsonWordNodes(root);
-            }
-        } catch (JsonProcessingException ignored) {
-            // 宽松正则回退
-        }
-        List<EnCn> fallback = new ArrayList<>();
-        Matcher matcher = JSON_OBJECT_PATTERN.matcher(content);
-        while (matcher.find()) {
-            fallback.add(new EnCn(matcher.group(1), matcher.group(2), null, null));
-        }
-        return fallback;
-    }
-
-    private List<EnCn> parseJsonWordNodes(JsonNode array) {
-        List<EnCn> result = new ArrayList<>();
-        for (JsonNode node : array) {
-            String en = textOrNull(node, "en");
-            String cn = textOrNull(node, "cn");
-            if (en == null || cn == null) {
-                continue;
-            }
-            result.add(new EnCn(en, cn, textOrNull(node, "pos"), textOrNull(node, "ph")));
-        }
-        return result;
-    }
-
-    private static String textOrNull(JsonNode node, String field) {
-        JsonNode child = node.get(field);
-        if (child == null || child.isNull()) {
-            return null;
-        }
-        String value = child.asText();
+    private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
     }
 
-    /** CSV/TXT：逗号/分号/竖线/Tab/` - ` 分隔；# 注释 */
-    private static List<EnCn> parseDelimitedLines(String content) {
-        List<EnCn> result = new ArrayList<>();
-        for (String rawLine : content.split("\\R")) {
-            String line = rawLine.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            String[] parts = splitLine(line);
-            if (parts == null || parts.length < 2) {
-                continue;
-            }
-            result.add(new EnCn(parts[0].trim(), parts[1].trim(), null, null));
-        }
-        return result;
+    private static String blankToEmpty(String value) {
+        return value == null ? "" : value.trim();
     }
 
-    private static String[] splitLine(String line) {
-        if (line.contains("\t")) {
-            return line.split("\t", 2);
-        }
-        if (line.contains("|")) {
-            return line.split("\\|", 2);
-        }
-        if (line.contains(";")) {
-            return line.split(";", 2);
-        }
-        if (line.contains(" - ")) {
-            return line.split(" - ", 2);
-        }
-        if (line.contains(",")) {
-            return line.split(",", 2);
-        }
-        return null;
+    private record RawWord(String en, String cn, String pos, String ph) {
     }
 
-    private record EnCn(String en, String cn, String pos, String ph) {
+    private record ParsedImport(List<WordSummary> words, int duplicates) {
     }
 
-    private record ParsedImport(List<WordSummary> words, int deduplicatedCount) {
+    private record PreviewPayload(
+            Long userId, String suggestedName, List<WordSummary> words, int deduplicatedCount
+    ) {
     }
 
-    /** Redis 暂存载荷 */
-    private record PreviewPayload(Long userId, String suggestedName, List<WordSummary> words, int deduplicatedCount) {
+    private record Candidate(
+            Long sourceSenseId, String pos, String cn, String enGloss, String provenanceJson
+    ) {
     }
 }

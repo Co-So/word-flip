@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 
 /**
- * PUT /words/{wordKey}/stain 请求体：action = regenerate|set_hidden|set_visible|replace。
+ * PUT /learning/cards/{cardId}/stain 请求体：action = regenerate|set_hidden|set_visible|replace。
  */
 public class StainUpdateRequest {
 

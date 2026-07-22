@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.ZoneId;
 
 /**
- * 学习页 API：GET /study/groups/{groupId}、POST /study/sessions（P1-B10~B12）。
+ * 学习页 API：返回词书学习卡；浏览会话只记录日志。
  */
 @RestController
 @RequestMapping("/api/v1")

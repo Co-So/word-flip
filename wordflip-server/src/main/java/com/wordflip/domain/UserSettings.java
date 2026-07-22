@@ -1,6 +1,5 @@
 package com.wordflip.domain;
 
-import com.wordflip.domain.DictionaryIds;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -25,21 +24,25 @@ public class UserSettings {
     @Column(name = "user_id")
     private Long userId;
 
-    /** 对齐 Flyway user_settings.group_size TINYINT UNSIGNED */
-    @Column(name = "group_size", nullable = false, columnDefinition = "TINYINT UNSIGNED")
+    /** 唯一当前学习计划；切换由 LearningPlanService 在事务内更新。 */
+    @Column(name = "active_plan_id")
+    private Long activePlanId;
+
+    /** 自动分组大小，仅影响尚未入组的新增卡片。 */
+    @Column(name = "group_size", nullable = false, columnDefinition = "INT UNSIGNED")
     private int groupSize = 20;
 
-    /** 对齐 Flyway user_settings.group_strategy ENUM（REQ-BOOK-22~24） */
+    /** 自动分组策略。 */
     @Enumerated(EnumType.STRING)
-    @Column(name = "group_strategy", nullable = false, columnDefinition = "ENUM('book_order', 'frequency', 'random')")
+    @Column(name = "group_strategy", nullable = false, length = 24)
     private GroupStrategy groupStrategy = GroupStrategy.book_order;
 
     @Column(name = "auto_speak", nullable = false, columnDefinition = "TINYINT(1)")
     private boolean autoSpeak = true;
 
-    /** 对齐 Flyway user_settings.theme_mode ENUM('system','light','dark') */
+    /** 主题模式。 */
     @Enumerated(EnumType.STRING)
-    @Column(name = "theme_mode", nullable = false, columnDefinition = "ENUM('system', 'light', 'dark')")
+    @Column(name = "theme_mode", nullable = false, length = 16)
     private ThemeMode themeMode = ThemeMode.system;
 
     @Column(name = "study_guide_completed", nullable = false, columnDefinition = "TINYINT(1)")
@@ -52,21 +55,15 @@ public class UserSettings {
     private boolean reviewReminderEnabled = false;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "heat_display_mode", nullable = false,
-            columnDefinition = "ENUM('combined', 'dictation', 'choice', 'free')")
+    @Column(name = "heat_display_mode", nullable = false, length = 16)
     private HeatDisplayMode heatDisplayMode = HeatDisplayMode.combined;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "quiz_launch_mode", nullable = false,
-            columnDefinition = "ENUM('mixed', 'free_select')")
+    @Column(name = "quiz_launch_mode", nullable = false, length = 24)
     private QuizLaunchMode quizLaunchMode = QuizLaunchMode.mixed;
 
-    @Column(name = "default_question_limit", nullable = false, columnDefinition = "TINYINT UNSIGNED")
+    @Column(name = "default_question_limit", nullable = false, columnDefinition = "INT UNSIGNED")
     private int defaultQuestionLimit = 10;
-
-    /** 当前词典（REQ-LEX-9） */
-    @Column(name = "active_dict_id", nullable = false, length = 32)
-    private String activeDictId = DictionaryIds.CURATED;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
