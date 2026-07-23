@@ -1,0 +1,8 @@
+.button { border: 1px solid transparent; border-radius: var(--wf-radius-control); cursor: pointer; font-weight: 650; min-height: 36px; padding: 0 14px; transition: background-color var(--wf-motion-fast), border-color var(--wf-motion-fast), color var(--wf-motion-fast); }
+.button:disabled { cursor: not-allowed; opacity: .55; }
+.primary { background: var(--wf-sage); color: white; }
+.primary:hover:not(:disabled) { background: #5f7d30; }
+.secondary { background: var(--wf-sage-container); color: #26370f; }
+.secondary:hover:not(:disabled) { background: #a8c56a; }
+.ghost { background: transparent; border-color: var(--wf-border); color: var(--wf-text); }
+.ghost:hover:not(:disabled) { background: var(--wf-sidebar); }

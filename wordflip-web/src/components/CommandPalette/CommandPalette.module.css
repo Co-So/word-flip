@@ -1,0 +1,9 @@
+.backdrop { align-items: flex-start; background: rgb(48 45 41 / 34%); display: flex; inset: 0; justify-content: center; padding: 12vh 20px 20px; position: fixed; z-index: 20; }
+.palette { background: var(--wf-surface); border: 1px solid var(--wf-border); border-radius: var(--wf-radius-panel); box-shadow: 0 24px 70px rgb(48 45 41 / 25%); max-width: 560px; padding: 18px; width: 100%; }
+.label { color: var(--wf-text-muted); display: block; font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.palette input { background: var(--wf-canvas); border: 1px solid var(--wf-border); border-radius: var(--wf-radius-control); color: var(--wf-text); padding: 11px 12px; width: 100%; }
+.destinations { display: grid; gap: 4px; margin-top: 14px; }
+.destinations a { border-radius: var(--wf-radius-control); padding: 10px 12px; }
+.destinations a:hover, .destinations a:focus-visible { background: var(--wf-sidebar); outline: none; }
+.palette p { color: var(--wf-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; margin: 16px 0 0; }
+kbd { border: 1px solid var(--wf-border); border-radius: 4px; padding: 1px 4px; }

@@ -1,0 +1,19 @@
+:root {
+  --wf-canvas: #f8f5ef;
+  --wf-sidebar: #eee9df;
+  --wf-surface: #fdfbf7;
+  --wf-border: #ded7cb;
+  --wf-text: #302d29;
+  --wf-text-muted: #7f776c;
+  --wf-sage: #6f9038;
+  --wf-sage-container: #b7d07a;
+  --wf-terracotta: #c76a49;
+  --wf-error: #c0392b;
+  --wf-radius-control: 8px;
+  --wf-radius-panel: 12px;
+  --wf-sidebar-width: 216px;
+  --wf-content-max: 1240px;
+  --wf-motion-fast: 160ms;
+  --wf-motion-normal: 220ms;
+  --wf-motion-flip: 360ms;
+}

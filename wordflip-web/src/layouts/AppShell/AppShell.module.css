@@ -1,0 +1,14 @@
+.shell { background: var(--wf-canvas); color: var(--wf-text); display: grid; grid-template-columns: var(--wf-sidebar-width) minmax(0, 1fr); min-height: 100vh; overflow-x: clip; }
+.sidebar { background: var(--wf-sidebar); border-right: 1px solid var(--wf-border); display: flex; flex-direction: column; gap: 28px; padding: 28px 16px; }
+.brand { display: grid; font-size: 20px; font-weight: 760; letter-spacing: -.04em; padding: 0 8px; }
+.brand small { color: var(--wf-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: .1em; margin-top: 5px; }
+.navigation { display: grid; gap: 4px; }
+.navigation a { border-radius: var(--wf-radius-control); color: var(--wf-text-muted); font-size: 14px; font-weight: 650; padding: 10px 12px; transition: background-color var(--wf-motion-fast), color var(--wf-motion-fast); }
+.navigation a:hover { background: rgb(255 255 255 / 45%); color: var(--wf-text); }
+.navigation a.active { background: var(--wf-sage-container); color: #26370f; }
+.commandTrigger { background: transparent; border: 1px solid var(--wf-border); border-radius: var(--wf-radius-control); color: var(--wf-text-muted); cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; margin-top: auto; padding: 9px 10px; text-align: left; }
+.commandTrigger kbd { float: right; }
+.content { min-width: 0; padding: 42px clamp(20px, 5vw, 72px); }
+.contentInner { margin: 0 auto; max-width: var(--wf-content-max); }
+@media (max-width: 1023px) { .shell { display: block; } .sidebar { align-items: center; border-bottom: 1px solid var(--wf-border); border-right: 0; flex-direction: row; gap: 14px; padding: 12px 16px; } .brand { font-size: 17px; padding: 0; } .brand small { display: none; } .navigation { display: flex; flex: 1; gap: 2px; justify-content: flex-end; overflow-x: auto; } .navigation a { padding: 8px 9px; white-space: nowrap; } .commandTrigger { display: none; } .content { padding: 28px 20px; } }
+@media (max-width: 620px) { .sidebar { align-items: stretch; flex-wrap: wrap; } .navigation { flex-basis: 100%; justify-content: space-between; order: 2; } .navigation a { font-size: 13px; padding: 8px 6px; } }

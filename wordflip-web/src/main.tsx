@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
 import { AppProviders } from "@/app/AppProviders";
 import { createAppRouter } from "@/app/router";
+import "@/design-system/global.css";
 
 const rootElement = document.getElementById("root");
 
