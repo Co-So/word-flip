@@ -14,7 +14,10 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <StrictMode>
     <AppProviders>
-      <RouterProvider router={createAppRouter()} />
+      <RouterProvider
+        future={{ v7_startTransition: true }}
+        router={createAppRouter()}
+      />
     </AppProviders>
   </StrictMode>
 );

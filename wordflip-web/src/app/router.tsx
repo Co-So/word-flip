@@ -4,10 +4,17 @@ import { App } from "@/app/App";
 export type AppRouter = ReturnType<typeof createBrowserRouter>;
 
 export function createAppRouter(): AppRouter {
-  return createBrowserRouter([
+  return createBrowserRouter(
+    [
+      {
+        path: "/",
+        element: <App />
+      }
+    ],
     {
-      path: "/",
-      element: <App />
+      future: {
+        v7_relativeSplatPath: true
+      }
     }
-  ]);
+  );
 }
