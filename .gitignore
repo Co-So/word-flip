@@ -50,6 +50,7 @@ wordflip-server/scripts/vocabulary/raw/wordfreq-en-25000-log.json
 # 本地 Agent / 自动化运行状态
 .agents/
 .superpowers/
+.worktrees/
 skills-lock.json
 
 # 本地构建与解释器缓存
