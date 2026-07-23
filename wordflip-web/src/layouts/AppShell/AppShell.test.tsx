@@ -162,11 +162,16 @@ test("卸载外壳后全局快捷键监听器已清理", async () => {
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-test("关闭的命令面板不会响应 window Escape 或 Tab", async () => {
+test("关闭后的命令面板不会保留 window Escape 或 Tab 监听器", async () => {
   const user = userEvent.setup();
   const onClose = vi.fn();
+  const rendered = render(
+    <MemoryRouter future={routerFuture}>
+      <CommandPalette destinations={[{ label: "今日", to: "/" }]} onClose={onClose} open />
+    </MemoryRouter>
+  );
 
-  render(
+  rendered.rerender(
     <MemoryRouter future={routerFuture}>
       <CommandPalette destinations={[{ label: "今日", to: "/" }]} onClose={onClose} open={false} />
     </MemoryRouter>
@@ -189,6 +194,7 @@ test("卸载命令面板后 window Escape 不会触发旧监听器", async () =>
 
   rendered.unmount();
   await user.keyboard("{Escape}");
+  await user.keyboard("{Tab}");
 
   expect(onClose).not.toHaveBeenCalled();
 });
