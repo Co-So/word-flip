@@ -165,11 +165,14 @@ test("卸载外壳后全局快捷键监听器已清理", async () => {
 test("关闭后的命令面板不会保留 window Escape 或 Tab 监听器", async () => {
   const user = userEvent.setup();
   const onClose = vi.fn();
+  const addEventListener = vi.spyOn(window, "addEventListener");
+  const removeEventListener = vi.spyOn(window, "removeEventListener");
   const rendered = render(
     <MemoryRouter future={routerFuture}>
       <CommandPalette destinations={[{ label: "今日", to: "/" }]} onClose={onClose} open />
     </MemoryRouter>
   );
+  const keydownHandler = addEventListener.mock.calls.find(([type]) => type === "keydown")?.[1];
 
   rendered.rerender(
     <MemoryRouter future={routerFuture}>
@@ -181,22 +184,33 @@ test("关闭后的命令面板不会保留 window Escape 或 Tab 监听器", asy
   await user.keyboard("{Tab}");
 
   expect(onClose).not.toHaveBeenCalled();
+  expect(keydownHandler).toBeDefined();
+  expect(removeEventListener).toHaveBeenCalledWith("keydown", keydownHandler);
+  addEventListener.mockRestore();
+  removeEventListener.mockRestore();
 });
 
 test("卸载命令面板后 window Escape 不会触发旧监听器", async () => {
   const user = userEvent.setup();
   const onClose = vi.fn();
+  const addEventListener = vi.spyOn(window, "addEventListener");
+  const removeEventListener = vi.spyOn(window, "removeEventListener");
   const rendered = render(
     <MemoryRouter future={routerFuture}>
       <CommandPalette destinations={[{ label: "今日", to: "/" }]} onClose={onClose} open />
     </MemoryRouter>
   );
+  const keydownHandler = addEventListener.mock.calls.find(([type]) => type === "keydown")?.[1];
 
   rendered.unmount();
   await user.keyboard("{Escape}");
   await user.keyboard("{Tab}");
 
   expect(onClose).not.toHaveBeenCalled();
+  expect(keydownHandler).toBeDefined();
+  expect(removeEventListener).toHaveBeenCalledWith("keydown", keydownHandler);
+  addEventListener.mockRestore();
+  removeEventListener.mockRestore();
 });
 
 test("窄屏样式不会隐藏命令触发器", () => {
