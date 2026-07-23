@@ -1,17 +1,17 @@
 import { render, type RenderResult } from "@testing-library/react";
-import { RouterProvider } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
+import { App } from "@/app/App";
 import { AppProviders } from "@/app/AppProviders";
-import { createAppRouter } from "@/app/router";
 
 export function renderApp(route: string): RenderResult {
-  window.history.pushState({}, "", route);
-
   return render(
     <AppProviders>
-      <RouterProvider
-        future={{ v7_startTransition: true }}
-        router={createAppRouter()}
-      />
+      <MemoryRouter
+        future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+        initialEntries={[route]}
+      >
+        <App />
+      </MemoryRouter>
     </AppProviders>
   );
 }
