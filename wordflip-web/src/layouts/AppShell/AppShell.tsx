@@ -14,8 +14,20 @@ const destinations: CommandDestination[] = [
 export function AppShell() {
   const [commandOpen, setCommandOpen] = useState(false);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
-  const openCommands = useCallback(() => setCommandOpen(true), []);
-  const closeCommands = useCallback(() => setCommandOpen(false), []);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const openCommands = useCallback(() => {
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setCommandOpen(true);
+  }, []);
+  const closeCommands = useCallback(() => {
+    setCommandOpen(false);
+    // 优先回到打开面板前的实际焦点，失效时再回退到稳定的触发按钮。
+    if (previousFocusRef.current?.isConnected) {
+      previousFocusRef.current.focus();
+    } else {
+      commandTriggerRef.current?.focus();
+    }
+  }, []);
 
   useEffect(() => {
     // 全局快捷键只负责进入工作台命令入口，不干扰普通键入。
@@ -40,6 +52,6 @@ export function AppShell() {
       </button>
     </aside>
     <main className={styles.content}><div className={styles.contentInner}><Outlet /></div></main>
-    <CommandPalette destinations={destinations} onClose={closeCommands} open={commandOpen} restoreFocusRef={commandTriggerRef} />
+    <CommandPalette destinations={destinations} onClose={closeCommands} open={commandOpen} />
   </div>;
 }

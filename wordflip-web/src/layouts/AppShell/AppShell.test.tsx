@@ -1,11 +1,22 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { AppShell } from "@/layouts/AppShell/AppShell";
+import appShellCss from "./AppShell.module.css?raw";
+import commandPaletteSource from "@/components/CommandPalette/CommandPalette.tsx?raw";
+import globalCss from "@/design-system/global.css?raw";
+import tokensCss from "@/design-system/tokens.css?raw";
+
+const routerFuture = { v7_relativeSplatPath: true, v7_startTransition: true };
+
+function RouteProbe() {
+  const location = useLocation();
+  return <output data-testid="route-path">{location.pathname}</output>;
+}
 
 test("左侧导航只显示五个稳定入口", () => {
   render(
-    <MemoryRouter>
+    <MemoryRouter future={routerFuture}>
       <AppShell />
     </MemoryRouter>
   );
@@ -20,7 +31,7 @@ test("Ctrl K 打开全局命令入口", async () => {
   const user = userEvent.setup();
 
   render(
-    <MemoryRouter>
+    <MemoryRouter future={routerFuture}>
       <AppShell />
     </MemoryRouter>
   );
@@ -34,7 +45,7 @@ test("Esc 关闭命令入口后恢复触发按钮焦点", async () => {
   const user = userEvent.setup();
 
   render(
-    <MemoryRouter>
+    <MemoryRouter future={routerFuture}>
       <AppShell />
     </MemoryRouter>
   );
@@ -45,4 +56,99 @@ test("Esc 关闭命令入口后恢复触发按钮焦点", async () => {
 
   expect(screen.queryByRole("dialog", { name: "搜索单词或功能" })).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
+});
+
+test("命令项由单个链接路径导航", async () => {
+  const user = userEvent.setup();
+
+  render(
+    <MemoryRouter future={routerFuture}>
+      <AppShell />
+      <RouteProbe />
+    </MemoryRouter>
+  );
+
+  await user.keyboard("{Control>}k{/Control}");
+  await user.click(within(screen.getByRole("dialog")).getByRole("link", { name: "词书" }));
+  expect(screen.getByTestId("route-path")).toHaveTextContent("/books");
+  expect(commandPaletteSource).not.toContain("useNavigate");
+  expect(commandPaletteSource).not.toMatch(/\bnavigate\s*\(/);
+});
+
+test("Cmd K 关闭后恢复打开前的实际焦点", async () => {
+  const user = userEvent.setup();
+
+  render(
+    <MemoryRouter future={routerFuture}>
+      <AppShell />
+    </MemoryRouter>
+  );
+
+  const settingsLink = screen.getByRole("link", { name: "设置" });
+  settingsLink.focus();
+  await user.keyboard("{Meta>}k{/Meta}");
+  await user.keyboard("{Escape}");
+
+  expect(settingsLink).toHaveFocus();
+});
+
+test("命令面板的 Tab 与 Shift Tab 循环停留在面板内", async () => {
+  const user = userEvent.setup();
+
+  render(
+    <MemoryRouter future={routerFuture}>
+      <AppShell />
+    </MemoryRouter>
+  );
+
+  await user.keyboard("{Control>}k{/Control}");
+  const dialog = screen.getByRole("dialog");
+  const search = within(dialog).getByRole("textbox");
+  const lastCommand = within(dialog).getByRole("link", { name: "设置" });
+
+  expect(search).toHaveFocus();
+  await user.keyboard("{Shift>}{Tab}{/Shift}");
+  expect(lastCommand).toHaveFocus();
+  await user.keyboard("{Tab}");
+  expect(search).toHaveFocus();
+});
+
+test("点击命令面板背景会关闭面板", async () => {
+  const user = userEvent.setup();
+
+  render(
+    <MemoryRouter future={routerFuture}>
+      <AppShell />
+    </MemoryRouter>
+  );
+
+  await user.keyboard("{Control>}k{/Control}");
+  await user.click(screen.getByRole("dialog"));
+
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("卸载外壳后全局快捷键监听器已清理", async () => {
+  const user = userEvent.setup();
+  const rendered = render(
+    <MemoryRouter future={routerFuture}>
+      <AppShell />
+    </MemoryRouter>
+  );
+
+  rendered.unmount();
+  await user.keyboard("{Control>}k{/Control}");
+
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("窄屏样式不会隐藏命令触发器", () => {
+  expect(appShellCss).not.toMatch(/\.commandTrigger\s*\{\s*display:\s*none/);
+});
+
+test("陶土状态标签使用设计系统语义 token", () => {
+  expect(tokensCss).toContain("--wf-terracotta-container");
+  expect(tokensCss).toContain("--wf-terracotta-foreground");
+  expect(globalCss).toContain("background: var(--wf-terracotta-container);");
+  expect(globalCss).toContain("color: var(--wf-terracotta-foreground);");
 });
