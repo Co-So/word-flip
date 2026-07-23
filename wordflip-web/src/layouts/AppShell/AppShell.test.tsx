@@ -2,10 +2,12 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { AppShell } from "@/layouts/AppShell/AppShell";
+import { CommandPalette } from "@/components/CommandPalette/CommandPalette";
 import appShellCss from "./AppShell.module.css?raw";
 import commandPaletteSource from "@/components/CommandPalette/CommandPalette.tsx?raw";
 import globalCss from "@/design-system/global.css?raw";
 import tokensCss from "@/design-system/tokens.css?raw";
+import { vi } from "vitest";
 
 const routerFuture = { v7_relativeSplatPath: true, v7_startTransition: true };
 
@@ -92,6 +94,24 @@ test("Cmd K 关闭后恢复打开前的实际焦点", async () => {
   expect(settingsLink).toHaveFocus();
 });
 
+test("重复 Ctrl K 后关闭仍恢复首次打开前的焦点", async () => {
+  const user = userEvent.setup();
+
+  render(
+    <MemoryRouter future={routerFuture}>
+      <AppShell />
+    </MemoryRouter>
+  );
+
+  const settingsLink = screen.getByRole("link", { name: "设置" });
+  settingsLink.focus();
+  await user.keyboard("{Control>}k{/Control}");
+  await user.keyboard("{Control>}k{/Control}");
+  await user.keyboard("{Escape}");
+
+  expect(settingsLink).toHaveFocus();
+});
+
 test("命令面板的 Tab 与 Shift Tab 循环停留在面板内", async () => {
   const user = userEvent.setup();
 
@@ -140,6 +160,37 @@ test("卸载外壳后全局快捷键监听器已清理", async () => {
   await user.keyboard("{Control>}k{/Control}");
 
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("关闭的命令面板不会响应 window Escape 或 Tab", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+
+  render(
+    <MemoryRouter future={routerFuture}>
+      <CommandPalette destinations={[{ label: "今日", to: "/" }]} onClose={onClose} open={false} />
+    </MemoryRouter>
+  );
+
+  await user.keyboard("{Escape}");
+  await user.keyboard("{Tab}");
+
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test("卸载命令面板后 window Escape 不会触发旧监听器", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  const rendered = render(
+    <MemoryRouter future={routerFuture}>
+      <CommandPalette destinations={[{ label: "今日", to: "/" }]} onClose={onClose} open />
+    </MemoryRouter>
+  );
+
+  rendered.unmount();
+  await user.keyboard("{Escape}");
+
+  expect(onClose).not.toHaveBeenCalled();
 });
 
 test("窄屏样式不会隐藏命令触发器", () => {

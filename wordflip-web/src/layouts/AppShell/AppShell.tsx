@@ -16,8 +16,13 @@ export function AppShell() {
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const openCommands = useCallback(() => {
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setCommandOpen(true);
+    setCommandOpen((wasOpen) => {
+      // 仅在首次打开时记录焦点，重复快捷键不能覆盖原始恢复目标。
+      if (!wasOpen) {
+        previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      }
+      return true;
+    });
   }, []);
   const closeCommands = useCallback(() => {
     setCommandOpen(false);
