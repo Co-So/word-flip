@@ -338,31 +338,63 @@ function isCompatibleState(value: unknown): value is DemoState {
   const requestIds = new Set<string>();
   for (const planId of planIds) {
     const planState = planStates[planId] as PlanDemoState;
+    const latestBySession = new Map<string, QuizIdempotencyRecord>();
+    for (const session of Object.values(planState.quiz.sessions)) {
+      const hasResult = planState.quiz.results[session.sessionId] !== undefined;
+      if ((session.status === "completed") !== hasResult) {
+        return false;
+      }
+    }
     for (const record of planState.quiz.idempotency) {
       const session = planState.quiz.sessions[record.sessionId];
-      const result = planState.quiz.results[record.sessionId];
       const precomputed = record.response.precomputed;
       const card = planState.cards.byCardId[record.cardId];
       if (
         record.planId !== planId ||
         requestIds.has(record.requestId) ||
         !session ||
-        !result ||
         !card ||
-        session.status !== "completed" ||
         session.question.questionId !== record.questionId ||
         session.question.cardId !== record.cardId ||
         session.skill !== precomputed.skill ||
         session.scope !== precomputed.sessionSnapshot.scope ||
         precomputed.cardId !== record.cardId ||
         precomputed.sessionSnapshot.question.questionId !== record.questionId ||
-        !sameSnapshot(precomputed.sessionSnapshot, session) ||
-        !sameSnapshot(precomputed.resultSnapshot, result) ||
-        !sameSnapshot(card.progress[precomputed.skill], precomputed.next)
+        precomputed.sessionSnapshot.status !== "completed" ||
+        !sameSnapshot(precomputed.sessionSnapshot.question, session.question)
       ) {
         return false;
       }
       requestIds.add(record.requestId);
+      // 数组顺序就是提交历史顺序；同一固定 session 的最后一条代表当前投影。
+      latestBySession.set(record.sessionId, record);
+    }
+    for (const [sessionId, latest] of latestBySession) {
+      const session = planState.quiz.sessions[sessionId];
+      const result = planState.quiz.results[sessionId];
+      const precomputed = latest.response.precomputed;
+      const card = planState.cards.byCardId[latest.cardId];
+      if (
+        !session ||
+        !card ||
+        !sameSnapshot(card.progress[precomputed.skill], precomputed.next)
+      ) {
+        return false;
+      }
+      if (session.status === "active") {
+        // 重开后的当前会话尚未提交时没有 result；历史响应仍保留为不可变幂等凭据。
+        if (result !== undefined) {
+          return false;
+        }
+        continue;
+      }
+      if (
+        !result ||
+        !sameSnapshot(precomputed.sessionSnapshot, session) ||
+        !sameSnapshot(precomputed.resultSnapshot, result)
+      ) {
+        return false;
+      }
     }
   }
   return true;

@@ -184,6 +184,78 @@ describe("DemoStateStore", () => {
     expect(currentPlanState(restoredStore).quiz.idempotency).toHaveLength(1);
   });
 
+  test("同一固定 session 重开后保留历史幂等响应并以最后一次快照恢复", async () => {
+    window.localStorage.removeItem(DEMO_STORAGE_KEY);
+    const store = createDemoStateStore({
+      initialState: createDemoState(),
+      storage: window.localStorage
+    });
+    const quiz = createMockRepositoryBundle(store).quiz;
+    const first = await quiz.submitAnswer({
+      sessionId: "quiz-dictation-1",
+      requestId: "request-history-correct",
+      questionId: "question-dictation-sustainable",
+      cardId: "card-sustainable",
+      answer: "sustainable"
+    });
+    await quiz.createSession("dictation", "current-plan");
+    const latest = await quiz.submitAnswer({
+      sessionId: "quiz-dictation-1",
+      requestId: "request-history-wrong",
+      questionId: "question-dictation-sustainable",
+      cardId: "card-sustainable",
+      answer: "not-sustainable"
+    });
+
+    expect(first.correct).toBe(true);
+    expect(latest.correct).toBe(false);
+    expect(currentPlanState(store).quiz.idempotency).toHaveLength(2);
+
+    const restored = createDemoStateStore({ storage: window.localStorage });
+    const restoredPlan = currentPlanState(restored);
+
+    expect(restoredPlan.quiz.idempotency.map((record) => record.response.correct)).toEqual([
+      true,
+      false
+    ]);
+    expect(restoredPlan.quiz.sessions["quiz-dictation-1"]).toEqual(
+      latest.precomputed.sessionSnapshot
+    );
+    expect(restoredPlan.quiz.results["quiz-dictation-1"]).toEqual(
+      latest.precomputed.resultSnapshot
+    );
+    expect(restoredPlan.cards.byCardId["card-sustainable"].progress.dictation).toEqual(
+      latest.precomputed.next
+    );
+  });
+
+  test("固定 session 重开但尚未再次提交时保留历史且不伪造当前 result", async () => {
+    window.localStorage.removeItem(DEMO_STORAGE_KEY);
+    const store = createDemoStateStore({
+      initialState: createDemoState(),
+      storage: window.localStorage
+    });
+    const quiz = createMockRepositoryBundle(store).quiz;
+    const historical = await quiz.submitAnswer({
+      sessionId: "quiz-dictation-1",
+      requestId: "request-history-before-active",
+      questionId: "question-dictation-sustainable",
+      cardId: "card-sustainable",
+      answer: "sustainable"
+    });
+    await quiz.createSession("dictation", "current-plan");
+
+    const restored = createDemoStateStore({ storage: window.localStorage });
+    const restoredPlan = currentPlanState(restored);
+
+    expect(restoredPlan.quiz.idempotency).toHaveLength(1);
+    expect(restoredPlan.quiz.sessions["quiz-dictation-1"].status).toBe("active");
+    expect(restoredPlan.quiz.results["quiz-dictation-1"]).toBeUndefined();
+    expect(restoredPlan.cards.byCardId["card-sustainable"].progress.dictation).toEqual(
+      historical.precomputed.next
+    );
+  });
+
   test("测验幂等记录的 ghost session、错 skill/scope/result 会触发固定种子恢复", async () => {
     const mutations: Array<(state: Awaited<ReturnType<typeof submittedState>>) => void> = [
       (state) => {

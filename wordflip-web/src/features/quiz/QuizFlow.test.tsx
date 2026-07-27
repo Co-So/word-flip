@@ -241,8 +241,12 @@ describe("Quiz 工作台", () => {
     await user.keyboard("{Enter}");
 
     const feedback = await screen.findByRole("status", { name: "答题反馈" });
+    expect(feedback).toHaveTextContent("KEEP GOING");
     expect(feedback).toHaveTextContent("服务端快照：再巩固一次");
     expect(feedback).toHaveTextContent("标准答案：sustainable");
+    expect(
+      app.store.read().planStates["plan-core"].quiz.idempotency.at(-1)?.response.correct
+    ).toBe(false);
     const after = app.store.read().planStates["plan-core"].cards.byCardId;
     expect(after["card-sustainable"].progress.dictation).toEqual({
       skill: "dictation",
@@ -283,8 +287,12 @@ describe("Quiz 工作台", () => {
     await user.click(screen.getByRole("button", { name: "提交答案" }));
 
     const feedback = await screen.findByRole("status", { name: "答题反馈" });
+    expect(feedback).toHaveTextContent("KEEP GOING");
     expect(feedback).toHaveTextContent("服务端快照：选择错误");
     expect(feedback).toHaveTextContent("标准答案：可持续的");
+    expect(
+      app.store.read().planStates["plan-core"].quiz.idempotency.at(-1)?.response.correct
+    ).toBe(false);
     const after = app.store.read().planStates["plan-core"].cards.byCardId;
     expect(after["card-sustainable"].progress.choice).toEqual({
       skill: "choice",
