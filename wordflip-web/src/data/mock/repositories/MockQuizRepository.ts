@@ -39,11 +39,13 @@ function sameRawPayload(
   record: QuizIdempotencyRecord,
   submission: QuizAnswerSubmission,
   userId: string,
-  planId: string
+  planId: string,
+  scope: QuizScope | undefined
 ) {
   return (
     record.userId === userId &&
     record.planId === planId &&
+    record.scope === scope &&
     record.sessionId === submission.sessionId &&
     record.questionId === submission.questionId &&
     record.cardId === submission.cardId &&
@@ -95,16 +97,16 @@ export class MockQuizRepository implements QuizRepository {
       return Promise.reject(conflict("当前用户或学习计划不可用"));
     }
 
+    const session = plan.quiz.sessions[submission.sessionId];
     const existing = Object.values(state.planStates)
       .flatMap((candidate) => candidate.quiz.idempotency)
       .find((record) => record.requestId === submission.requestId);
     if (existing) {
-      return sameRawPayload(existing, submission, userId, planId)
+      return sameRawPayload(existing, submission, userId, planId, session?.scope)
         ? Promise.resolve(structuredClone(existing.response))
         : Promise.reject(conflict("requestId 已绑定到不同的答题载荷"));
     }
 
-    const session = plan.quiz.sessions[submission.sessionId];
     if (!session) {
       return Promise.reject(notFound("找不到测验会话"));
     }
@@ -147,6 +149,7 @@ export class MockQuizRepository implements QuizRepository {
       userId,
       planId,
       sessionId: submission.sessionId,
+      scope: session.scope,
       questionId: submission.questionId,
       cardId: submission.cardId,
       // 幂等绑定保留原始载荷；规范化值仅用于上方静态 fixture 查询。

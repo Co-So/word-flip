@@ -192,6 +192,7 @@ function isQuizIdempotencyRecord(value: unknown): value is QuizIdempotencyRecord
     typeof value.userId !== "string" ||
     typeof value.planId !== "string" ||
     typeof value.sessionId !== "string" ||
+    (value.scope !== "current-plan" && value.scope !== "due-today") ||
     typeof value.questionId !== "string" ||
     typeof value.cardId !== "string" ||
     typeof value.answer !== "string" ||
@@ -210,6 +211,7 @@ function isQuizIdempotencyRecord(value: unknown): value is QuizIdempotencyRecord
     value.response.feedback === value.response.precomputed.feedback &&
     value.response.expectedAnswer === value.response.precomputed.expectedAnswer &&
     value.sessionId === value.response.precomputed.sessionSnapshot.sessionId &&
+    value.scope === value.response.precomputed.sessionSnapshot.scope &&
     value.questionId === value.response.precomputed.sessionSnapshot.question.questionId &&
     value.cardId === value.response.precomputed.cardId
   );
@@ -357,7 +359,6 @@ function isCompatibleState(value: unknown): value is DemoState {
         session.question.questionId !== record.questionId ||
         session.question.cardId !== record.cardId ||
         session.skill !== precomputed.skill ||
-        session.scope !== precomputed.sessionSnapshot.scope ||
         precomputed.cardId !== record.cardId ||
         precomputed.sessionSnapshot.question.questionId !== record.questionId ||
         precomputed.sessionSnapshot.status !== "completed" ||
@@ -489,6 +490,7 @@ export class DemoStateStore {
         !currentSession ||
         currentSession.question.questionId !== result.sessionSnapshot.question.questionId ||
         currentSession.question.cardId !== result.cardId ||
+        currentSession.scope !== result.sessionSnapshot.scope ||
         result.sessionSnapshot.question.cardId !== result.cardId ||
         result.sessionSnapshot.skill !== result.skill ||
         result.resultSnapshot.sessionId !== result.sessionSnapshot.sessionId
@@ -501,6 +503,7 @@ export class DemoStateStore {
           idempotency.planId !== activePlanId ||
           idempotency.userId !== state.auth.session?.userId ||
           idempotency.sessionId !== result.sessionSnapshot.sessionId ||
+          idempotency.scope !== result.sessionSnapshot.scope ||
           idempotency.questionId !== result.sessionSnapshot.question.questionId ||
           idempotency.cardId !== result.cardId ||
           idempotency.response.requestId !== idempotency.requestId ||

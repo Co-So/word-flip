@@ -75,6 +75,7 @@ export interface QuizIdempotencyRecord {
   userId: string;
   planId: string;
   sessionId: string;
+  scope: QuizScope;
   questionId: string;
   cardId: string;
   answer: string;
