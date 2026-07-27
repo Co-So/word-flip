@@ -25,6 +25,22 @@ test("首次设置选择主词书和每组 30 词后进入今日", async () => {
   expect(store.read().books.activePlanId).not.toBeNull();
 });
 
+test.each([
+  ["雅思核心词汇", "book-ielts"],
+  ["核心词汇", "book-core"],
+  ["进阶词汇", "book-advanced"]
+])("三本内置词书中的 %s 都能保存为当前学习计划", async (bookTitle, bookId) => {
+  const user = userEvent.setup();
+  const { store } = renderOnboardingApp();
+
+  await user.click(await screen.findByRole("radio", { name: bookTitle }));
+  await user.click(screen.getByRole("button", { name: "完成设置" }));
+
+  expect(await screen.findByRole("heading", { name: "今天继续前进" })).toBeVisible();
+  expect(store.read().books.activePlanId).not.toBeNull();
+  expect(store.read().books.plans.find((plan) => plan.planId === store.read().books.activePlanId)?.bookId).toBe(bookId);
+});
+
 test("首次设置只允许需求定义的四种分组大小", async () => {
   renderOnboardingApp();
 

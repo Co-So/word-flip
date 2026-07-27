@@ -118,6 +118,10 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
   if (scenario === "empty-today") {
     activePlan.today = { dueCount: 0, masteredCount: 126, reviewedCount: 0 };
   }
+  if (scenario === "logged-out") {
+    // 首次登录演示种子本身没有当前计划，Plan Gate 才能自然进入首次设置。
+    state.books.activePlanId = null;
+  }
   if (scenario === "empty-books") {
     state.books = { activePlanId: null, plans: [], items: [] };
     state.planStates = {};

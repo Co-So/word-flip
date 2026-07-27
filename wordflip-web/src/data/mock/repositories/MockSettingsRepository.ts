@@ -40,6 +40,68 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
       media: { byCardId: { "card-ielts-sustainable": { cardId: "card-ielts-sustainable", imageUrl: null, stainLevel: 0 } } },
       stats: { totalReviewed: 0, retentionRate: 0, streakDays: 0 }
     }
+  },
+  "book-core": {
+    plan: { planId: "plan-core", bookId: "book-core", title: "核心词汇" },
+    planState: {
+      groups: { items: [{ groupId: "group-core-01", name: "第 1 组", cardIds: ["card-core-sustainable"] }] },
+      cards: {
+        byCardId: {
+          "card-core-sustainable": {
+            cardId: "card-core-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
+            progress: {
+              dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
+              choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
+            }
+          }
+        },
+        byWordKey: {
+          sustainable: {
+            cardId: "card-core-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
+            progress: {
+              dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
+              choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
+            }
+          }
+        }
+      },
+      today: { dueCount: 20, masteredCount: 0, reviewedCount: 0 },
+      study: { sessions: {} },
+      quiz: { mode: null },
+      media: { byCardId: { "card-core-sustainable": { cardId: "card-core-sustainable", imageUrl: null, stainLevel: 0 } } },
+      stats: { totalReviewed: 0, retentionRate: 0, streakDays: 0 }
+    }
+  },
+  "book-advanced": {
+    plan: { planId: "plan-advanced", bookId: "book-advanced", title: "进阶词汇" },
+    planState: {
+      groups: { items: [{ groupId: "group-advanced-01", name: "第 1 组", cardIds: ["card-advanced-resilient"] }] },
+      cards: {
+        byCardId: {
+          "card-advanced-resilient": {
+            cardId: "card-advanced-resilient", wordKey: "resilient", headword: "resilient", definition: "有韧性的",
+            progress: {
+              dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
+              choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
+            }
+          }
+        },
+        byWordKey: {
+          resilient: {
+            cardId: "card-advanced-resilient", wordKey: "resilient", headword: "resilient", definition: "有韧性的",
+            progress: {
+              dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
+              choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
+            }
+          }
+        }
+      },
+      today: { dueCount: 20, masteredCount: 0, reviewedCount: 0 },
+      study: { sessions: {} },
+      quiz: { mode: null },
+      media: { byCardId: { "card-advanced-resilient": { cardId: "card-advanced-resilient", imageUrl: null, stainLevel: 0 } } },
+      stats: { totalReviewed: 0, retentionRate: 0, streakDays: 0 }
+    }
   }
 };
 
@@ -69,11 +131,12 @@ export class MockSettingsRepository implements SettingsRepository {
     }
     this.store.update((draft) => {
       const plan = structuredClone(snapshot.plan);
-      // 只追加新计划并切换唯一当前指针，已有历史计划与分区保持不变。
-      if (!draft.books.plans.some((item) => item.planId === plan.planId)) {
+      const alreadyExists = draft.books.plans.some((item) => item.planId === plan.planId);
+      // 新计划才回放固定服务端快照；已有计划只能激活，绝不能覆盖历史分区。
+      if (!alreadyExists) {
         draft.books.plans.push(plan);
+        draft.planStates[plan.planId] = structuredClone(snapshot.planState);
       }
-      draft.planStates[plan.planId] = structuredClone(snapshot.planState);
       draft.books.activePlanId = plan.planId;
       draft.settings.groupSize = input.groupSize;
     });

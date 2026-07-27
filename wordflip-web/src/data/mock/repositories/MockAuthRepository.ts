@@ -34,8 +34,7 @@ export class MockAuthRepository implements AuthRepository {
     const session = demoSession(registered?.displayName ?? "演示用户");
     this.store.update((draft) => {
       draft.auth.session = session;
-      // 登录后的 Plan Gate 必须由 activePlanId 决定，不能假设演示账户已经配置词书。
-      draft.books.activePlanId = null;
+      // 登录只恢复本地会话，当前计划及其历史必须由已保存的状态决定。
     });
     return Promise.resolve(session);
   }
