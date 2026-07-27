@@ -15,6 +15,8 @@ export interface QuizAnswerSubmission {
 export interface QuizResult {
   requestId: string;
   accepted: boolean;
+  /** 服务端判题后的预计算快照，由仓储回放到当前计划分区。 */
+  precomputed: PrecomputedQuizResult;
 }
 
 export interface QuizRepository {

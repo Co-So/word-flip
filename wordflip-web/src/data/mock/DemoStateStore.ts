@@ -1,6 +1,8 @@
+import type { AppError } from "@/data/contracts/AppError";
+import { createDemoState, type DemoState, type PlanDemoState } from "@/data/mock/createDemoState";
 import type { LearningCard } from "@/domain/learning";
-import type { PrecomputedQuizResult } from "@/domain/quiz";
-import { createDemoState, type DemoState } from "@/data/mock/createDemoState";
+import type { Book, LearningPlan } from "@/domain/books";
+import type { PrecomputedQuizResult, QuizSkill } from "@/domain/quiz";
 
 export const DEMO_STORAGE_KEY = "wordflip.web.demo.v1";
 
@@ -8,6 +10,8 @@ export interface DemoStateStoreOptions {
   initialState?: DemoState;
   storage?: Storage | null;
 }
+
+type UnknownRecord = Record<string, unknown>;
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -17,23 +21,125 @@ function browserStorage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
 }
 
-function isCompatibleState(value: unknown): value is DemoState {
-  return typeof value === "object" && value !== null && "schemaVersion" in value && value.schemaVersion === 1;
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** 将 wordKey 查找表重新指向 cardId 主表，避免展示索引成为独立学习真相。 */
-function normalizeCardIndexes(state: DemoState): DemoState {
-  const byWordKey: Record<string, LearningCard> = {};
-  for (const card of Object.values(state.cards.byCardId)) {
-    byWordKey[card.wordKey] = card;
+function isNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isSkillProgress(value: unknown, skill: QuizSkill): boolean {
+  return (
+    isRecord(value) &&
+    value.skill === skill &&
+    (value.state === "unlearned" || value.state === "fuzzy" || value.state === "unknown") &&
+    isNumber(value.stability) &&
+    (value.heatLevel === 0 || value.heatLevel === 1 || value.heatLevel === 2 || value.heatLevel === 3) &&
+    typeof value.lastQuizSucceeded === "boolean"
+  );
+}
+
+function isLearningCard(value: unknown): value is LearningCard {
+  return (
+    isRecord(value) &&
+    typeof value.cardId === "string" &&
+    typeof value.wordKey === "string" &&
+    typeof value.headword === "string" &&
+    typeof value.definition === "string" &&
+    isRecord(value.progress) &&
+    isSkillProgress(value.progress.dictation, "dictation") &&
+    isSkillProgress(value.progress.choice, "choice")
+  );
+}
+
+function isLearningPlan(value: unknown): value is LearningPlan {
+  return isRecord(value) && typeof value.planId === "string" && typeof value.bookId === "string" && typeof value.title === "string";
+}
+
+function isBook(value: unknown): value is Book {
+  return isRecord(value) && typeof value.bookId === "string" && typeof value.title === "string" && isNumber(value.cardCount);
+}
+
+function isPlanState(value: unknown): boolean {
+  if (!isRecord(value) || !isRecord(value.groups) || !Array.isArray(value.groups.items)) {
+    return false;
   }
-  state.cards.byWordKey = byWordKey;
+  if (!value.groups.items.every((group) => isRecord(group) && typeof group.groupId === "string" && typeof group.name === "string" && Array.isArray(group.cardIds) && group.cardIds.every((id) => typeof id === "string"))) {
+    return false;
+  }
+  const cards = value.cards;
+  if (!isRecord(cards) || !isRecord(cards.byCardId) || !isRecord(cards.byWordKey)) {
+    return false;
+  }
+  const byCardId = cards.byCardId;
+  const byWordKey = cards.byWordKey;
+  if (!Object.values(byCardId).every(isLearningCard)) {
+    return false;
+  }
+  if (!Object.entries(byWordKey).every(([wordKey, card]) => isLearningCard(card) && card.wordKey === wordKey && byCardId[card.cardId] !== undefined)) {
+    return false;
+  }
+  if (!isRecord(value.today) || !isNumber(value.today.dueCount) || !isNumber(value.today.masteredCount) || !isNumber(value.today.reviewedCount)) {
+    return false;
+  }
+  if (!isRecord(value.study) || !isRecord(value.study.sessions) || !Object.values(value.study.sessions).every((session) => isRecord(session) && typeof session.sessionId === "string" && (session.status === "active" || session.status === "completed"))) {
+    return false;
+  }
+  if (!isRecord(value.quiz) || (value.quiz.mode !== null && value.quiz.mode !== "dictation" && value.quiz.mode !== "choice")) {
+    return false;
+  }
+  if (!isRecord(value.media) || !isRecord(value.media.byCardId) || !Object.values(value.media.byCardId).every((media) => isRecord(media) && typeof media.cardId === "string" && (media.imageUrl === null || typeof media.imageUrl === "string") && (media.stainLevel === 0 || media.stainLevel === 1 || media.stainLevel === 2 || media.stainLevel === 3))) {
+    return false;
+  }
+  return isRecord(value.stats) && isNumber(value.stats.totalReviewed) && isNumber(value.stats.retentionRate) && isNumber(value.stats.streakDays);
+}
+
+/** 校验同版本数据的完整形状，避免截断 payload 通过版本检查后污染运行态。 */
+function isCompatibleState(value: unknown): value is DemoState {
+  if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.clock) || typeof value.clock.today !== "string") {
+    return false;
+  }
+  if (!isRecord(value.auth) || (value.auth.session !== null && (!isRecord(value.auth.session) || typeof value.auth.session.userId !== "string" || typeof value.auth.session.displayName !== "string" || typeof value.auth.session.authenticated !== "boolean"))) {
+    return false;
+  }
+  if (!isRecord(value.settings) || typeof value.settings.soundEnabled !== "boolean" || typeof value.settings.reducedMotion !== "boolean") {
+    return false;
+  }
+  const books = value.books;
+  const planStates = value.planStates;
+  if (!isRecord(books) || (books.activePlanId !== null && typeof books.activePlanId !== "string") || !Array.isArray(books.plans) || !Array.isArray(books.items) || !isRecord(planStates)) {
+    return false;
+  }
+  const plans = books.plans;
+  if (!plans.every(isLearningPlan) || !books.items.every(isBook)) {
+    return false;
+  }
+  const planIds = plans.map((plan) => plan.planId);
+  return (
+    (books.activePlanId === null || planIds.includes(books.activePlanId)) &&
+    planIds.every((planId) => isPlanState(planStates[planId])) &&
+    Object.keys(planStates).every((planId) => planIds.includes(planId))
+  );
+}
+
+/** wordKey 只保留为查询索引；卡片与记忆的权威记录始终位于 cardId 索引。 */
+function normalizeCardIndexes(state: DemoState): DemoState {
+  for (const planState of Object.values(state.planStates)) {
+    const byWordKey: Record<string, LearningCard> = {};
+    for (const card of Object.values(planState.cards.byCardId)) {
+      byWordKey[card.wordKey] = card;
+    }
+    planState.cards.byWordKey = byWordKey;
+  }
   return state;
 }
 
-/**
- * 演示状态只负责持久化与回放服务器预计算快照；不包含判题、FSRS 或统计计算。
- */
+function conflict(message: string): AppError {
+  return { kind: "conflict", message };
+}
+
+/** 演示状态只持久化或回放服务端快照，不在 Web 端执行任何学习算法。 */
 export class DemoStateStore {
   private state: DemoState;
   private readonly storage: Storage | null;
@@ -46,6 +152,11 @@ export class DemoStateStore {
 
   read(): DemoState {
     return clone(this.state);
+  }
+
+  readActivePlanState(): PlanDemoState | null {
+    const state = this.read();
+    return state.books.activePlanId ? state.planStates[state.books.activePlanId] ?? null : null;
   }
 
   write(state: DemoState): void {
@@ -63,19 +174,53 @@ export class DemoStateStore {
     this.write(draft);
   }
 
-  applyQuizResult(result: PrecomputedQuizResult): void {
+  updateActivePlan(mutator: (draft: PlanDemoState) => void): void {
     this.update((draft) => {
+      mutator(this.requireActivePlanState(draft));
+    });
+  }
+
+  switchActivePlan(planId: string) {
+    const state = this.read();
+    const plan = state.books.plans.find((candidate) => candidate.planId === planId);
+    if (!plan || !state.planStates[planId]) {
+      throw conflict("找不到指定学习计划");
+    }
+    // 只切换指针，所有计划分区原样保留，因此切回时能够恢复各自历史。
+    state.books.activePlanId = planId;
+    this.write(state);
+    return clone(plan);
+  }
+
+  applyQuizResult(result: PrecomputedQuizResult): void {
+    if (result.next.skill !== result.skill) {
+      throw {
+        kind: "validation",
+        message: "服务端预计算结果的 skill 不一致",
+        fieldErrors: { skill: "next.skill 必须与 result.skill 一致" }
+      } satisfies AppError;
+    }
+    this.updateActivePlan((draft) => {
       const wordKey = result.wordKey.trim().toLowerCase();
       const card = draft.cards.byWordKey[wordKey];
       if (!card) {
-        throw new Error(`演示数据中不存在词形：${wordKey}`);
+        throw conflict(`当前计划不存在词形：${wordKey}`);
       }
 
-      // 仅复制服务端给出的指定 skill 快照，绝不在 Web 演示层推导记忆或统计。
+      // 仅复制服务端给出的指定轨道和汇总快照，绝不在演示层推导 FSRS 或统计。
       draft.cards.byCardId[card.cardId].progress[result.skill] = clone(result.next);
       draft.today = clone(result.dashboardSnapshot);
       draft.stats = clone(result.statsSnapshot);
     });
+  }
+
+  private requireActivePlanState(state: DemoState): PlanDemoState {
+    const planId = state.books.activePlanId;
+    const planState = planId ? state.planStates[planId] : undefined;
+    if (!planState) {
+      throw conflict("当前没有可用学习计划");
+    }
+    return planState;
   }
 
   private restore(): void {
@@ -83,7 +228,6 @@ export class DemoStateStore {
     if (!serialized) {
       return;
     }
-
     try {
       const parsed: unknown = JSON.parse(serialized);
       if (isCompatibleState(parsed)) {
@@ -91,7 +235,7 @@ export class DemoStateStore {
         return;
       }
     } catch {
-      // 损坏或旧版本数据统一恢复为可预测的固定种子。
+      // 损坏 JSON 与同版本截断 payload 都恢复为可预测的固定种子。
     }
     this.reset();
   }
