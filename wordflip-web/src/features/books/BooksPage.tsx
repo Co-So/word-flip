@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AsyncState } from "@/components/AsyncState/AsyncState";
 import { Button } from "@/components/Button/Button";
+import { EmptyState } from "@/components/EmptyState/EmptyState";
 import { Panel } from "@/components/Panel/Panel";
 import { StatusTag } from "@/components/StatusTag/StatusTag";
 import type { AppError } from "@/data/contracts/AppError";
@@ -54,7 +55,11 @@ export function BooksPage() {
         <div><p className={styles.eyebrow}>BOOKSHELF</p><h1>词书与学习计划</h1></div>
         <p>一次只使用一个当前计划；切换不会删除旧计划的分组和进度。</p>
       </header>
-      <div className={styles.bookGrid}>
+      {items.length === 0 ? <EmptyState
+        action={<Link className={styles.detailLink} to="/onboarding">返回首次设置</Link>}
+        description="演示数据中暂时没有可创建计划的已发布词书。"
+        title="还没有可用词书"
+      /> : <div className={styles.bookGrid}>
         {items.map((book) => <article aria-label={book.title} key={book.bookId}>
           <Panel>
             <div className={styles.bookHeader}>
@@ -75,7 +80,7 @@ export function BooksPage() {
             </div>
           </Panel>
         </article>)}
-      </div>
+      </div>}
     </div> : null}
   </AsyncState>;
 }

@@ -46,7 +46,7 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [openCommands]);
 
-  return <div className={styles.shell}>
+  return <div className={styles.shell} data-testid="app-shell">
     <aside className={styles.sidebar}>
       <div className={styles.brand}><span>WordFlip</span><small>STUDY DESK</small></div>
       <nav aria-label="主导航" className={styles.navigation}>
@@ -56,7 +56,7 @@ export function AppShell() {
         搜索 <kbd>Ctrl K</kbd>
       </button>
     </aside>
-    <main className={styles.content}><div className={styles.contentInner}><Outlet /></div></main>
+    <main className={styles.content}><div className={styles.contentInner} data-testid="page-content"><Outlet /></div></main>
     <CommandPalette destinations={destinations} onClose={closeCommands} open={commandOpen} />
   </div>;
 }

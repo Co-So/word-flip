@@ -270,6 +270,23 @@ describe("Quiz 工作台", () => {
     expect(within(dictationSummary.closest("article")!).getByText("稳定性 4 天")).toBeVisible();
   });
 
+  test("听写输入聚焦时 Esc 需要确认退出，取消保留答案并恢复输入焦点", async () => {
+    const user = userEvent.setup();
+    renderScenarioApp("quiz-dictation", "/quiz/quiz-dictation-1");
+    const input = await screen.findByLabelText("输入英文单词");
+    await user.type(input, "sustain");
+
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "退出本次测验？" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "继续当前任务" }));
+
+    expect(input).toHaveValue("sustain");
+    expect(input).toHaveFocus();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "确认退出" }));
+    expect(await screen.findByRole("button", { name: "开始听写测验" })).toBeVisible();
+  });
+
   test("选择错误答案回放独立错误快照且只更新 choice", async () => {
     const user = userEvent.setup();
     const app = renderScenarioApp("quiz-choice", "/quiz/quiz-choice-1");

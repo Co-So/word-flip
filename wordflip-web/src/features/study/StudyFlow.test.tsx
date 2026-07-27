@@ -125,7 +125,24 @@ test("下一词与退出按钮的标准键盘激活不被学习快捷键拦截",
   const exit = screen.getByRole("button", { name: "退出" });
   exit.focus();
   await user.keyboard("{Enter}");
+  expect(await screen.findByRole("dialog", { name: "退出本次学习？" })).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "确认退出" }));
   expect(await screen.findByRole("heading", { name: "今天继续前进" })).toBeVisible();
+});
+
+test("Esc 退出学习需要确认，取消后留在原卡并恢复焦点", async () => {
+  const user = userEvent.setup();
+  renderAuthenticatedApp("/study/study-demo");
+  const card = await screen.findByRole("button", { name: "翻转 sustainable 学习卡" });
+  card.focus();
+
+  await user.keyboard("{Escape}");
+  expect(screen.getByRole("dialog", { name: "退出本次学习？" })).toBeVisible();
+  await user.keyboard("{Escape}");
+
+  expect(screen.queryByRole("dialog", { name: "退出本次学习？" })).not.toBeInTheDocument();
+  expect(card).toHaveFocus();
+  expect(screen.getByRole("heading", { name: "sustainable" })).toBeVisible();
 });
 
 test("直达 active 会话的完成路由会返回学习页", async () => {

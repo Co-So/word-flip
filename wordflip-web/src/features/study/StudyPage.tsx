@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/Button/Button";
 import { EmptyState } from "@/components/EmptyState/EmptyState";
+import { ExitConfirmationDialog } from "@/components/ExitConfirmationDialog/ExitConfirmationDialog";
 import type { AppError } from "@/data/contracts/AppError";
 import { useRepositories } from "@/data/runtime/RepositoryContext";
 import type { StudySessionView } from "@/domain/learning";
@@ -34,6 +35,9 @@ export function StudyPage() {
   const [cardIndex, setCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isExitOpen, setIsExitOpen] = useState(false);
+  const exitButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -67,9 +71,25 @@ export function StudyPage() {
     setIsFlipped(false);
   }, [session?.cards.length]);
 
+  const requestExit = useCallback(() => {
+    if (!session || session.status === "completed") {
+      navigate("/today");
+      return;
+    }
+    returnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : exitButtonRef.current;
+    setIsExitOpen(true);
+  }, [navigate, session]);
+
   useEffect(() => {
     if (!session || session.cards.length === 0) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (!isExitOpen) requestExit();
+        return;
+      }
       if (isInteractiveTarget(event.target)) return;
       if (event.key === " ") {
         event.preventDefault();
@@ -84,7 +104,7 @@ export function StudyPage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [flipCard, moveCard, session]);
+  }, [flipCard, isExitOpen, moveCard, requestExit, session]);
 
   const completeSession = async () => {
     setIsCompleting(true);
@@ -105,7 +125,8 @@ export function StudyPage() {
   return (
     <FocusShell
       aside={aside}
-      onExit={() => navigate("/today")}
+      exitButtonRef={exitButtonRef}
+      onExit={requestExit}
       progress={session?.progressLabel ?? "STUDY SESSION"}
       title="专注学习"
     >
@@ -158,6 +179,15 @@ export function StudyPage() {
           </Button>
         </div>
       )}
+      {isExitOpen ? (
+        <ExitConfirmationDialog
+          description="本次翻卡浏览尚未完成。退出不会写入记忆，但会离开当前卡片位置。"
+          onCancel={() => setIsExitOpen(false)}
+          onConfirm={() => navigate("/today")}
+          returnFocusRef={returnFocusRef}
+          title="退出本次学习？"
+        />
+      ) : null}
     </FocusShell>
   );
 }

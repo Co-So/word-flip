@@ -1,0 +1,38 @@
+.backdrop {
+  align-items: center;
+  background: color-mix(in srgb, var(--wf-color-ink) 34%, transparent);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: var(--wf-space-6);
+  position: fixed;
+  z-index: 60;
+}
+
+.dialog {
+  background: var(--wf-color-surface);
+  border: 1px solid var(--wf-color-border);
+  border-radius: var(--wf-radius-lg);
+  box-shadow: var(--wf-shadow-elevated);
+  max-width: 28rem;
+  padding: var(--wf-space-7);
+  width: 100%;
+}
+
+.dialog h2,
+.dialog p { margin-top: 0; }
+
+.eyebrow {
+  color: var(--wf-color-accent);
+  font-family: var(--wf-font-mono);
+  font-size: var(--wf-text-xs);
+  letter-spacing: 0.08em;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wf-space-3);
+  justify-content: flex-end;
+  margin-top: var(--wf-space-6);
+}

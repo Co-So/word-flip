@@ -295,11 +295,15 @@
   .flipped,
   .cardContent,
   .flipped .cardContent {
-    transform: none;
+    transform: none !important;
+  }
+
+  .card {
+    transition: none;
   }
 
   .cardContent {
-    animation: study-fade var(--wf-motion-fast) ease-out;
+    animation: none;
   }
 }
 

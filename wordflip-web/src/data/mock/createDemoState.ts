@@ -348,8 +348,8 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
     state.books.activePlanId = null;
   }
   if (scenario === "empty-books") {
-    state.books = { activePlanId: null, plans: [], items: [] };
-    state.planStates = {};
+    // 保留当前计划使页面可进入，只移除可展示的已发布词书列表。
+    state.books.items = [];
   }
   if (scenario === "quiz-complete") {
     activePlan.study.sessions["study-demo"].status = "completed";

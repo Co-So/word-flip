@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState/EmptyState";
+import { ExitConfirmationDialog } from "@/components/ExitConfirmationDialog/ExitConfirmationDialog";
 import type { AppError } from "@/data/contracts/AppError";
 import { useRepositories } from "@/data/runtime/RepositoryContext";
 import type { QuizResult, QuizSession } from "@/domain/quiz";
@@ -26,6 +27,9 @@ export function QuizPage() {
   const [feedback, setFeedback] = useState<QuizResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [isExitOpen, setIsExitOpen] = useState(false);
+  const exitButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -70,6 +74,28 @@ export function QuizPage() {
     }
   };
 
+  const requestExit = () => {
+    if (!session || session.status === "completed" || feedback) {
+      navigate("/quiz");
+      return;
+    }
+    returnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : exitButtonRef.current;
+    setIsExitOpen(true);
+  };
+
+  useEffect(() => {
+    if (!session || session.status === "completed") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (!isExitOpen) requestExit();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
   const title = session?.skill === "choice" ? "选择测验" : "听写测验";
   const aside = (
     <div className={styles.quizAside}>
@@ -93,7 +119,8 @@ export function QuizPage() {
   return (
     <FocusShell
       aside={aside}
-      onExit={() => navigate("/quiz")}
+      exitButtonRef={exitButtonRef}
+      onExit={requestExit}
       progress={session?.progressLabel ?? "QUIZ SESSION"}
       title={title}
     >
@@ -137,6 +164,15 @@ export function QuizPage() {
           ) : null}
         </section>
       )}
+      {isExitOpen ? (
+        <ExitConfirmationDialog
+          description="当前答案尚未提交。退出后需要从测验设置重新进入本场演示。"
+          onCancel={() => setIsExitOpen(false)}
+          onConfirm={() => navigate("/quiz")}
+          returnFocusRef={returnFocusRef}
+          title="退出本次测验？"
+        />
+      ) : null}
     </FocusShell>
   );
 }

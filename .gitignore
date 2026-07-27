@@ -32,6 +32,9 @@ wordflip-web/node_modules/
 wordflip-web/dist/
 wordflip-web/.env
 wordflip-web/.env.local
+wordflip-web/playwright-report/
+wordflip-web/test-results/
+wordflip-web/blob-report/
 
 # Secrets
 .env
