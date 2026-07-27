@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createMockRepositoryBundle, FIXED_DICTATION_RESULT } from "@/data/mock/fixtures";
 import { createDemoStateStore } from "@/data/mock/DemoStateStore";
+import { createDemoState } from "@/data/mock/createDemoState";
 
 function createStore() {
   return createDemoStateStore();
@@ -102,6 +103,31 @@ describe("DemoStateStore", () => {
     expect(JSON.parse(window.localStorage.getItem("wordflip.web.demo.v1") ?? "{}").schemaVersion).toBe(1);
   });
 
+  test("同版本但 cardId 索引键错误的持久化状态会恢复固定种子", () => {
+    const persisted = createDemoState();
+    const plan = persisted.planStates["plan-core"];
+    plan.cards.byCardId["card-index-mismatch"] = structuredClone(plan.cards.byCardId["card-sustainable"]);
+    plan.today.masteredCount = 999;
+    window.localStorage.setItem("wordflip.web.demo.v1", JSON.stringify(persisted));
+
+    const store = createStore();
+
+    expect(currentPlanState(store).cards.byCardId).not.toHaveProperty("card-index-mismatch");
+    expect(currentPlanState(store).today.masteredCount).toBe(126);
+  });
+
+  test("同版本但缺失 wordKey 索引的持久化状态会恢复固定种子", () => {
+    const persisted = createDemoState();
+    const plan = persisted.planStates["plan-core"];
+    delete plan.cards.byWordKey.sustainable;
+    plan.today.masteredCount = 999;
+    window.localStorage.setItem("wordflip.web.demo.v1", JSON.stringify(persisted));
+
+    const store = createStore();
+
+    expect(currentPlanState(store).today.masteredCount).toBe(126);
+  });
+
   test("拒绝 skill 与服务端结果轨道不一致的预计算结果", () => {
     const store = createStore();
     const mismatched = {
@@ -133,5 +159,21 @@ describe("DemoStateStore", () => {
     expect(response.requestId).toBe("request-demo");
     expect(response.precomputed.next.stability).toBe(30);
     expect(currentPlanState(store).cards.byWordKey.sustainable.progress.dictation.stability).toBe(30);
+  });
+
+  test("切换到进阶计划后，测验仓储只回放该计划卡片的预计算快照", async () => {
+    const store = createStore();
+    const repositories = createMockRepositoryBundle(store);
+    await repositories.books.switchActivePlan("plan-advanced");
+
+    const response = await repositories.quiz.submitAnswer({
+      sessionId: "quiz-advanced",
+      requestId: "request-advanced",
+      cardId: "card-resilient",
+      answer: "resilient"
+    });
+
+    expect(response.precomputed.wordKey).toBe("resilient");
+    expect(currentPlanState(store).cards.byCardId["card-resilient"].progress.dictation).toEqual(response.precomputed.next);
   });
 });

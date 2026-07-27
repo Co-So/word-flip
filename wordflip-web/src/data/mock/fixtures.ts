@@ -12,6 +12,20 @@ export const FIXED_DICTATION_RESULT: PrecomputedQuizResult = {
   statsSnapshot: { totalReviewed: 843, retentionRate: 0.901, streakDays: 14 }
 };
 
+export const FIXED_ADVANCED_DICTATION_RESULT: PrecomputedQuizResult = {
+  wordKey: "resilient",
+  skill: "dictation",
+  next: { skill: "dictation", state: "fuzzy", stability: 4, heatLevel: 1, lastQuizSucceeded: true },
+  dashboardSnapshot: { dueCount: 8, masteredCount: 43, reviewedCount: 7 },
+  statsSnapshot: { totalReviewed: 843, retentionRate: 0.903, streakDays: 14 }
+};
+
+/** 按计划和 cardId 固定的服务端测验快照；skill 由快照预定义，Web 不判题或计算 FSRS。 */
+const PRECOMPUTED_QUIZ_RESULTS: Record<string, Record<string, PrecomputedQuizResult>> = {
+  "plan-core": { "card-sustainable": FIXED_DICTATION_RESULT },
+  "plan-advanced": { "card-resilient": FIXED_ADVANCED_DICTATION_RESULT }
+};
+
 function notFound(message: string): AppError {
   return { kind: "not-found", message };
 }
@@ -22,6 +36,15 @@ function noActivePlan(): AppError {
 
 function currentPlan(store: DemoStateStore): PlanDemoState | null {
   return store.readActivePlanState();
+}
+
+function precomputedQuizResult(store: DemoStateStore, cardId: string): PrecomputedQuizResult | null {
+  const planId = store.read().books.activePlanId;
+  return planId ? PRECOMPUTED_QUIZ_RESULTS[planId]?.[cardId] ?? null : null;
+}
+
+function unavailable(message: string): AppError {
+  return { kind: "unavailable", message, retryable: true };
 }
 
 /** 供视觉演示和测试注入的仓储实现；它只回放服务端固定快照，便于替换为 HTTP 仓储。 */
@@ -112,11 +135,15 @@ export function createMockRepositoryBundle(store: DemoStateStore): RepositoryBun
         if (!plan?.cards.byCardId[submission.cardId]) {
           return Promise.reject(plan ? notFound("找不到当前计划的学习卡") : noActivePlan());
         }
-        const precomputed = structuredClone(FIXED_DICTATION_RESULT);
+        const precomputed = precomputedQuizResult(store, submission.cardId);
+        if (!precomputed) {
+          return Promise.reject(unavailable("当前计划的学习卡没有可回放的服务端预计算结果"));
+        }
         try {
-          // 模拟服务端已完成判题后返回的快照；此处不读取 answer 计算任何结果。
-          store.applyQuizResult(precomputed);
-          return Promise.resolve({ requestId: submission.requestId, accepted: true, precomputed });
+          // 仅按当前计划与 cardId 回放服务端快照；此处不读取 answer 计算任何结果。
+          const snapshot = structuredClone(precomputed);
+          store.applyQuizResult(snapshot);
+          return Promise.resolve({ requestId: submission.requestId, accepted: true, precomputed: snapshot });
         } catch (error) {
           return Promise.reject(error);
         }

@@ -74,10 +74,21 @@ function isPlanState(value: unknown): boolean {
   }
   const byCardId = cards.byCardId;
   const byWordKey = cards.byWordKey;
-  if (!Object.values(byCardId).every(isLearningCard)) {
+  if (!Object.entries(byCardId).every(([cardId, card]) => isLearningCard(card) && card.cardId === cardId)) {
     return false;
   }
-  if (!Object.entries(byWordKey).every(([wordKey, card]) => isLearningCard(card) && card.wordKey === wordKey && byCardId[card.cardId] !== undefined)) {
+  const cardIdsByWordKey = new Set<string>();
+  if (!Object.entries(byWordKey).every(([wordKey, card]) => {
+    if (!isLearningCard(card) || card.wordKey !== wordKey || byCardId[card.cardId] === undefined) {
+      return false;
+    }
+    cardIdsByWordKey.add(card.cardId);
+    return true;
+  })) {
+    return false;
+  }
+  // 两个索引必须覆盖完全相同的 cardId 集合，避免持久化数据缺失查询入口后被静默修补。
+  if (cardIdsByWordKey.size !== Object.keys(byCardId).length || !Object.keys(byCardId).every((cardId) => cardIdsByWordKey.has(cardId))) {
     return false;
   }
   if (!isRecord(value.today) || !isNumber(value.today.dueCount) || !isNumber(value.today.masteredCount) || !isNumber(value.today.reviewedCount)) {
