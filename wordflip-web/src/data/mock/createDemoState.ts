@@ -1,5 +1,5 @@
 import type { AuthSession } from "@/domain/auth";
-import type { Book, LearningPlan } from "@/domain/books";
+import type { Book, BookProgress, LearningPlan } from "@/domain/books";
 import type { WordGroup } from "@/domain/groups";
 import type { LearningCard, StudySession } from "@/domain/learning";
 import type { CardMedia } from "@/domain/media";
@@ -23,6 +23,7 @@ export interface PlanDemoState {
   groups: { items: WordGroup[] };
   cards: { byCardId: Record<string, LearningCard>; byWordKey: Record<string, LearningCard> };
   today: TodaySummary;
+  bookProgress: BookProgress;
   study: { sessions: Record<string, StudySession> };
   quiz: { mode: "dictation" | "choice" | null };
   media: { byCardId: Record<string, CardMedia> };
@@ -60,15 +61,49 @@ const resilientCard: LearningCard = {
   }
 };
 
-function createPlanState(cardSource: LearningCard, group: WordGroup, today: TodaySummary): PlanDemoState {
-  const card = structuredClone(cardSource);
+const urbanCard: LearningCard = {
+  cardId: "card-urban",
+  wordKey: "urban",
+  headword: "urban",
+  definition: "城市的",
+  progress: {
+    dictation: { skill: "dictation", state: "unknown", stability: 18, heatLevel: 1, lastQuizSucceeded: true },
+    choice: { skill: "choice", state: "fuzzy", stability: 9, heatLevel: 1, lastQuizSucceeded: true }
+  }
+};
+
+const ecologyCard: LearningCard = {
+  cardId: "card-ecology",
+  wordKey: "ecology",
+  headword: "ecology",
+  definition: "生态学",
+  progress: {
+    dictation: { skill: "dictation", state: "fuzzy", stability: 8, heatLevel: 1, lastQuizSucceeded: false },
+    choice: { skill: "choice", state: "unknown", stability: 22, heatLevel: 1, lastQuizSucceeded: true }
+  }
+};
+
+function createPlanState(
+  cardSources: LearningCard[],
+  group: WordGroup,
+  today: TodaySummary,
+  bookProgress: BookProgress
+): PlanDemoState {
+  const cards = cardSources.map((card) => structuredClone(card));
+  const byCardId = Object.fromEntries(cards.map((card) => [card.cardId, card]));
+  const byWordKey = Object.fromEntries(cards.map((card) => [card.wordKey, card]));
   return {
     groups: { items: [{ ...group, cardIds: [...group.cardIds] }] },
-    cards: { byCardId: { [card.cardId]: card }, byWordKey: { [card.wordKey]: card } },
+    cards: { byCardId, byWordKey },
     today,
+    bookProgress,
     study: { sessions: { demo: { sessionId: "demo", status: "active" } } },
     quiz: { mode: null },
-    media: { byCardId: { [card.cardId]: { cardId: card.cardId, imageUrl: null, stainLevel: 0 } } },
+    media: {
+      byCardId: Object.fromEntries(
+        cards.map((card) => [card.cardId, { cardId: card.cardId, imageUrl: null, stainLevel: 0 }])
+      )
+    },
     stats: { totalReviewed: 842, retentionRate: 0.9, streakDays: 14 }
   };
 }
@@ -98,14 +133,41 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
     },
     planStates: {
       [corePlan.planId]: createPlanState(
-        sustainableCard,
-        { groupId: "group-focus", name: "重点复习", cardIds: [sustainableCard.cardId] },
-        { dueCount: 24, masteredCount: 126, reviewedCount: 18 }
+        [sustainableCard, urbanCard, ecologyCard],
+        { groupId: "group-12", name: "第 12 组 · 城市与环境", cardIds: [sustainableCard.cardId] },
+        {
+          dueCount: 24,
+          masteredCount: 126,
+          reviewedCount: 18,
+          completionRate: 72,
+          currentBookTitle: corePlan.title,
+          recentStudy: [
+            { cardId: sustainableCard.cardId, headword: sustainableCard.headword, definition: sustainableCard.definition, reviewedAtLabel: "8 分钟前" },
+            { cardId: urbanCard.cardId, headword: urbanCard.headword, definition: urbanCard.definition, reviewedAtLabel: "26 分钟前" },
+            { cardId: ecologyCard.cardId, headword: ecologyCard.headword, definition: ecologyCard.definition, reviewedAtLabel: "昨天" }
+          ],
+          tasks: [
+            { taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" },
+            { taskId: "task-group", title: "继续第 12 组", description: "城市与环境主题" }
+          ]
+        },
+        { learnedCount: 126, publishedCardCount: 300, completionRate: 42 }
       ),
       [advancedPlan.planId]: createPlanState(
-        resilientCard,
+        [resilientCard],
         { groupId: "group-advanced", name: "进阶复习", cardIds: [resilientCard.cardId] },
-        { dueCount: 9, masteredCount: 42, reviewedCount: 6 }
+        {
+          dueCount: 9,
+          masteredCount: 42,
+          reviewedCount: 6,
+          completionRate: 38,
+          currentBookTitle: advancedPlan.title,
+          recentStudy: [
+            { cardId: resilientCard.cardId, headword: resilientCard.headword, definition: resilientCard.definition, reviewedAtLabel: "昨天" }
+          ],
+          tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
+        },
+        { learnedCount: 42, publishedCardCount: 180, completionRate: 23 }
       )
     }
   };
@@ -116,7 +178,13 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
     throw new Error("固定演示数据缺少当前学习计划分区");
   }
   if (scenario === "empty-today") {
-    activePlan.today = { dueCount: 0, masteredCount: 126, reviewedCount: 0 };
+    activePlan.today = {
+      ...activePlan.today,
+      dueCount: 0,
+      reviewedCount: 0,
+      completionRate: 100,
+      tasks: []
+    };
   }
   if (scenario === "logged-out") {
     // 首次登录演示种子本身没有当前计划，Plan Gate 才能自然进入首次设置。
@@ -133,7 +201,13 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
     activePlan.quiz.mode = scenario === "quiz-dictation" ? "dictation" : "choice";
   }
   if (scenario === "after-quiz") {
-    activePlan.today = { dueCount: 23, masteredCount: 127, reviewedCount: 19 };
+    activePlan.today = {
+      ...activePlan.today,
+      dueCount: 23,
+      masteredCount: 127,
+      reviewedCount: 19,
+      completionRate: 76
+    };
   }
   if (scenario === "mutated") {
     activePlan.media.byCardId[sustainableCard.cardId].stainLevel = 2;

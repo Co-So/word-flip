@@ -1,0 +1,26 @@
+.page { display: grid; gap: 24px; }
+.hero, .detailHero { align-items: flex-end; display: flex; gap: 28px; justify-content: space-between; }
+.hero h1, .detailHero h1 { font-size: clamp(30px, 4vw, 46px); letter-spacing: -.05em; margin: 5px 0 0; }
+.hero > p, .detailHero p { color: var(--wf-text-muted); margin: 0; max-width: 540px; }
+.eyebrow, .index { color: var(--wf-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: .08em; margin: 0; }
+.bookGrid { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bookGrid article, .bookGrid article > section { min-width: 0; height: 100%; }
+.bookHeader { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; }
+.bookHeader h2 { font-size: 19px; letter-spacing: -.025em; margin: 5px 0 0; }
+.cardCount, .historyNote { color: var(--wf-text-muted); font-size: 13px; line-height: 1.55; }
+.progress { align-items: baseline; background: var(--wf-sidebar); border-radius: var(--wf-radius-control); display: flex; justify-content: space-between; margin-top: 20px; padding: 12px; }
+.progress span { color: var(--wf-text-muted); font-size: 12px; }
+.progress strong { font-size: 22px; }
+.actions { align-items: center; display: flex; gap: 10px; justify-content: space-between; margin-top: 26px; }
+.detailLink, .backLink { color: var(--wf-text-muted); font-size: 13px; font-weight: 700; }
+.detailLink:hover, .backLink:hover { color: var(--wf-text); }
+.detailProgress { align-items: center; display: grid; gap: 26px; grid-template-columns: auto minmax(0, 1fr); }
+.detailProgress > strong { font-size: clamp(42px, 7vw, 72px); letter-spacing: -.07em; }
+.detailProgress > div { display: grid; gap: 12px; }
+.progressTrack { background: var(--wf-sidebar); border-radius: 999px; height: 9px; overflow: hidden; }
+.progressTrack i { background: var(--wf-sage); border-radius: inherit; display: block; height: 100%; }
+@media (max-width: 900px) { .bookGrid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) {
+  .hero, .detailHero { align-items: flex-start; flex-direction: column; }
+  .detailProgress { grid-template-columns: 1fr; }
+}

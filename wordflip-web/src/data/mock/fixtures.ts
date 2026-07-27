@@ -4,13 +4,31 @@ import type { PlanDemoState } from "@/data/mock/createDemoState";
 import type { AppError } from "@/data/contracts/AppError";
 import type { PrecomputedQuizResult } from "@/domain/quiz";
 import { MockAuthRepository } from "@/data/mock/repositories/MockAuthRepository";
+import { MockBookRepository } from "@/data/mock/repositories/MockBookRepository";
+import { MockGroupRepository } from "@/data/mock/repositories/MockGroupRepository";
 import { MockSettingsRepository } from "@/data/mock/repositories/MockSettingsRepository";
+import { MockTodayRepository } from "@/data/mock/repositories/MockTodayRepository";
 
 export const FIXED_DICTATION_RESULT: PrecomputedQuizResult = {
   wordKey: "sustainable",
   skill: "dictation",
   next: { skill: "dictation", state: "fuzzy", stability: 30, heatLevel: 1, lastQuizSucceeded: true },
-  dashboardSnapshot: { dueCount: 23, masteredCount: 127, reviewedCount: 19 },
+  dashboardSnapshot: {
+    dueCount: 23,
+    masteredCount: 127,
+    reviewedCount: 19,
+    completionRate: 76,
+    currentBookTitle: "核心词汇",
+    recentStudy: [
+      { cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" },
+      { cardId: "card-urban", headword: "urban", definition: "城市的", reviewedAtLabel: "26 分钟前" },
+      { cardId: "card-ecology", headword: "ecology", definition: "生态学", reviewedAtLabel: "昨天" }
+    ],
+    tasks: [
+      { taskId: "task-review", title: "到期复习", description: "23 张卡片等待巩固" },
+      { taskId: "task-group", title: "继续第 12 组", description: "城市与环境主题" }
+    ]
+  },
   statsSnapshot: { totalReviewed: 843, retentionRate: 0.901, streakDays: 14 }
 };
 
@@ -18,7 +36,17 @@ export const FIXED_ADVANCED_DICTATION_RESULT: PrecomputedQuizResult = {
   wordKey: "resilient",
   skill: "dictation",
   next: { skill: "dictation", state: "fuzzy", stability: 4, heatLevel: 1, lastQuizSucceeded: true },
-  dashboardSnapshot: { dueCount: 8, masteredCount: 43, reviewedCount: 7 },
+  dashboardSnapshot: {
+    dueCount: 8,
+    masteredCount: 43,
+    reviewedCount: 7,
+    completionRate: 44,
+    currentBookTitle: "进阶词汇",
+    recentStudy: [
+      { cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }
+    ],
+    tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "8 张卡片等待巩固" }]
+  },
   statsSnapshot: { totalReviewed: 843, retentionRate: 0.903, streakDays: 14 }
 };
 
@@ -54,45 +82,9 @@ export function createMockRepositoryBundle(store: DemoStateStore): RepositoryBun
   return {
     auth: new MockAuthRepository(store),
     settings: new MockSettingsRepository(store),
-    books: {
-      listBooks: () => Promise.resolve(store.read().books.items),
-      getActivePlan: () => {
-        const state = store.read();
-        return Promise.resolve(state.books.plans.find((plan) => plan.planId === state.books.activePlanId) ?? null);
-      },
-      switchActivePlan: (planId) => {
-        try {
-          return Promise.resolve(store.switchActivePlan(planId));
-        } catch (error) {
-          return Promise.reject(error);
-        }
-      }
-    },
-    groups: {
-      listGroups: () => {
-        const plan = currentPlan(store);
-        return plan ? Promise.resolve(plan.groups.items) : Promise.reject(noActivePlan());
-      },
-      appendMembers: (groupId, cardIds) => {
-        const before = currentPlan(store);
-        const group = before?.groups.items.find((item) => item.groupId === groupId);
-        if (!group) {
-          return Promise.reject(before ? notFound("找不到指定分组") : noActivePlan());
-        }
-        store.updateActivePlan((draft) => {
-          const target = draft.groups.items.find((item) => item.groupId === groupId)!;
-          // 分组成员遵循追加语义，不以新数组覆盖现有成员。
-          target.cardIds.push(...cardIds.filter((cardId) => !target.cardIds.includes(cardId)));
-        });
-        return Promise.resolve(currentPlan(store)!.groups.items.find((item) => item.groupId === groupId)!);
-      }
-    },
-    today: {
-      getSummary: () => {
-        const plan = currentPlan(store);
-        return plan ? Promise.resolve(plan.today) : Promise.reject(noActivePlan());
-      }
-    },
+    books: new MockBookRepository(store),
+    groups: new MockGroupRepository(store),
+    today: new MockTodayRepository(store),
     study: {
       getCards: () => {
         const plan = currentPlan(store);

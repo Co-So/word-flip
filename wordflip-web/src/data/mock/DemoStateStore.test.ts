@@ -67,7 +67,7 @@ describe("DemoStateStore", () => {
     const store = createStore();
     const repositories = createMockRepositoryBundle(store);
 
-    await repositories.groups.appendMembers("group-focus", ["card-core-added"]);
+    await repositories.groups.appendMembers("group-12", ["card-core-added"]);
     await repositories.books.switchActivePlan("plan-advanced");
 
     expect((await repositories.groups.listGroups())[0].cardIds).not.toContain("card-core-added");

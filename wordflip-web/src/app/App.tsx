@@ -3,17 +3,28 @@ import { RequireAuth, RequireOnboarding } from "@/app/routeGuards";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { RegisterPage } from "@/features/auth/RegisterPage";
 import { OnboardingPage } from "@/features/onboarding/OnboardingPage";
-
-function TodayPlaceholder() {
-  return <main><h1>今天继续前进</h1><p>学习计划已准备好。</p></main>;
-}
+import { TodayPage } from "@/features/today/TodayPage";
+import { BooksPage } from "@/features/books/BooksPage";
+import { BookDetailPage } from "@/features/books/BookDetailPage";
+import { GroupsPage } from "@/features/groups/GroupsPage";
+import { GroupDetailPage } from "@/features/groups/GroupDetailPage";
+import { AppShell } from "@/layouts/AppShell/AppShell";
 
 export function App() {
   return useRoutes([
     { path: "/login", element: <LoginPage /> },
     { path: "/register", element: <RegisterPage /> },
     { path: "/onboarding", element: <RequireAuth><OnboardingPage /></RequireAuth> },
-    { path: "/today", element: <RequireAuth><RequireOnboarding><TodayPlaceholder /></RequireOnboarding></RequireAuth> },
+    {
+      element: <RequireAuth><RequireOnboarding><AppShell /></RequireOnboarding></RequireAuth>,
+      children: [
+        { path: "/today", element: <TodayPage /> },
+        { path: "/books", element: <BooksPage /> },
+        { path: "/books/:bookId", element: <BookDetailPage /> },
+        { path: "/groups", element: <GroupsPage /> },
+        { path: "/groups/:groupId", element: <GroupDetailPage /> }
+      ]
+    },
     { path: "*", element: <Navigate replace to="/today" /> }
   ]);
 }

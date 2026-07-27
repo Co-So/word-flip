@@ -91,7 +91,39 @@ function isPlanState(value: unknown): boolean {
   if (cardIdsByWordKey.size !== Object.keys(byCardId).length || !Object.keys(byCardId).every((cardId) => cardIdsByWordKey.has(cardId))) {
     return false;
   }
-  if (!isRecord(value.today) || !isNumber(value.today.dueCount) || !isNumber(value.today.masteredCount) || !isNumber(value.today.reviewedCount)) {
+  if (
+    !isRecord(value.today) ||
+    !isNumber(value.today.dueCount) ||
+    !isNumber(value.today.masteredCount) ||
+    !isNumber(value.today.reviewedCount) ||
+    !isNumber(value.today.completionRate) ||
+    typeof value.today.currentBookTitle !== "string" ||
+    !Array.isArray(value.today.recentStudy) ||
+    !value.today.recentStudy.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.cardId === "string" &&
+        typeof item.headword === "string" &&
+        typeof item.definition === "string" &&
+        typeof item.reviewedAtLabel === "string"
+    ) ||
+    !Array.isArray(value.today.tasks) ||
+    !value.today.tasks.every(
+      (task) =>
+        isRecord(task) &&
+        typeof task.taskId === "string" &&
+        typeof task.title === "string" &&
+        typeof task.description === "string"
+    )
+  ) {
+    return false;
+  }
+  if (
+    !isRecord(value.bookProgress) ||
+    !isNumber(value.bookProgress.learnedCount) ||
+    !isNumber(value.bookProgress.publishedCardCount) ||
+    !isNumber(value.bookProgress.completionRate)
+  ) {
     return false;
   }
   if (!isRecord(value.study) || !isRecord(value.study.sessions) || !Object.values(value.study.sessions).every((session) => isRecord(session) && typeof session.sessionId === "string" && (session.status === "active" || session.status === "completed"))) {

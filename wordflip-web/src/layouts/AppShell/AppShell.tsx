@@ -4,7 +4,7 @@ import { CommandPalette, type CommandDestination } from "@/components/CommandPal
 import styles from "./AppShell.module.css";
 
 const destinations: CommandDestination[] = [
-  { label: "今日", to: "/" },
+  { label: "今日", to: "/today" },
   { label: "词书", to: "/books" },
   { label: "分组", to: "/groups" },
   { label: "统计", to: "/stats" },
@@ -50,7 +50,7 @@ export function AppShell() {
     <aside className={styles.sidebar}>
       <div className={styles.brand}><span>WordFlip</span><small>STUDY DESK</small></div>
       <nav aria-label="主导航" className={styles.navigation}>
-        {destinations.map(({ label, to }) => <NavLink className={({ isActive }) => isActive ? styles.active : undefined} end={to === "/"} key={to} to={to}>{label}</NavLink>)}
+        {destinations.map(({ label, to }) => <NavLink className={({ isActive }) => isActive ? styles.active : undefined} end={to === "/today"} key={to} to={to}>{label}</NavLink>)}
       </nav>
       <button className={styles.commandTrigger} onClick={openCommands} ref={commandTriggerRef} type="button">
         搜索 <kbd>Ctrl K</kbd>

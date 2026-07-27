@@ -7,9 +7,9 @@ html { background: var(--wf-canvas); color: var(--wf-text); font-family: Inter, 
 
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 
-button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid color-mix(in srgb, var(--wf-sage) 55%, white); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid color-mix(in srgb, var(--wf-sage) 55%, white); outline-offset: 2px; }
 
 a { color: inherit; text-decoration: none; }
 

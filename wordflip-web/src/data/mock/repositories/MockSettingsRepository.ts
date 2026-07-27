@@ -9,6 +9,18 @@ interface OnboardingSnapshot {
   planState: PlanDemoState;
 }
 
+function emptyTodaySnapshot(currentBookTitle: string) {
+  return {
+    dueCount: 20,
+    masteredCount: 0,
+    reviewedCount: 0,
+    completionRate: 0,
+    currentBookTitle,
+    recentStudy: [],
+    tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
+  };
+}
+
 const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
   "book-ielts": {
     plan: { planId: "plan-ielts", bookId: "book-ielts", title: "雅思核心词汇" },
@@ -34,7 +46,8 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
           }
         }
       },
-      today: { dueCount: 20, masteredCount: 0, reviewedCount: 0 },
+      today: emptyTodaySnapshot("雅思核心词汇"),
+      bookProgress: { learnedCount: 0, publishedCardCount: 3000, completionRate: 0 },
       study: { sessions: {} },
       quiz: { mode: null },
       media: { byCardId: { "card-ielts-sustainable": { cardId: "card-ielts-sustainable", imageUrl: null, stainLevel: 0 } } },
@@ -65,7 +78,8 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
           }
         }
       },
-      today: { dueCount: 20, masteredCount: 0, reviewedCount: 0 },
+      today: emptyTodaySnapshot("核心词汇"),
+      bookProgress: { learnedCount: 0, publishedCardCount: 300, completionRate: 0 },
       study: { sessions: {} },
       quiz: { mode: null },
       media: { byCardId: { "card-core-sustainable": { cardId: "card-core-sustainable", imageUrl: null, stainLevel: 0 } } },
@@ -96,7 +110,8 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
           }
         }
       },
-      today: { dueCount: 20, masteredCount: 0, reviewedCount: 0 },
+      today: emptyTodaySnapshot("进阶词汇"),
+      bookProgress: { learnedCount: 0, publishedCardCount: 180, completionRate: 0 },
       study: { sessions: {} },
       quiz: { mode: null },
       media: { byCardId: { "card-advanced-resilient": { cardId: "card-advanced-resilient", imageUrl: null, stainLevel: 0 } } },
@@ -107,6 +122,30 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
 
 function validation(message: string): AppError {
   return { kind: "validation", message, fieldErrors: {} };
+}
+
+/** 无历史计划时回放已批准固定快照；已有计划只移动 activePlanId 指针。 */
+export function activatePrecomputedBookPlan(
+  store: DemoStateStore,
+  bookId: string,
+  groupSize: 10 | 20 | 30 | 50
+): LearningPlan {
+  const snapshot = afterOnboardingSnapshots[bookId];
+  if (!snapshot) {
+    throw validation("找不到指定词书的预计算计划");
+  }
+  store.update((draft) => {
+    const plan = structuredClone(snapshot.plan);
+    const alreadyExists = draft.books.plans.some((item) => item.planId === plan.planId);
+    // 新计划才回放固定服务端快照；已有计划只能激活，绝不能覆盖历史分区。
+    if (!alreadyExists) {
+      draft.books.plans.push(plan);
+      draft.planStates[plan.planId] = structuredClone(snapshot.planState);
+    }
+    draft.books.activePlanId = plan.planId;
+    draft.settings.groupSize = groupSize;
+  });
+  return structuredClone(snapshot.plan);
 }
 
 /** 首次设置只原子回放固定服务端快照，不在 Web 端计算分组、今日任务或 FSRS。 */
@@ -125,21 +164,9 @@ export class MockSettingsRepository implements SettingsRepository {
   }
 
   saveOnboarding(input: OnboardingInput): Promise<LearningPlan> {
-    const snapshot = afterOnboardingSnapshots[input.bookId];
-    if (!snapshot || ![10, 20, 30, 50].includes(input.groupSize) || input.groupStrategy !== "book_order") {
+    if (!afterOnboardingSnapshots[input.bookId] || ![10, 20, 30, 50].includes(input.groupSize) || input.groupStrategy !== "book_order") {
       return Promise.reject(validation("首次设置参数无效"));
     }
-    this.store.update((draft) => {
-      const plan = structuredClone(snapshot.plan);
-      const alreadyExists = draft.books.plans.some((item) => item.planId === plan.planId);
-      // 新计划才回放固定服务端快照；已有计划只能激活，绝不能覆盖历史分区。
-      if (!alreadyExists) {
-        draft.books.plans.push(plan);
-        draft.planStates[plan.planId] = structuredClone(snapshot.planState);
-      }
-      draft.books.activePlanId = plan.planId;
-      draft.settings.groupSize = input.groupSize;
-    });
-    return Promise.resolve(structuredClone(snapshot.plan));
+    return Promise.resolve(activatePrecomputedBookPlan(this.store, input.bookId, input.groupSize));
   }
 }
