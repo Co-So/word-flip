@@ -9,6 +9,7 @@ import type {
   QuizSessionResult,
   QuizSkill
 } from "@/domain/quiz";
+import { FIXED_DICTATION_RESULT } from "@/data/mock/quizFixtures";
 import type { AppSettings } from "@/domain/settings";
 import type { StatsSummary } from "@/domain/stats";
 import type { TodaySummary } from "@/domain/today";
@@ -146,29 +147,6 @@ function quizSession(skill: QuizSkill, card: LearningCard): QuizSession {
             { key: "meaning-temporary", label: "临时的" },
             { key: "meaning-fragile", label: "脆弱的" }
           ]
-    }
-  };
-}
-
-function completedQuizResult(session: QuizSession): QuizSessionResult {
-  return {
-    sessionId: session.sessionId,
-    status: "completed",
-    score: 1,
-    total: 1,
-    accuracy: 100,
-    rating: "excellent",
-    dictation: {
-      label: "听写摘要",
-      attempted: session.skill === "dictation" ? 1 : 0,
-      correct: session.skill === "dictation" ? 1 : 0,
-      progressLabel: session.skill === "dictation" ? "稳定性 30 天" : "本次未作答"
-    },
-    choice: {
-      label: "选择摘要",
-      attempted: session.skill === "choice" ? 1 : 0,
-      correct: session.skill === "choice" ? 1 : 0,
-      progressLabel: session.skill === "choice" ? "稳定性 24 天" : "本次未作答"
     }
   };
 }
@@ -358,11 +336,8 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
   }
   if (scenario === "quiz-complete") {
     activePlan.study.sessions["study-demo"].status = "completed";
-    const session = activePlan.quiz.sessions["quiz-dictation-1"];
-    session.status = "completed";
-    session.currentIndex = 1;
-    session.score = 1;
-    activePlan.quiz.results[session.sessionId] = completedQuizResult(session);
+    activePlan.quiz.sessions["quiz-dictation-1"] = structuredClone(FIXED_DICTATION_RESULT.sessionSnapshot);
+    activePlan.quiz.results["quiz-dictation-1"] = structuredClone(FIXED_DICTATION_RESULT.resultSnapshot);
   }
   if (scenario === "after-quiz") {
     activePlan.today = {
@@ -372,11 +347,8 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
       reviewedCount: 19,
       completionRate: 76
     };
-    const session = activePlan.quiz.sessions["quiz-dictation-1"];
-    session.status = "completed";
-    session.currentIndex = 1;
-    session.score = 1;
-    activePlan.quiz.results[session.sessionId] = completedQuizResult(session);
+    activePlan.quiz.sessions["quiz-dictation-1"] = structuredClone(FIXED_DICTATION_RESULT.sessionSnapshot);
+    activePlan.quiz.results["quiz-dictation-1"] = structuredClone(FIXED_DICTATION_RESULT.resultSnapshot);
   }
   if (scenario === "mutated") {
     activePlan.media.byCardId[sustainableCard.cardId].stainLevel = 2;

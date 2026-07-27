@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { createMockRepositoryBundle, FIXED_DICTATION_RESULT } from "@/data/mock/fixtures";
 import { createDemoStateStore, DEMO_STORAGE_KEY } from "@/data/mock/DemoStateStore";
 import { createDemoState } from "@/data/mock/createDemoState";
+import { QUIZ_FIXTURES } from "@/data/mock/quizFixtures";
 
 function createStore() {
   return createDemoStateStore();
@@ -12,7 +13,39 @@ function currentPlanState(store: ReturnType<typeof createStore>) {
   return state.planStates[state.books.activePlanId!];
 }
 
+async function submittedState() {
+  const store = createDemoStateStore({ initialState: createDemoState(), storage: null });
+  await createMockRepositoryBundle(store).quiz.submitAnswer({
+    sessionId: "quiz-dictation-1",
+    requestId: "request-schema-cross-index",
+    questionId: "question-dictation-sustainable",
+    cardId: "card-sustainable",
+    answer: "sustainable"
+  });
+  return store.read();
+}
+
 describe("DemoStateStore", () => {
+  test("三计划双轨正误与两种范围均拥有独立静态预计算快照", () => {
+    const combinations = new Set(
+      QUIZ_FIXTURES.map((fixture) =>
+        [
+          fixture.planId,
+          fixture.precomputed.skill,
+          fixture.precomputed.correct ? "correct" : "wrong",
+          fixture.scope
+        ].join(":")
+      )
+    );
+
+    expect(QUIZ_FIXTURES).toHaveLength(24);
+    expect(combinations.size).toBe(24);
+    for (const fixture of QUIZ_FIXTURES) {
+      expect(fixture.precomputed.sessionSnapshot.scope).toBe(fixture.scope);
+      expect(fixture.precomputed.sessionSnapshot.question.cardId).toBe(fixture.cardId);
+    }
+  });
+
   test("学习完成不改变 cardId 下任一 skill 的掌握度", async () => {
     const store = createStore();
     const repositories = createMockRepositoryBundle(store);
@@ -149,6 +182,45 @@ describe("DemoStateStore", () => {
     expect(restoredStore.read()).toEqual(beforeRetry);
     expect(currentPlanState(restoredStore).quiz.results["quiz-dictation-1"]).toBeDefined();
     expect(currentPlanState(restoredStore).quiz.idempotency).toHaveLength(1);
+  });
+
+  test("测验幂等记录的 ghost session、错 skill/scope/result 会触发固定种子恢复", async () => {
+    const mutations: Array<(state: Awaited<ReturnType<typeof submittedState>>) => void> = [
+      (state) => {
+        const record = state.planStates["plan-core"].quiz.idempotency[0];
+        record.sessionId = "quiz-ghost";
+        record.response.precomputed.sessionSnapshot.sessionId = "quiz-ghost";
+        record.response.precomputed.resultSnapshot.sessionId = "quiz-ghost";
+      },
+      (state) => {
+        const precomputed = state.planStates["plan-core"].quiz.idempotency[0].response.precomputed;
+        precomputed.skill = "choice";
+        precomputed.next.skill = "choice";
+        precomputed.sessionSnapshot.skill = "choice";
+        precomputed.sessionSnapshot.question.skill = "choice";
+      },
+      (state) => {
+        state.planStates["plan-core"].quiz.idempotency[0].response.precomputed.sessionSnapshot.scope = "due-today";
+      },
+      (state) => {
+        const result = state.planStates["plan-core"].quiz.idempotency[0].response.precomputed.resultSnapshot;
+        result.score = 0;
+        result.accuracy = 0;
+        result.rating = "keep_going";
+      }
+    ];
+
+    for (const mutate of mutations) {
+      const persisted = await submittedState();
+      mutate(persisted);
+      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
+
+      const restored = createStore();
+
+      expect(currentPlanState(restored).quiz.idempotency).toEqual([]);
+      expect(currentPlanState(restored).quiz.results).toEqual({});
+      expect(currentPlanState(restored).today.masteredCount).toBe(126);
+    }
   });
 
   test("同版本但 cardId 索引键错误的持久化状态会恢复固定种子", () => {

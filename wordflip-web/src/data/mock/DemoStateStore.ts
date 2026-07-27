@@ -23,6 +23,10 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+function sameSnapshot(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function browserStorage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
 }
@@ -335,7 +339,27 @@ function isCompatibleState(value: unknown): value is DemoState {
   for (const planId of planIds) {
     const planState = planStates[planId] as PlanDemoState;
     for (const record of planState.quiz.idempotency) {
-      if (record.planId !== planId || requestIds.has(record.requestId)) {
+      const session = planState.quiz.sessions[record.sessionId];
+      const result = planState.quiz.results[record.sessionId];
+      const precomputed = record.response.precomputed;
+      const card = planState.cards.byCardId[record.cardId];
+      if (
+        record.planId !== planId ||
+        requestIds.has(record.requestId) ||
+        !session ||
+        !result ||
+        !card ||
+        session.status !== "completed" ||
+        session.question.questionId !== record.questionId ||
+        session.question.cardId !== record.cardId ||
+        session.skill !== precomputed.skill ||
+        session.scope !== precomputed.sessionSnapshot.scope ||
+        precomputed.cardId !== record.cardId ||
+        precomputed.sessionSnapshot.question.questionId !== record.questionId ||
+        !sameSnapshot(precomputed.sessionSnapshot, session) ||
+        !sameSnapshot(precomputed.resultSnapshot, result) ||
+        !sameSnapshot(card.progress[precomputed.skill], precomputed.next)
+      ) {
         return false;
       }
       requestIds.add(record.requestId);

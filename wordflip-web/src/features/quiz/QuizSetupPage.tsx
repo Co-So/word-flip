@@ -46,7 +46,7 @@ export function QuizSetupPage() {
             onChange={() => setScope("current-plan")}
             type="radio"
           />
-          <span><strong>当前计划</strong><small>核心词汇 · 固定演示题</small></span>
+          <span><strong>当前计划</strong><small>当前主词书 · 固定演示题</small></span>
         </label>
         <label>
           <input

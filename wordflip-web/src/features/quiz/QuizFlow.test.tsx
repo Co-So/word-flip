@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test } from "vitest";
 import { createDemoState } from "@/data/mock/createDemoState";
@@ -19,6 +19,7 @@ describe("Quiz 工作台", () => {
     const user = userEvent.setup();
     const dictationApp = renderAuthenticatedApp("/quiz");
 
+    expect(await screen.findByText("当前主词书 · 固定演示题")).toBeVisible();
     await user.click(await screen.findByRole("button", { name: "开始听写测验" }));
     expect(await screen.findByLabelText("输入英文单词")).toBeVisible();
     expect(screen.getByRole("heading", { name: "听写测验" })).toBeVisible();
@@ -126,6 +127,28 @@ describe("Quiz 工作台", () => {
     expect(store.read()).toEqual(once);
   });
 
+  test("同 requestId 的大小写或空格变化属于不同原始载荷并返回 conflict", async () => {
+    for (const changedAnswer of ["SUSTAINABLE", " sustainable "]) {
+      const store = createDemoStateStore({ initialState: createDemoState(), storage: null });
+      const quiz = new MockQuizRepository(store);
+      const submission: QuizAnswerSubmission = {
+        sessionId: "quiz-dictation-1",
+        questionId: "question-dictation-sustainable",
+        requestId: `request-raw-${changedAnswer.length}`,
+        cardId: "card-sustainable",
+        answer: "sustainable"
+      };
+      await quiz.submitAnswer(submission);
+      const once = store.read();
+
+      await expect(
+        quiz.submitAnswer({ ...submission, answer: changedAnswer })
+      ).rejects.toMatchObject({ kind: "conflict" });
+      expect(store.read()).toEqual(once);
+      expect(activePlan(store).quiz.idempotency).toHaveLength(1);
+    }
+  });
+
   test("requestId、session、question、card 与当前计划绑定错误时不写状态", async () => {
     const cases: QuizAnswerSubmission[] = [
       {
@@ -199,6 +222,90 @@ describe("Quiz 工作台", () => {
 
     expect(await screen.findByRole("status", { name: "答题反馈" })).toBeVisible();
     expect(activePlan(choiceApp.store).quiz.idempotency).toHaveLength(1);
+  });
+
+  test("听写错误答案回放独立错误快照且只更新 dictation", async () => {
+    const user = userEvent.setup();
+    const app = renderScenarioApp("quiz-dictation", "/quiz/quiz-dictation-1");
+    const before = app.store.read().planStates["plan-core"].cards.byCardId;
+    const choiceBefore = structuredClone(before["card-sustainable"].progress.choice);
+    const otherCardsBefore = structuredClone(
+      Object.fromEntries(
+        Object.entries(before)
+          .filter(([cardId]) => cardId !== "card-sustainable")
+          .map(([cardId, card]) => [cardId, card.progress])
+      )
+    );
+
+    await user.type(await screen.findByLabelText("输入英文单词"), "not-sustainable");
+    await user.keyboard("{Enter}");
+
+    const feedback = await screen.findByRole("status", { name: "答题反馈" });
+    expect(feedback).toHaveTextContent("服务端快照：再巩固一次");
+    expect(feedback).toHaveTextContent("标准答案：sustainable");
+    const after = app.store.read().planStates["plan-core"].cards.byCardId;
+    expect(after["card-sustainable"].progress.dictation).toEqual({
+      skill: "dictation",
+      state: "unknown",
+      stability: 4,
+      heatLevel: 0,
+      lastQuizSucceeded: false
+    });
+    expect(after["card-sustainable"].progress.choice).toEqual(choiceBefore);
+    expect(
+      Object.fromEntries(
+        Object.entries(after)
+          .filter(([cardId]) => cardId !== "card-sustainable")
+          .map(([cardId, card]) => [cardId, card.progress])
+      )
+    ).toEqual(otherCardsBefore);
+
+    await user.click(screen.getByRole("link", { name: "查看测验结果" }));
+    const dictationSummary = await screen.findByRole("heading", { name: "听写摘要" });
+    expect(within(dictationSummary.closest("article")!).getByText("0 / 1")).toBeVisible();
+    expect(within(dictationSummary.closest("article")!).getByText("稳定性 4 天")).toBeVisible();
+  });
+
+  test("选择错误答案回放独立错误快照且只更新 choice", async () => {
+    const user = userEvent.setup();
+    const app = renderScenarioApp("quiz-choice", "/quiz/quiz-choice-1");
+    const before = app.store.read().planStates["plan-core"].cards.byCardId;
+    const dictationBefore = structuredClone(before["card-sustainable"].progress.dictation);
+    const otherCardsBefore = structuredClone(
+      Object.fromEntries(
+        Object.entries(before)
+          .filter(([cardId]) => cardId !== "card-sustainable")
+          .map(([cardId, card]) => [cardId, card.progress])
+      )
+    );
+
+    await user.click(await screen.findByRole("radio", { name: "临时的" }));
+    await user.click(screen.getByRole("button", { name: "提交答案" }));
+
+    const feedback = await screen.findByRole("status", { name: "答题反馈" });
+    expect(feedback).toHaveTextContent("服务端快照：选择错误");
+    expect(feedback).toHaveTextContent("标准答案：可持续的");
+    const after = app.store.read().planStates["plan-core"].cards.byCardId;
+    expect(after["card-sustainable"].progress.choice).toEqual({
+      skill: "choice",
+      state: "unknown",
+      stability: 4,
+      heatLevel: 0,
+      lastQuizSucceeded: false
+    });
+    expect(after["card-sustainable"].progress.dictation).toEqual(dictationBefore);
+    expect(
+      Object.fromEntries(
+        Object.entries(after)
+          .filter(([cardId]) => cardId !== "card-sustainable")
+          .map(([cardId, card]) => [cardId, card.progress])
+      )
+    ).toEqual(otherCardsBefore);
+
+    await user.click(screen.getByRole("link", { name: "查看测验结果" }));
+    const choiceSummary = await screen.findByRole("heading", { name: "选择摘要" });
+    expect(within(choiceSummary.closest("article")!).getByText("0 / 1")).toBeVisible();
+    expect(within(choiceSummary.closest("article")!).getByText("稳定性 4 天")).toBeVisible();
   });
 
   test("active 会话直达结果页会恢复工作台，completed 会话才能展示结果", async () => {
