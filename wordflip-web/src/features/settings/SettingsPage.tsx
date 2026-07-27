@@ -20,12 +20,15 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const resetTriggerRef = useRef<HTMLButtonElement>(null);
+  const resettingRef = useRef(false);
   const wasDialogOpen = useRef(false);
   const [form, setForm] = useState<AppSettings | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -59,10 +62,21 @@ export function SettingsPage() {
   }
 
   async function reset() {
-    await settings.resetDemo();
-    queryClient.clear();
-    setDialogOpen(false);
-    navigate("/today", { replace: true });
+    if (resettingRef.current) return;
+    resettingRef.current = true;
+    setResetting(true);
+    setResetError(null);
+    try {
+      await settings.resetDemo();
+      queryClient.clear();
+      setDialogOpen(false);
+      navigate("/today", { replace: true });
+    } catch (reason) {
+      setResetError(reason instanceof Error ? reason.message : "暂时无法重置演示数据");
+    } finally {
+      resettingRef.current = false;
+      setResetting(false);
+    }
   }
 
   return <div className={styles.page}>
@@ -107,10 +121,26 @@ export function SettingsPage() {
         <Panel title="演示数据">
           <p className={styles.muted}>恢复固定 configured 种子，历史模拟变更将从当前浏览器移除。</p>
           <Link className={styles.mediaLink} to="/media">管理卡片图片</Link>
-          <Button onClick={() => setDialogOpen(true)} ref={resetTriggerRef} variant="ghost">重置演示数据</Button>
+          <Button
+            onClick={() => {
+              setResetError(null);
+              setDialogOpen(true);
+            }}
+            ref={resetTriggerRef}
+            variant="ghost"
+          >
+            重置演示数据
+          </Button>
         </Panel>
       </div> : null}
     </AsyncState>
-    {dialogOpen ? <ResetDemoDialog onCancel={() => setDialogOpen(false)} onConfirm={() => { void reset(); }} /> : null}
+    {dialogOpen ? <ResetDemoDialog
+      error={resetError}
+      onCancel={() => {
+        if (!resettingRef.current) setDialogOpen(false);
+      }}
+      onConfirm={() => { void reset(); }}
+      resetting={resetting}
+    /> : null}
   </div>;
 }

@@ -49,6 +49,20 @@ describe("卡片媒体", () => {
     expect(screen.queryByAltText("sustainable 的记忆图片")).not.toBeInTheDocument();
   });
 
+  test("卡片选择保留原生 button 语义并可切换 aria-pressed", async () => {
+    const user = userEvent.setup();
+    renderStateApp(createDemoState(), "/media");
+
+    const sustainable = await screen.findByRole("button", { name: /sustainable.*card-sustainable/ });
+    const infrastructure = screen.getByRole("button", { name: /infrastructure.*card-infrastructure/ });
+    expect(sustainable).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(infrastructure);
+
+    expect(infrastructure).toHaveAttribute("aria-pressed", "true");
+    expect(sustainable).toHaveAttribute("aria-pressed", "false");
+  });
+
   test("旋转保存后，以同一持久化快照重新挂载仍显示 90°", async () => {
     const user = userEvent.setup();
     const first = renderStateApp(createDemoState(), "/media");
@@ -103,6 +117,24 @@ describe("卡片媒体", () => {
     app.unmount();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:third");
     expect(createObjectURL).toHaveBeenCalledTimes(3);
+  });
+
+  test("取消预览会清空文件控件并允许再次选择同一文件", async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:same-first")
+      .mockReturnValueOnce("blob:same-second");
+    renderStateApp(createDemoState(), "/media");
+    const input = await screen.findByLabelText("选择图片");
+    const file = new File(["same"], "same.png", { type: "image/png" });
+
+    await user.upload(input, file);
+    await user.click(screen.getByRole("button", { name: "取消临时预览" }));
+    expect(input).toHaveValue("");
+    await user.upload(input, file);
+
+    expect(screen.getByRole("img", { name: "same.png 临时预览" })).toHaveAttribute("src", "blob:same-second");
+    expect(createObjectURL).toHaveBeenCalledTimes(2);
   });
 
   test.each([

@@ -23,6 +23,7 @@
 .achievements { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
 .achievements li { border-bottom: 1px solid var(--wf-border); display: grid; gap: 4px; padding-bottom: 12px; }
 .achievements li:last-child { border-bottom: 0; padding-bottom: 0; }
+.emptyAchievements { color: var(--wf-text-muted); margin: 0; }
 @media (max-width: 900px) {
   .summaryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lowerGrid { grid-template-columns: 1fr; }

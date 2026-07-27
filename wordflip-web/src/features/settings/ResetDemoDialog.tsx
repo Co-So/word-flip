@@ -3,11 +3,13 @@ import { Button } from "@/components/Button/Button";
 import styles from "./settings.module.css";
 
 interface ResetDemoDialogProps {
+  error: string | null;
   onCancel: () => void;
   onConfirm: () => void;
+  resetting: boolean;
 }
 
-export function ResetDemoDialog({ onCancel, onConfirm }: ResetDemoDialogProps) {
+export function ResetDemoDialog({ error, onCancel, onConfirm, resetting }: ResetDemoDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
 
@@ -16,6 +18,10 @@ export function ResetDemoDialog({ onCancel, onConfirm }: ResetDemoDialogProps) {
   }, []);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (resetting && (event.key === "Escape" || event.key === "Tab")) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       onCancel();
@@ -45,9 +51,10 @@ export function ResetDemoDialog({ onCancel, onConfirm }: ResetDemoDialogProps) {
       <p className={styles.eyebrow}>DEMO RESET</p>
       <h2 id="reset-demo-title">确认重置演示数据</h2>
       <p>当前浏览器中的学习、媒体和设置演示变更会恢复为固定种子。</p>
+      {error ? <p className={styles.resetError} role="alert">{error}</p> : null}
       <div className={styles.dialogActions}>
-        <Button onClick={onCancel} ref={cancelRef} variant="secondary">取消</Button>
-        <Button onClick={onConfirm} ref={confirmRef}>确认重置</Button>
+        <Button disabled={resetting} onClick={onCancel} ref={cancelRef} variant="secondary">取消</Button>
+        <Button disabled={resetting} onClick={onConfirm} ref={confirmRef}>确认重置</Button>
       </div>
     </div>
   </div>;

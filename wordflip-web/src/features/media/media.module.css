@@ -3,8 +3,8 @@
 .hero p { color: var(--wf-text-muted); margin: 0; }
 .eyebrow { color: var(--wf-text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: .09em; }
 .workspace { display: grid; gap: 16px; grid-template-columns: minmax(240px, .65fr) minmax(0, 1.35fr); }
-.cardList { display: grid; gap: 8px; }
-.cardOption { background: transparent; border: 1px solid var(--wf-border); border-radius: var(--wf-radius-control); color: inherit; cursor: pointer; display: grid; gap: 4px; padding: 14px; text-align: left; }
+.cardList { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.cardOption { background: transparent; border: 1px solid var(--wf-border); border-radius: var(--wf-radius-control); color: inherit; cursor: pointer; display: grid; gap: 4px; padding: 14px; text-align: left; width: 100%; }
 .cardOption[aria-pressed="true"] { background: var(--wf-sage-container); border-color: var(--wf-sage); }
 .cardOption span, .cardOption code { color: var(--wf-text-muted); font-size: 12px; overflow-wrap: anywhere; }
 .editor { display: grid; gap: 16px; }

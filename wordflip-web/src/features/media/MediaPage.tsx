@@ -25,6 +25,7 @@ export function MediaPage() {
   });
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewName, setPreviewName] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "empty" | "error" | "ready">("loading");
@@ -64,6 +65,9 @@ export function MediaPage() {
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
     setPreviewUrl(null);
     setPreviewName("");
@@ -143,22 +147,23 @@ export function MediaPage() {
     <AsyncState error={error} onRetry={load} status={status}>
       <div className={styles.workspace}>
         <Panel title="当前计划卡片">
-          <div aria-label="选择学习卡" className={styles.cardList} role="list">
-            {cards.map((card) => <button
-              aria-pressed={card.cardId === selectedCardId}
-              className={styles.cardOption}
-              key={card.cardId}
-              onClick={() => selectCard(card.cardId)}
-              role="listitem"
-              type="button"
-            >
-              <strong>{card.headword}</strong><span>{card.definition}</span><code>{card.cardId}</code>
-            </button>)}
-          </div>
+          <ul aria-label="选择学习卡" className={styles.cardList}>
+            {cards.map((card) => <li key={card.cardId}>
+              <button
+                aria-pressed={card.cardId === selectedCardId}
+                className={styles.cardOption}
+                onClick={() => selectCard(card.cardId)}
+                type="button"
+              >
+                <strong>{card.headword}</strong><span>{card.definition}</span><code>{card.cardId}</code>
+              </button>
+            </li>)}
+          </ul>
         </Panel>
         <Panel title={selected ? `编辑 · ${selected.headword}` : "编辑图片"}>
           {selected ? <ImageEditor
             fieldError={fieldError}
+            fileInputRef={fileInputRef}
             hasTemporaryPreview={previewUrl !== null}
             imageAlt={imageAlt}
             imageUrl={displayedImage}

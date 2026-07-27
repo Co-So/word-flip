@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, RefObject } from "react";
 import { Button } from "@/components/Button/Button";
 import type { ImageTransform } from "@/domain/media";
 import styles from "./media.module.css";
@@ -8,6 +8,7 @@ interface ImageEditorProps {
   imageAlt: string;
   transform: ImageTransform;
   fieldError: string | null;
+  fileInputRef: RefObject<HTMLInputElement>;
   hasTemporaryPreview: boolean;
   onCancelPreview: () => void;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -21,6 +22,7 @@ export function ImageEditor({
   imageAlt,
   transform,
   fieldError,
+  fileInputRef,
   hasTemporaryPreview,
   onCancelPreview,
   onFileChange,
@@ -79,6 +81,7 @@ export function ImageEditor({
         accept="image/jpeg,image/png,image/webp"
         aria-describedby={fieldError ? "media-file-error" : undefined}
         onChange={onFileChange}
+        ref={fileInputRef}
         type="file"
       />
     </label>

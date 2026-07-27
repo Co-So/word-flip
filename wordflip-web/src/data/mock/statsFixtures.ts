@@ -21,7 +21,7 @@ export function createStatsSnapshot(
   retentionRate: number,
   streakDays: number,
   masteredCount: number,
-  profile: "core" | "advanced" | "empty" | "new" = "core"
+  profile: "core" | "advanced" | "empty" | "new-dictation" | "new-choice" = "core"
 ): StatsSummary {
   const presentation = {
     core: {
@@ -44,10 +44,15 @@ export function createStatsSnapshot(
       dictation: { label: "听写进度", value: "0%", detail: "完成首次测验后生成进度" },
       choice: { label: "选择进度", value: "0%", detail: "完成首次测验后生成进度" }
     },
-    new: {
+    "new-dictation": {
       achievements: [],
-      dictation: { label: "听写进度", value: "5%", detail: "已完成首次固定演示题" },
+      dictation: { label: "听写进度", value: "5%", detail: "已完成首次听写演示题" },
       choice: { label: "选择进度", value: "0%", detail: "完成首次选择题后生成进度" }
+    },
+    "new-choice": {
+      achievements: [],
+      dictation: { label: "听写进度", value: "0%", detail: "完成首次测验后生成进度" },
+      choice: { label: "选择进度", value: "5%", detail: "已完成首次选择演示题" }
     }
   } as const;
   const selected = presentation[profile];

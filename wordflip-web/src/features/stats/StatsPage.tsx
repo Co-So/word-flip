@@ -53,9 +53,11 @@ export function StatsPage() {
             </div>
           </Panel>
           <Panel title="成就">
-            <ul className={styles.achievements}>{summary.achievements.map((achievement) =>
-              <li key={achievement.achievementId}><strong>{achievement.title}</strong><span>{achievement.description}</span></li>
-            )}</ul>
+            {summary.achievements.length ? (
+              <ul className={styles.achievements}>{summary.achievements.map((achievement) =>
+                <li key={achievement.achievementId}><strong>{achievement.title}</strong><span>{achievement.description}</span></li>
+              )}</ul>
+            ) : <p className={styles.emptyAchievements}>还没有解锁成就</p>}
           </Panel>
         </div>
       </> : null}
