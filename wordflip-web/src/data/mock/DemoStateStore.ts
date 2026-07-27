@@ -46,7 +46,10 @@ function isLearningCard(value: unknown): value is LearningCard {
     typeof value.cardId === "string" &&
     typeof value.wordKey === "string" &&
     typeof value.headword === "string" &&
+    typeof value.phonetic === "string" &&
     typeof value.definition === "string" &&
+    typeof value.example === "string" &&
+    typeof value.imageDescription === "string" &&
     isRecord(value.progress) &&
     isSkillProgress(value.progress.dictation, "dictation") &&
     isSkillProgress(value.progress.choice, "choice")
@@ -59,6 +62,34 @@ function isLearningPlan(value: unknown): value is LearningPlan {
 
 function isBook(value: unknown): value is Book {
   return isRecord(value) && typeof value.bookId === "string" && typeof value.title === "string" && isNumber(value.cardCount);
+}
+
+function isTodaySnapshot(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNumber(value.dueCount) &&
+    isNumber(value.masteredCount) &&
+    isNumber(value.reviewedCount) &&
+    isNumber(value.completionRate) &&
+    typeof value.currentBookTitle === "string" &&
+    Array.isArray(value.recentStudy) &&
+    value.recentStudy.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.cardId === "string" &&
+        typeof item.headword === "string" &&
+        typeof item.definition === "string" &&
+        typeof item.reviewedAtLabel === "string"
+    ) &&
+    Array.isArray(value.tasks) &&
+    value.tasks.every(
+      (task) =>
+        isRecord(task) &&
+        typeof task.taskId === "string" &&
+        typeof task.title === "string" &&
+        typeof task.description === "string"
+    )
+  );
 }
 
 function isPlanState(value: unknown): boolean {
@@ -91,31 +122,7 @@ function isPlanState(value: unknown): boolean {
   if (cardIdsByWordKey.size !== Object.keys(byCardId).length || !Object.keys(byCardId).every((cardId) => cardIdsByWordKey.has(cardId))) {
     return false;
   }
-  if (
-    !isRecord(value.today) ||
-    !isNumber(value.today.dueCount) ||
-    !isNumber(value.today.masteredCount) ||
-    !isNumber(value.today.reviewedCount) ||
-    !isNumber(value.today.completionRate) ||
-    typeof value.today.currentBookTitle !== "string" ||
-    !Array.isArray(value.today.recentStudy) ||
-    !value.today.recentStudy.every(
-      (item) =>
-        isRecord(item) &&
-        typeof item.cardId === "string" &&
-        typeof item.headword === "string" &&
-        typeof item.definition === "string" &&
-        typeof item.reviewedAtLabel === "string"
-    ) ||
-    !Array.isArray(value.today.tasks) ||
-    !value.today.tasks.every(
-      (task) =>
-        isRecord(task) &&
-        typeof task.taskId === "string" &&
-        typeof task.title === "string" &&
-        typeof task.description === "string"
-    )
-  ) {
+  if (!isTodaySnapshot(value.today)) {
     return false;
   }
   if (
@@ -126,7 +133,24 @@ function isPlanState(value: unknown): boolean {
   ) {
     return false;
   }
-  if (!isRecord(value.study) || !isRecord(value.study.sessions) || !Object.values(value.study.sessions).every((session) => isRecord(session) && typeof session.sessionId === "string" && (session.status === "active" || session.status === "completed"))) {
+  if (
+    !isRecord(value.study) ||
+    !isRecord(value.study.sessions) ||
+    !Object.values(value.study.sessions).every(
+      (session) =>
+        isRecord(session) &&
+        typeof session.sessionId === "string" &&
+        (session.status === "active" || session.status === "completed") &&
+        Array.isArray(session.cardIds) &&
+        session.cardIds.every((cardId) => typeof cardId === "string") &&
+        typeof session.progressLabel === "string" &&
+        Array.isArray(session.queueSummary) &&
+        session.queueSummary.every(
+          (item) => isRecord(item) && typeof item.label === "string" && typeof item.value === "string"
+        )
+    ) ||
+    !isTodaySnapshot(value.study.afterStudySession)
+  ) {
     return false;
   }
   if (!isRecord(value.quiz) || (value.quiz.mode !== null && value.quiz.mode !== "dictation" && value.quiz.mode !== "choice")) {

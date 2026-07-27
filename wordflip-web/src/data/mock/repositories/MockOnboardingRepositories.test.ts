@@ -26,6 +26,9 @@ test("重复保存已有首次设置计划不会覆盖其历史分区", async ()
   const input = { bookId: "book-ielts", groupSize: 30 as const, groupStrategy: "book_order" as const };
 
   const plan = await repositories.settings.saveOnboarding(input);
+  expect((await repositories.study.getSession("study-demo")).cardIds).toEqual([
+    "card-ielts-sustainable"
+  ]);
   store.update((draft) => {
     draft.planStates[plan.planId].groups.items[0].cardIds.push("card-history-sentinel");
     draft.planStates[plan.planId].today.reviewedCount = 99;

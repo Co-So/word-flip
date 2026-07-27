@@ -13,15 +13,16 @@ function currentPlanState(store: ReturnType<typeof createStore>) {
 }
 
 describe("DemoStateStore", () => {
-  test("学习完成不改变任一 skill 的掌握度", () => {
+  test("学习完成不改变 cardId 下任一 skill 的掌握度", async () => {
     const store = createStore();
-    const before = currentPlanState(store).cards.byWordKey.sustainable.progress;
+    const repositories = createMockRepositoryBundle(store);
+    const before = structuredClone(
+      currentPlanState(store).cards.byCardId["card-sustainable"].progress
+    );
 
-    store.update((draft) => {
-      draft.planStates[draft.books.activePlanId!].study.sessions.demo.status = "completed";
-    });
+    await repositories.study.completeSession("study-demo");
 
-    expect(currentPlanState(store).cards.byWordKey.sustainable.progress).toEqual(before);
+    expect(currentPlanState(store).cards.byCardId["card-sustainable"].progress).toEqual(before);
   });
 
   test("测验结果只更新指定 skill", () => {
@@ -101,6 +102,18 @@ describe("DemoStateStore", () => {
 
     expect(store.read().clock.today).toBe("2026-07-23");
     expect(JSON.parse(window.localStorage.getItem("wordflip.web.demo.v1") ?? "{}").schemaVersion).toBe(1);
+  });
+
+  test("同版本但学习完成快照截断时恢复固定种子", () => {
+    const persisted = createDemoState();
+    const plan = persisted.planStates["plan-core"];
+    plan.study.afterStudySession = {} as typeof plan.study.afterStudySession;
+    plan.today.masteredCount = 999;
+    window.localStorage.setItem("wordflip.web.demo.v1", JSON.stringify(persisted));
+
+    const store = createStore();
+
+    expect(currentPlanState(store).today.masteredCount).toBe(126);
   });
 
   test("同版本但 cardId 索引键错误的持久化状态会恢复固定种子", () => {

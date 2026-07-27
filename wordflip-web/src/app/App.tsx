@@ -8,6 +8,8 @@ import { BooksPage } from "@/features/books/BooksPage";
 import { BookDetailPage } from "@/features/books/BookDetailPage";
 import { GroupsPage } from "@/features/groups/GroupsPage";
 import { GroupDetailPage } from "@/features/groups/GroupDetailPage";
+import { StudyCompletePage } from "@/features/study/StudyCompletePage";
+import { StudyPage } from "@/features/study/StudyPage";
 import { AppShell } from "@/layouts/AppShell/AppShell";
 
 export function App() {
@@ -24,6 +26,14 @@ export function App() {
         { path: "/groups", element: <GroupsPage /> },
         { path: "/groups/:groupId", element: <GroupDetailPage /> }
       ]
+    },
+    {
+      path: "/study/:sessionId",
+      element: <RequireAuth><RequireOnboarding><StudyPage /></RequireOnboarding></RequireAuth>
+    },
+    {
+      path: "/study/:sessionId/complete",
+      element: <RequireAuth><RequireOnboarding><StudyCompletePage /></RequireOnboarding></RequireAuth>
     },
     { path: "*", element: <Navigate replace to="/today" /> }
   ]);

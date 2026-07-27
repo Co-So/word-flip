@@ -65,7 +65,7 @@ export function TodayPage() {
               <StatusTag tone="terracotta">待完成</StatusTag>
             </li>)}
           </ul>
-          <Link className={styles.primaryLink} to="/study/demo">开始今日学习</Link>
+          <Link className={styles.primaryLink} to="/study/study-demo">开始今日学习</Link>
         </Panel>
 
         <Panel title="最近学习">

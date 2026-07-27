@@ -12,6 +12,10 @@ test("今日页只展示当前计划的四项固定摘要和最多三条最近�
   expect(screen.getByText("当前计划 · 核心词汇")).toBeVisible();
   expect(screen.getAllByRole("listitem", { name: /最近学习/ })).toHaveLength(3);
   expect(screen.getByText("MOCK DATA · READY")).toBeVisible();
+  expect(screen.getByRole("link", { name: "开始今日学习" })).toHaveAttribute(
+    "href",
+    "/study/study-demo"
+  );
 });
 
 test("无今日任务时显示完成反馈并可浏览词书", async () => {

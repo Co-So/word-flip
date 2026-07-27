@@ -7,6 +7,7 @@ import { MockAuthRepository } from "@/data/mock/repositories/MockAuthRepository"
 import { MockBookRepository } from "@/data/mock/repositories/MockBookRepository";
 import { MockGroupRepository } from "@/data/mock/repositories/MockGroupRepository";
 import { MockSettingsRepository } from "@/data/mock/repositories/MockSettingsRepository";
+import { MockStudyRepository } from "@/data/mock/repositories/MockStudyRepository";
 import { MockTodayRepository } from "@/data/mock/repositories/MockTodayRepository";
 
 export const FIXED_DICTATION_RESULT: PrecomputedQuizResult = {
@@ -85,28 +86,7 @@ export function createMockRepositoryBundle(store: DemoStateStore): RepositoryBun
     books: new MockBookRepository(store),
     groups: new MockGroupRepository(store),
     today: new MockTodayRepository(store),
-    study: {
-      getCards: () => {
-        const plan = currentPlan(store);
-        return plan ? Promise.resolve(Object.values(plan.cards.byCardId)) : Promise.reject(noActivePlan());
-      },
-      getSession: (sessionId) => {
-        const plan = currentPlan(store);
-        const session = plan?.study.sessions[sessionId];
-        return session ? Promise.resolve(session) : Promise.reject(plan ? notFound("找不到学习会话") : noActivePlan());
-      },
-      completeSession: (sessionId) => {
-        const plan = currentPlan(store);
-        if (!plan?.study.sessions[sessionId]) {
-          return Promise.reject(plan ? notFound("找不到学习会话") : noActivePlan());
-        }
-        // 完成学习仅更新会话展示状态，不写任一 skill 记忆。
-        store.updateActivePlan((draft) => {
-          draft.study.sessions[sessionId].status = "completed";
-        });
-        return Promise.resolve(currentPlan(store)!.study.sessions[sessionId]);
-      }
-    },
+    study: new MockStudyRepository(store),
     quiz: {
       submitAnswer: (submission) => {
         const plan = currentPlan(store);

@@ -5,4 +5,4 @@
 .header h1 { font-size: 20px; margin: 0; }
 .main { align-self: center; margin: 0 auto; max-width: 720px; min-width: 0; padding: 32px 42px; width: 100%; }
 .aside { border-left: 1px solid var(--wf-border); padding: 32px; }
-@media (max-width: 760px) { .shell { display: block; padding: 16px; } .main { padding: 34px 0; } .aside { border-left: 0; border-top: 1px solid var(--wf-border); padding: 24px 0; } }
+@media (max-width: 900px) { .shell { display: block; padding: 16px; } .main { padding: 34px 0; } .aside { border-left: 0; border-top: 1px solid var(--wf-border); padding: 24px 0; } }

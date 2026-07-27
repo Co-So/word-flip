@@ -24,7 +24,7 @@ export interface PlanDemoState {
   cards: { byCardId: Record<string, LearningCard>; byWordKey: Record<string, LearningCard> };
   today: TodaySummary;
   bookProgress: BookProgress;
-  study: { sessions: Record<string, StudySession> };
+  study: { sessions: Record<string, StudySession>; afterStudySession: TodaySummary };
   quiz: { mode: "dictation" | "choice" | null };
   media: { byCardId: Record<string, CardMedia> };
   stats: StatsSummary;
@@ -43,10 +43,27 @@ const sustainableCard: LearningCard = {
   cardId: "card-sustainable",
   wordKey: "sustainable",
   headword: "sustainable",
+  phonetic: "/səˈsteɪnəbl/",
   definition: "可持续的",
+  example: "The city needs a sustainable transport plan.",
+  imageDescription: "树木与城市建筑交叠的可持续发展图像占位",
   progress: {
     dictation: { skill: "dictation", state: "fuzzy", stability: 12, heatLevel: 2, lastQuizSucceeded: false },
     choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
+  }
+};
+
+const infrastructureCard: LearningCard = {
+  cardId: "card-infrastructure",
+  wordKey: "infrastructure",
+  headword: "infrastructure",
+  phonetic: "/ˈɪnfrəstrʌktʃər/",
+  definition: "基础设施",
+  example: "Reliable infrastructure keeps the city connected.",
+  imageDescription: "桥梁与城市道路组成的基础设施图像占位",
+  progress: {
+    dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
+    choice: { skill: "choice", state: "fuzzy", stability: 5, heatLevel: 1, lastQuizSucceeded: true }
   }
 };
 
@@ -54,7 +71,10 @@ const resilientCard: LearningCard = {
   cardId: "card-resilient",
   wordKey: "resilient",
   headword: "resilient",
+  phonetic: "/rɪˈzɪliənt/",
   definition: "有韧性的",
+  example: "Resilient communities recover together.",
+  imageDescription: "风中仍然挺立的树木图像占位",
   progress: {
     dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
     choice: { skill: "choice", state: "fuzzy", stability: 6, heatLevel: 1, lastQuizSucceeded: true }
@@ -65,7 +85,10 @@ const urbanCard: LearningCard = {
   cardId: "card-urban",
   wordKey: "urban",
   headword: "urban",
+  phonetic: "/ˈɜːrbən/",
   definition: "城市的",
+  example: "Urban gardens bring nature closer to home.",
+  imageDescription: "屋顶花园与城市天际线图像占位",
   progress: {
     dictation: { skill: "dictation", state: "unknown", stability: 18, heatLevel: 1, lastQuizSucceeded: true },
     choice: { skill: "choice", state: "fuzzy", stability: 9, heatLevel: 1, lastQuizSucceeded: true }
@@ -76,7 +99,10 @@ const ecologyCard: LearningCard = {
   cardId: "card-ecology",
   wordKey: "ecology",
   headword: "ecology",
+  phonetic: "/iˈkɑːlədʒi/",
   definition: "生态学",
+  example: "Ecology explains how living systems interact.",
+  imageDescription: "叶片与水系构成的生态学图像占位",
   progress: {
     dictation: { skill: "dictation", state: "fuzzy", stability: 8, heatLevel: 1, lastQuizSucceeded: false },
     choice: { skill: "choice", state: "unknown", stability: 22, heatLevel: 1, lastQuizSucceeded: true }
@@ -87,6 +113,8 @@ function createPlanState(
   cardSources: LearningCard[],
   group: WordGroup,
   today: TodaySummary,
+  afterStudySession: TodaySummary,
+  studySession: StudySession,
   bookProgress: BookProgress
 ): PlanDemoState {
   const cards = cardSources.map((card) => structuredClone(card));
@@ -97,7 +125,10 @@ function createPlanState(
     cards: { byCardId, byWordKey },
     today,
     bookProgress,
-    study: { sessions: { demo: { sessionId: "demo", status: "active" } } },
+    study: {
+      sessions: { [studySession.sessionId]: structuredClone(studySession) },
+      afterStudySession: structuredClone(afterStudySession)
+    },
     quiz: { mode: null },
     media: {
       byCardId: Object.fromEntries(
@@ -133,7 +164,7 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
     },
     planStates: {
       [corePlan.planId]: createPlanState(
-        [sustainableCard, urbanCard, ecologyCard],
+        [sustainableCard, infrastructureCard, urbanCard, ecologyCard],
         { groupId: "group-12", name: "第 12 组 · 城市与环境", cardIds: [sustainableCard.cardId] },
         {
           dueCount: 24,
@@ -151,6 +182,39 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
             { taskId: "task-group", title: "继续第 12 组", description: "城市与环境主题" }
           ]
         },
+        {
+          dueCount: 24,
+          masteredCount: 126,
+          reviewedCount: 25,
+          completionRate: 100,
+          currentBookTitle: corePlan.title,
+          recentStudy: [
+            {
+              cardId: infrastructureCard.cardId,
+              headword: infrastructureCard.headword,
+              definition: infrastructureCard.definition,
+              reviewedAtLabel: "刚刚"
+            },
+            { cardId: sustainableCard.cardId, headword: sustainableCard.headword, definition: sustainableCard.definition, reviewedAtLabel: "8 分钟前" },
+            { cardId: urbanCard.cardId, headword: urbanCard.headword, definition: urbanCard.definition, reviewedAtLabel: "26 分钟前" },
+            { cardId: ecologyCard.cardId, headword: ecologyCard.headword, definition: ecologyCard.definition, reviewedAtLabel: "昨天" }
+          ],
+          tasks: [
+            { taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" },
+            { taskId: "task-group", title: "继续第 12 组", description: "城市与环境主题" }
+          ]
+        },
+        {
+          sessionId: "study-demo",
+          status: "active",
+          cardIds: [sustainableCard.cardId, infrastructureCard.cardId, urbanCard.cardId],
+          progressLabel: "18 / 25 WORDS",
+          queueSummary: [
+            { label: "新词", value: "7" },
+            { label: "待巩固", value: "10" },
+            { label: "已浏览", value: "8" }
+          ]
+        },
         { learnedCount: 126, publishedCardCount: 300, completionRate: 42 }
       ),
       [advancedPlan.planId]: createPlanState(
@@ -166,6 +230,28 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
             { cardId: resilientCard.cardId, headword: resilientCard.headword, definition: resilientCard.definition, reviewedAtLabel: "昨天" }
           ],
           tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
+        },
+        {
+          dueCount: 9,
+          masteredCount: 42,
+          reviewedCount: 7,
+          completionRate: 44,
+          currentBookTitle: advancedPlan.title,
+          recentStudy: [
+            { cardId: resilientCard.cardId, headword: resilientCard.headword, definition: resilientCard.definition, reviewedAtLabel: "刚刚" }
+          ],
+          tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
+        },
+        {
+          sessionId: "study-demo",
+          status: "active",
+          cardIds: [resilientCard.cardId],
+          progressLabel: "6 / 10 WORDS",
+          queueSummary: [
+            { label: "新词", value: "4" },
+            { label: "待巩固", value: "3" },
+            { label: "已浏览", value: "3" }
+          ]
         },
         { learnedCount: 42, publishedCardCount: 180, completionRate: 23 }
       )
@@ -195,7 +281,7 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
     state.planStates = {};
   }
   if (scenario === "quiz-complete") {
-    activePlan.study.sessions.demo.status = "completed";
+    activePlan.study.sessions["study-demo"].status = "completed";
   }
   if (scenario === "quiz-dictation" || scenario === "quiz-choice") {
     activePlan.quiz.mode = scenario === "quiz-dictation" ? "dictation" : "choice";
