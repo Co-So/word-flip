@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderAuthenticatedApp } from "@/test/renderApp";
+import { renderAuthenticatedApp, renderScenarioApp } from "@/test/renderApp";
 
 test("空格翻面，方向键切词并在切词后恢复正面", async () => {
   const user = userEvent.setup();
@@ -29,8 +29,10 @@ test("完成学习只回放固定会话和今日快照，不改变 cardId 下的
   const user = userEvent.setup();
   const app = renderAuthenticatedApp("/study/study-demo");
   const beforeState = app.store.read();
-  const beforeProgress = structuredClone(
-    beforeState.planStates["plan-core"].cards.byCardId["card-sustainable"].progress
+  const beforeProgressByCardId = Object.fromEntries(
+    Object.entries(beforeState.planStates["plan-core"].cards.byCardId).map(
+      ([cardId, card]) => [cardId, structuredClone(card.progress)]
+    )
   );
   const beforeToday = structuredClone(beforeState.planStates["plan-core"].today);
 
@@ -54,7 +56,13 @@ test("完成学习只回放固定会话和今日快照，不改变 cardId 下的
         ...beforeToday.recentStudy
       ]
     });
-    expect(afterPlan.cards.byCardId["card-sustainable"].progress).toEqual(beforeProgress);
+    expect(
+      Object.fromEntries(
+        Object.entries(afterPlan.cards.byCardId).map(
+          ([cardId, card]) => [cardId, card.progress]
+        )
+      )
+    ).toEqual(beforeProgressByCardId);
   });
   expect(screen.getByRole("link", { name: "返回 Today" })).toHaveAttribute("href", "/today");
   expect(screen.getByRole("link", { name: "进入 Quiz" })).toHaveAttribute("href", "/quiz");
@@ -92,4 +100,47 @@ test("点击与聚焦卡片后的 Enter 各翻转一次", async () => {
   await user.keyboard("{Enter}");
 
   expect(screen.queryByText("可持续的")).not.toBeInTheDocument();
+});
+
+test("完成按钮聚焦时 Enter 使用原生激活并完成会话", async () => {
+  const user = userEvent.setup();
+  renderAuthenticatedApp("/study/study-demo");
+  const complete = await screen.findByRole("button", { name: "完成学习" });
+
+  complete.focus();
+  await user.keyboard("{Enter}");
+
+  expect(await screen.findByRole("heading", { name: "本次学习已完成" })).toBeVisible();
+});
+
+test("下一词与退出按钮的标准键盘激活不被学习快捷键拦截", async () => {
+  const user = userEvent.setup();
+  renderAuthenticatedApp("/study/study-demo");
+  const next = await screen.findByRole("button", { name: "下一词" });
+
+  next.focus();
+  await user.keyboard(" ");
+  expect(await screen.findByRole("heading", { name: "infrastructure" })).toBeVisible();
+
+  const exit = screen.getByRole("button", { name: "退出" });
+  exit.focus();
+  await user.keyboard("{Enter}");
+  expect(await screen.findByRole("heading", { name: "今天继续前进" })).toBeVisible();
+});
+
+test("直达 active 会话的完成路由会返回学习页", async () => {
+  renderAuthenticatedApp("/study/study-demo/complete");
+
+  expect(await screen.findByRole("heading", { name: "sustainable" })).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "本次学习已完成" })).not.toBeInTheDocument();
+});
+
+test("完成页从不存在会话导航到有效 completed 会话后清除错误", async () => {
+  const app = renderScenarioApp("quiz-complete", "/study/missing-session/complete");
+  expect(await screen.findByText("找不到学习会话")).toBeVisible();
+
+  await app.navigate("/study/study-demo/complete");
+
+  expect(await screen.findByRole("heading", { name: "本次学习已完成" })).toBeVisible();
+  expect(screen.queryByText("找不到学习会话")).not.toBeInTheDocument();
 });

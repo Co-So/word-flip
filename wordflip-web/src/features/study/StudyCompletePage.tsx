@@ -20,15 +20,25 @@ export function StudyCompletePage() {
 
   useEffect(() => {
     let active = true;
+    setSession(null);
+    setError(null);
     study.getSession(sessionId)
       .then((snapshot) => {
-        if (active) setSession(snapshot);
+        if (!active) return;
+        if (snapshot.status !== "completed") {
+          navigate(`/study/${sessionId}`, { replace: true });
+          return;
+        }
+        setSession(snapshot);
+        setError(null);
       })
       .catch((reason) => {
-        if (active) setError(errorMessage(reason));
+        if (!active) return;
+        setSession(null);
+        setError(errorMessage(reason));
       });
     return () => { active = false; };
-  }, [sessionId, study]);
+  }, [navigate, sessionId, study]);
 
   return (
     <FocusShell

@@ -14,10 +14,12 @@ function errorMessage(error: unknown): string {
   return (error as AppError).message ?? "暂时无法获取学习会话";
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
+function isInteractiveTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
-    target.matches("input, textarea, select") ||
+    target.closest(
+      "button, a[href], input, textarea, select, summary, [contenteditable]:not([contenteditable='false']), [role='button'], [role='link'], [role='checkbox'], [role='radio'], [role='switch'], [role='slider'], [role='textbox'], [tabindex]:not([tabindex='-1'])"
+    ) !== null ||
     target.isContentEditable ||
     target.closest("[contenteditable]:not([contenteditable='false'])") !== null
   );
@@ -68,8 +70,8 @@ export function StudyPage() {
   useEffect(() => {
     if (!session || session.cards.length === 0) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isEditableTarget(event.target)) return;
-      if (event.key === " " || event.key === "Enter") {
+      if (isInteractiveTarget(event.target)) return;
+      if (event.key === " ") {
         event.preventDefault();
         flipCard();
       } else if (event.key === "ArrowRight") {
