@@ -7,7 +7,7 @@ export function createAppRouter(): AppRouter {
   return createBrowserRouter(
     [
       {
-        path: "/",
+        path: "*",
         element: <App />
       }
     ],

@@ -3,6 +3,8 @@ import type { DemoStateStore } from "@/data/mock/DemoStateStore";
 import type { PlanDemoState } from "@/data/mock/createDemoState";
 import type { AppError } from "@/data/contracts/AppError";
 import type { PrecomputedQuizResult } from "@/domain/quiz";
+import { MockAuthRepository } from "@/data/mock/repositories/MockAuthRepository";
+import { MockSettingsRepository } from "@/data/mock/repositories/MockSettingsRepository";
 
 export const FIXED_DICTATION_RESULT: PrecomputedQuizResult = {
   wordKey: "sustainable",
@@ -50,24 +52,8 @@ function unavailable(message: string): AppError {
 /** 供视觉演示和测试注入的仓储实现；它只回放服务端固定快照，便于替换为 HTTP 仓储。 */
 export function createMockRepositoryBundle(store: DemoStateStore): RepositoryBundle {
   return {
-    auth: {
-      getSession: () => Promise.resolve(store.read().auth.session),
-      signOut: () => {
-        store.update((draft) => {
-          draft.auth.session = null;
-        });
-        return Promise.resolve({ signedOut: true as const });
-      }
-    },
-    settings: {
-      getSettings: () => Promise.resolve(store.read().settings),
-      updateSettings: (settings) => {
-        store.update((draft) => {
-          draft.settings = structuredClone(settings);
-        });
-        return Promise.resolve(store.read().settings);
-      }
-    },
+    auth: new MockAuthRepository(store),
+    settings: new MockSettingsRepository(store),
     books: {
       listBooks: () => Promise.resolve(store.read().books.items),
       getActivePlan: () => {

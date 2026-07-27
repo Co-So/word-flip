@@ -1,0 +1,11 @@
+.flow { display: grid; gap: 14px; }
+.flow h1 { font-size: clamp(28px, 7vw, 38px); letter-spacing: -.04em; margin: 0; }
+.flow p { color: var(--wf-text-muted); margin: 0; }
+.eyebrow { color: var(--wf-sage) !important; font-size: 12px; font-weight: 750; letter-spacing: .12em; }
+.flow form { display: grid; gap: 14px; margin-top: 8px; }
+.flow label { color: var(--wf-text); display: grid; font-size: 14px; font-weight: 650; gap: 6px; }
+.flow input, .flow select { background: var(--wf-surface); border: 1px solid var(--wf-border); border-radius: var(--wf-radius-control); color: var(--wf-text); min-height: 42px; padding: 0 11px; }
+.flow form button { min-height: 44px; margin-top: 4px; }
+.error { background: #f4d4d1; border-radius: var(--wf-radius-control); color: var(--wf-error) !important; padding: 10px 12px; }
+.footer { font-size: 14px; }
+.footer a { color: var(--wf-sage); font-weight: 700; margin-left: 4px; }

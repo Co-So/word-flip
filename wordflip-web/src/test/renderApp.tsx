@@ -1,38 +1,40 @@
+/* eslint-disable react-refresh/only-export-components -- 测试导航桥与渲染辅助必须放在同一模块。 */
 import { act, render, type RenderResult } from "@testing-library/react";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { App } from "@/app/App";
 import { AppProviders } from "@/app/AppProviders";
 import { createMockRepositoryBundle } from "@/data/mock/fixtures";
 import { DemoStateStore } from "@/data/mock/DemoStateStore";
-import { createDemoState, type DemoScenario } from "@/data/mock/createDemoState";
+import { createDemoState, type DemoScenario, type DemoState } from "@/data/mock/createDemoState";
 import { RepositoryProvider } from "@/data/runtime/RepositoryContext";
 
 export interface TestAppHandle extends RenderResult {
   store: DemoStateStore;
-  router: ReturnType<typeof createMemoryRouter>;
   navigate: (to: string) => Promise<void>;
+}
+
+function NavigationBridge({ onReady }: { onReady: (navigate: ReturnType<typeof useNavigate>) => void }) {
+  onReady(useNavigate());
+  return null;
 }
 
 function renderTestApp({
   route,
-  scenario,
-  authenticated
+  initialState
 }: {
   route: string;
-  scenario: DemoScenario;
-  authenticated: boolean;
+  initialState: DemoState;
 }): TestAppHandle {
-  const state = createDemoState(authenticated ? scenario : "logged-out");
-  const store = new DemoStateStore({ initialState: state, storage: null });
+  const store = new DemoStateStore({ initialState, storage: null });
   const repositories = createMockRepositoryBundle(store);
-  const router = createMemoryRouter([{ path: "*", element: <App /> }], {
-    initialEntries: [route],
-    future: { v7_relativeSplatPath: true }
-  });
+  let navigate: ReturnType<typeof useNavigate> | null = null;
   const result = render(
     <AppProviders>
       <RepositoryProvider repositories={repositories}>
-        <RouterProvider router={router} future={{ v7_startTransition: true }} />
+        <MemoryRouter initialEntries={[route]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+          <NavigationBridge onReady={(nextNavigate) => { navigate = nextNavigate; }} />
+          <App />
+        </MemoryRouter>
       </RepositoryProvider>
     </AppProviders>
   );
@@ -40,23 +42,26 @@ function renderTestApp({
   return {
     ...result,
     store,
-    router,
     navigate: async (to) => {
       await act(async () => {
-        await router.navigate(to);
+        navigate?.(to);
       });
     }
   };
 }
 
 export function renderAuthenticatedApp(route: string): TestAppHandle {
-  return renderTestApp({ route, scenario: "configured", authenticated: true });
+  return renderTestApp({ route, initialState: createDemoState("configured") });
 }
 
 export function renderScenarioApp(scenario: DemoScenario, route: string): TestAppHandle {
-  return renderTestApp({ route, scenario, authenticated: scenario !== "logged-out" });
+  return renderTestApp({ route, initialState: createDemoState(scenario) });
 }
 
 export function renderApp(route: string): TestAppHandle {
   return renderAuthenticatedApp(route);
+}
+
+export function renderStateApp(initialState: DemoState, route: string): TestAppHandle {
+  return renderTestApp({ route, initialState });
 }

@@ -86,11 +86,12 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
           ? null
           : { userId: "demo-user", displayName: "演示用户", authenticated: true }
     },
-    settings: { soundEnabled: true, reducedMotion: false },
+    settings: { soundEnabled: true, reducedMotion: false, groupSize: 20 },
     books: {
       activePlanId: corePlan.planId,
       plans: [corePlan, advancedPlan],
       items: [
+        { bookId: "book-ielts", title: "雅思核心词汇", cardCount: 3000 },
         { bookId: corePlan.bookId, title: corePlan.title, cardCount: 300 },
         { bookId: advancedPlan.bookId, title: advancedPlan.title, cardCount: 180 }
       ]
