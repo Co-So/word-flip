@@ -2,9 +2,15 @@ import type { AppError } from "@/data/contracts/AppError";
 import { createDemoState, type DemoState, type PlanDemoState } from "@/data/mock/createDemoState";
 import type { LearningCard } from "@/domain/learning";
 import type { Book, LearningPlan } from "@/domain/books";
-import type { PrecomputedQuizResult, QuizSkill } from "@/domain/quiz";
+import type {
+  PrecomputedQuizResult,
+  QuizIdempotencyRecord,
+  QuizSession,
+  QuizSessionResult,
+  QuizSkill
+} from "@/domain/quiz";
 
-export const DEMO_STORAGE_KEY = "wordflip.web.demo.v1";
+export const DEMO_STORAGE_KEY = "wordflip.web.demo.v2";
 
 export interface DemoStateStoreOptions {
   initialState?: DemoState;
@@ -92,6 +98,119 @@ function isTodaySnapshot(value: unknown): boolean {
   );
 }
 
+function isStatsSnapshot(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNumber(value.totalReviewed) &&
+    isNumber(value.retentionRate) &&
+    isNumber(value.streakDays)
+  );
+}
+
+function isQuizSession(value: unknown): value is QuizSession {
+  if (
+    !isRecord(value) ||
+    typeof value.sessionId !== "string" ||
+    (value.status !== "active" && value.status !== "completed") ||
+    (value.skill !== "dictation" && value.skill !== "choice") ||
+    (value.scope !== "current-plan" && value.scope !== "due-today") ||
+    !isNumber(value.totalQuestions) ||
+    !isNumber(value.currentIndex) ||
+    !isNumber(value.score) ||
+    typeof value.progressLabel !== "string" ||
+    !isRecord(value.question)
+  ) {
+    return false;
+  }
+  const question = value.question;
+  return (
+    typeof question.questionId === "string" &&
+    isNumber(question.questionIndex) &&
+    typeof question.cardId === "string" &&
+    question.skill === value.skill &&
+    typeof question.prompt === "string" &&
+    typeof question.hint === "string" &&
+    (question.options === undefined ||
+      (Array.isArray(question.options) &&
+        question.options.every(
+          (option) =>
+            isRecord(option) &&
+            typeof option.key === "string" &&
+            typeof option.label === "string"
+        )))
+  );
+}
+
+function isQuizSkillSummary(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.label === "string" &&
+    isNumber(value.attempted) &&
+    isNumber(value.correct) &&
+    typeof value.progressLabel === "string"
+  );
+}
+
+function isQuizSessionResult(value: unknown): value is QuizSessionResult {
+  return (
+    isRecord(value) &&
+    typeof value.sessionId === "string" &&
+    value.status === "completed" &&
+    isNumber(value.score) &&
+    isNumber(value.total) &&
+    isNumber(value.accuracy) &&
+    (value.rating === "excellent" || value.rating === "good" || value.rating === "keep_going") &&
+    isQuizSkillSummary(value.dictation) &&
+    isQuizSkillSummary(value.choice)
+  );
+}
+
+function isPrecomputedQuizResult(value: unknown): value is PrecomputedQuizResult {
+  return (
+    isRecord(value) &&
+    typeof value.cardId === "string" &&
+    (value.skill === "dictation" || value.skill === "choice") &&
+    isSkillProgress(value.next, value.skill) &&
+    typeof value.correct === "boolean" &&
+    typeof value.feedback === "string" &&
+    (value.expectedAnswer === null || typeof value.expectedAnswer === "string") &&
+    isQuizSession(value.sessionSnapshot) &&
+    isQuizSessionResult(value.resultSnapshot) &&
+    isTodaySnapshot(value.dashboardSnapshot) &&
+    isStatsSnapshot(value.statsSnapshot)
+  );
+}
+
+function isQuizIdempotencyRecord(value: unknown): value is QuizIdempotencyRecord {
+  if (
+    !isRecord(value) ||
+    typeof value.requestId !== "string" ||
+    typeof value.userId !== "string" ||
+    typeof value.planId !== "string" ||
+    typeof value.sessionId !== "string" ||
+    typeof value.questionId !== "string" ||
+    typeof value.cardId !== "string" ||
+    typeof value.answer !== "string" ||
+    !isRecord(value.response)
+  ) {
+    return false;
+  }
+  return (
+    value.response.requestId === value.requestId &&
+    value.response.accepted === true &&
+    typeof value.response.correct === "boolean" &&
+    typeof value.response.feedback === "string" &&
+    (value.response.expectedAnswer === null || typeof value.response.expectedAnswer === "string") &&
+    isPrecomputedQuizResult(value.response.precomputed) &&
+    value.response.correct === value.response.precomputed.correct &&
+    value.response.feedback === value.response.precomputed.feedback &&
+    value.response.expectedAnswer === value.response.precomputed.expectedAnswer &&
+    value.sessionId === value.response.precomputed.sessionSnapshot.sessionId &&
+    value.questionId === value.response.precomputed.sessionSnapshot.question.questionId &&
+    value.cardId === value.response.precomputed.cardId
+  );
+}
+
 function isPlanState(value: unknown): boolean {
   if (!isRecord(value) || !isRecord(value.groups) || !Array.isArray(value.groups.items)) {
     return false;
@@ -153,18 +272,40 @@ function isPlanState(value: unknown): boolean {
   ) {
     return false;
   }
-  if (!isRecord(value.quiz) || (value.quiz.mode !== null && value.quiz.mode !== "dictation" && value.quiz.mode !== "choice")) {
+  if (
+    !isRecord(value.quiz) ||
+    !isRecord(value.quiz.sessions) ||
+    !Object.entries(value.quiz.sessions).every(
+      ([sessionId, session]) =>
+        isQuizSession(session) &&
+        session.sessionId === sessionId &&
+        byCardId[session.question.cardId] !== undefined
+    ) ||
+    !isRecord(value.quiz.results) ||
+    !Object.entries(value.quiz.results).every(
+      ([sessionId, result]) =>
+        isQuizSessionResult(result) &&
+        result.sessionId === sessionId &&
+        value.quiz !== null &&
+        isRecord(value.quiz) &&
+        isRecord(value.quiz.sessions) &&
+        isQuizSession(value.quiz.sessions[sessionId]) &&
+        value.quiz.sessions[sessionId].status === "completed"
+    ) ||
+    !Array.isArray(value.quiz.idempotency) ||
+    !value.quiz.idempotency.every(isQuizIdempotencyRecord)
+  ) {
     return false;
   }
   if (!isRecord(value.media) || !isRecord(value.media.byCardId) || !Object.values(value.media.byCardId).every((media) => isRecord(media) && typeof media.cardId === "string" && (media.imageUrl === null || typeof media.imageUrl === "string") && (media.stainLevel === 0 || media.stainLevel === 1 || media.stainLevel === 2 || media.stainLevel === 3))) {
     return false;
   }
-  return isRecord(value.stats) && isNumber(value.stats.totalReviewed) && isNumber(value.stats.retentionRate) && isNumber(value.stats.streakDays);
+  return isStatsSnapshot(value.stats);
 }
 
 /** 校验同版本数据的完整形状，避免截断 payload 通过版本检查后污染运行态。 */
 function isCompatibleState(value: unknown): value is DemoState {
-  if (!isRecord(value) || value.schemaVersion !== 1 || !isRecord(value.clock) || typeof value.clock.today !== "string") {
+  if (!isRecord(value) || value.schemaVersion !== 2 || !isRecord(value.clock) || typeof value.clock.today !== "string") {
     return false;
   }
   if (!isRecord(value.auth) || (value.auth.session !== null && (!isRecord(value.auth.session) || typeof value.auth.session.userId !== "string" || typeof value.auth.session.displayName !== "string" || typeof value.auth.session.authenticated !== "boolean"))) {
@@ -183,11 +324,24 @@ function isCompatibleState(value: unknown): value is DemoState {
     return false;
   }
   const planIds = plans.map((plan) => plan.planId);
-  return (
-    (books.activePlanId === null || planIds.includes(books.activePlanId)) &&
-    planIds.every((planId) => isPlanState(planStates[planId])) &&
-    Object.keys(planStates).every((planId) => planIds.includes(planId))
-  );
+  if (
+    (books.activePlanId !== null && !planIds.includes(books.activePlanId)) ||
+    !planIds.every((planId) => isPlanState(planStates[planId])) ||
+    !Object.keys(planStates).every((planId) => planIds.includes(planId))
+  ) {
+    return false;
+  }
+  const requestIds = new Set<string>();
+  for (const planId of planIds) {
+    const planState = planStates[planId] as PlanDemoState;
+    for (const record of planState.quiz.idempotency) {
+      if (record.planId !== planId || requestIds.has(record.requestId)) {
+        return false;
+      }
+      requestIds.add(record.requestId);
+    }
+  }
+  return true;
 }
 
 /** wordKey 只保留为查询索引；卡片与记忆的权威记录始终位于 cardId 索引。 */
@@ -259,7 +413,7 @@ export class DemoStateStore {
     return clone(plan);
   }
 
-  applyQuizResult(result: PrecomputedQuizResult): void {
+  applyQuizResult(result: PrecomputedQuizResult, idempotency?: QuizIdempotencyRecord): void {
     if (result.next.skill !== result.skill) {
       throw {
         kind: "validation",
@@ -267,17 +421,48 @@ export class DemoStateStore {
         fieldErrors: { skill: "next.skill 必须与 result.skill 一致" }
       } satisfies AppError;
     }
-    this.updateActivePlan((draft) => {
-      const wordKey = result.wordKey.trim().toLowerCase();
-      const card = draft.cards.byWordKey[wordKey];
+    this.update((state) => {
+      const activePlanId = state.books.activePlanId;
+      const draft = this.requireActivePlanState(state);
+      const card = draft.cards.byCardId[result.cardId];
+      const currentSession = draft.quiz.sessions[result.sessionSnapshot.sessionId];
       if (!card) {
-        throw conflict(`当前计划不存在词形：${wordKey}`);
+        throw conflict(`当前计划不存在学习卡：${result.cardId}`);
+      }
+      if (
+        !currentSession ||
+        currentSession.question.questionId !== result.sessionSnapshot.question.questionId ||
+        currentSession.question.cardId !== result.cardId ||
+        result.sessionSnapshot.question.cardId !== result.cardId ||
+        result.sessionSnapshot.skill !== result.skill ||
+        result.resultSnapshot.sessionId !== result.sessionSnapshot.sessionId
+      ) {
+        throw conflict("服务端预计算结果与测验会话绑定不一致");
+      }
+      if (idempotency) {
+        if (
+          !activePlanId ||
+          idempotency.planId !== activePlanId ||
+          idempotency.userId !== state.auth.session?.userId ||
+          idempotency.sessionId !== result.sessionSnapshot.sessionId ||
+          idempotency.questionId !== result.sessionSnapshot.question.questionId ||
+          idempotency.cardId !== result.cardId ||
+          idempotency.response.requestId !== idempotency.requestId ||
+          idempotency.response.precomputed.cardId !== result.cardId
+        ) {
+          throw conflict("测验幂等记录与当前用户、计划或会话不一致");
+        }
       }
 
       // 仅复制服务端给出的指定轨道和汇总快照，绝不在演示层推导 FSRS 或统计。
-      draft.cards.byCardId[card.cardId].progress[result.skill] = clone(result.next);
+      card.progress[result.skill] = clone(result.next);
       draft.today = clone(result.dashboardSnapshot);
       draft.stats = clone(result.statsSnapshot);
+      draft.quiz.sessions[result.sessionSnapshot.sessionId] = clone(result.sessionSnapshot);
+      draft.quiz.results[result.resultSnapshot.sessionId] = clone(result.resultSnapshot);
+      if (idempotency) {
+        draft.quiz.idempotency.push(clone(idempotency));
+      }
     });
   }
 

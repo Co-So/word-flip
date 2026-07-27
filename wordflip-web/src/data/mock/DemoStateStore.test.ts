@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createMockRepositoryBundle, FIXED_DICTATION_RESULT } from "@/data/mock/fixtures";
-import { createDemoStateStore } from "@/data/mock/DemoStateStore";
+import { createDemoStateStore, DEMO_STORAGE_KEY } from "@/data/mock/DemoStateStore";
 import { createDemoState } from "@/data/mock/createDemoState";
 
 function createStore() {
@@ -57,10 +57,10 @@ describe("DemoStateStore", () => {
   });
 
   test("遇到不兼容的持久化版本时恢复固定种子", () => {
-    window.localStorage.setItem("wordflip.web.demo.v1", JSON.stringify({ schemaVersion: 0 }));
+    window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ schemaVersion: 1 }));
     const store = createStore();
 
-    expect(store.read().schemaVersion).toBe(1);
+    expect(store.read().schemaVersion).toBe(2);
     expect(store.read().clock.today).toBe("2026-07-23");
   });
 
@@ -94,14 +94,14 @@ describe("DemoStateStore", () => {
 
   test("同版本但截断的持久化状态会恢复固定种子", () => {
     window.localStorage.setItem(
-      "wordflip.web.demo.v1",
-      JSON.stringify({ schemaVersion: 1, cards: { byCardId: {} } })
+      DEMO_STORAGE_KEY,
+      JSON.stringify({ schemaVersion: 2, cards: { byCardId: {} } })
     );
 
     const store = createStore();
 
     expect(store.read().clock.today).toBe("2026-07-23");
-    expect(JSON.parse(window.localStorage.getItem("wordflip.web.demo.v1") ?? "{}").schemaVersion).toBe(1);
+    expect(JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}").schemaVersion).toBe(2);
   });
 
   test("同版本但学习完成快照截断时恢复固定种子", () => {
@@ -109,11 +109,46 @@ describe("DemoStateStore", () => {
     const plan = persisted.planStates["plan-core"];
     plan.study.afterStudySession = {} as typeof plan.study.afterStudySession;
     plan.today.masteredCount = 999;
-    window.localStorage.setItem("wordflip.web.demo.v1", JSON.stringify(persisted));
+    window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
     expect(currentPlanState(store).today.masteredCount).toBe(126);
+  });
+
+  test("同版本但测验幂等状态截断时恢复固定种子", () => {
+    const persisted = createDemoState();
+    const plan = persisted.planStates["plan-core"];
+    plan.quiz.idempotency = [{}] as typeof plan.quiz.idempotency;
+    plan.today.masteredCount = 999;
+    window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
+
+    const store = createStore();
+
+    expect(currentPlanState(store).quiz.idempotency).toEqual([]);
+    expect(currentPlanState(store).today.masteredCount).toBe(126);
+  });
+
+  test("测验结果与幂等记录持久化后可恢复并安全重试", async () => {
+    const firstStore = createDemoStateStore({ initialState: createDemoState(), storage: window.localStorage });
+    const firstQuiz = createMockRepositoryBundle(firstStore).quiz;
+    const submission = {
+      sessionId: "quiz-dictation-1",
+      requestId: "request-persisted",
+      questionId: "question-dictation-sustainable",
+      cardId: "card-sustainable",
+      answer: "sustainable"
+    };
+    const first = await firstQuiz.submitAnswer(submission);
+
+    const restoredStore = createDemoStateStore({ storage: window.localStorage });
+    const beforeRetry = restoredStore.read();
+    const retried = await createMockRepositoryBundle(restoredStore).quiz.submitAnswer(submission);
+
+    expect(retried).toEqual(first);
+    expect(restoredStore.read()).toEqual(beforeRetry);
+    expect(currentPlanState(restoredStore).quiz.results["quiz-dictation-1"]).toBeDefined();
+    expect(currentPlanState(restoredStore).quiz.idempotency).toHaveLength(1);
   });
 
   test("同版本但 cardId 索引键错误的持久化状态会恢复固定种子", () => {
@@ -121,7 +156,7 @@ describe("DemoStateStore", () => {
     const plan = persisted.planStates["plan-core"];
     plan.cards.byCardId["card-index-mismatch"] = structuredClone(plan.cards.byCardId["card-sustainable"]);
     plan.today.masteredCount = 999;
-    window.localStorage.setItem("wordflip.web.demo.v1", JSON.stringify(persisted));
+    window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
@@ -134,7 +169,7 @@ describe("DemoStateStore", () => {
     const plan = persisted.planStates["plan-core"];
     delete plan.cards.byWordKey.sustainable;
     plan.today.masteredCount = 999;
-    window.localStorage.setItem("wordflip.web.demo.v1", JSON.stringify(persisted));
+    window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
@@ -163,8 +198,9 @@ describe("DemoStateStore", () => {
     const repositories = createMockRepositoryBundle(store);
 
     const response = await repositories.quiz.submitAnswer({
-      sessionId: "quiz-demo",
+      sessionId: "quiz-dictation-1",
       requestId: "request-demo",
+      questionId: "question-dictation-sustainable",
       cardId: "card-sustainable",
       answer: "sustainable"
     });
@@ -180,13 +216,14 @@ describe("DemoStateStore", () => {
     await repositories.books.switchActivePlan("plan-advanced");
 
     const response = await repositories.quiz.submitAnswer({
-      sessionId: "quiz-advanced",
+      sessionId: "quiz-dictation-1",
       requestId: "request-advanced",
+      questionId: "question-dictation-resilient",
       cardId: "card-resilient",
       answer: "resilient"
     });
 
-    expect(response.precomputed.wordKey).toBe("resilient");
+    expect(response.precomputed.cardId).toBe("card-resilient");
     expect(currentPlanState(store).cards.byCardId["card-resilient"].progress.dictation).toEqual(response.precomputed.next);
   });
 });

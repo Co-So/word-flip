@@ -10,6 +10,9 @@ import { GroupsPage } from "@/features/groups/GroupsPage";
 import { GroupDetailPage } from "@/features/groups/GroupDetailPage";
 import { StudyCompletePage } from "@/features/study/StudyCompletePage";
 import { StudyPage } from "@/features/study/StudyPage";
+import { QuizPage } from "@/features/quiz/QuizPage";
+import { QuizResultPage } from "@/features/quiz/QuizResultPage";
+import { QuizSetupPage } from "@/features/quiz/QuizSetupPage";
 import { AppShell } from "@/layouts/AppShell/AppShell";
 
 export function App() {
@@ -24,7 +27,8 @@ export function App() {
         { path: "/books", element: <BooksPage /> },
         { path: "/books/:bookId", element: <BookDetailPage /> },
         { path: "/groups", element: <GroupsPage /> },
-        { path: "/groups/:groupId", element: <GroupDetailPage /> }
+        { path: "/groups/:groupId", element: <GroupDetailPage /> },
+        { path: "/quiz", element: <QuizSetupPage /> }
       ]
     },
     {
@@ -34,6 +38,14 @@ export function App() {
     {
       path: "/study/:sessionId/complete",
       element: <RequireAuth><RequireOnboarding><StudyCompletePage /></RequireOnboarding></RequireAuth>
+    },
+    {
+      path: "/quiz/:sessionId",
+      element: <RequireAuth><RequireOnboarding><QuizPage /></RequireOnboarding></RequireAuth>
+    },
+    {
+      path: "/quiz/:sessionId/result",
+      element: <RequireAuth><RequireOnboarding><QuizResultPage /></RequireOnboarding></RequireAuth>
     },
     { path: "*", element: <Navigate replace to="/today" /> }
   ]);

@@ -29,6 +29,10 @@ test("重复保存已有首次设置计划不会覆盖其历史分区", async ()
   expect((await repositories.study.getSession("study-demo")).cardIds).toEqual([
     "card-ielts-sustainable"
   ]);
+  expect((await repositories.quiz.getSession("quiz-dictation-1")).question.cardId).toBe(
+    "card-ielts-sustainable"
+  );
+  expect((await repositories.quiz.getSession("quiz-choice-1")).skill).toBe("choice");
   store.update((draft) => {
     draft.planStates[plan.planId].groups.items[0].cardIds.push("card-history-sentinel");
     draft.planStates[plan.planId].today.reviewedCount = 99;
@@ -38,4 +42,34 @@ test("重复保存已有首次设置计划不会覆盖其历史分区", async ()
   const restored = store.read().planStates[plan.planId];
   expect(restored.groups.items[0].cardIds).toContain("card-history-sentinel");
   expect(restored.today.reviewedCount).toBe(99);
+});
+
+test.each([
+  ["book-ielts", "card-ielts-sustainable", "question-dictation-sustainable", "sustainable"],
+  ["book-core", "card-sustainable", "question-dictation-sustainable", "sustainable"],
+  ["book-advanced", "card-resilient", "question-dictation-resilient", "resilient"]
+] as const)("新建 %s 计划时同步种子测验会话与预计算结果", async (bookId, cardId, questionId, answer) => {
+  const initialState = createDemoState("configured");
+  initialState.books.activePlanId = null;
+  initialState.books.plans = [];
+  initialState.planStates = {};
+  const store = createDemoStateStore({ initialState, storage: null });
+  const repositories = createMockRepositoryBundle(store);
+
+  await repositories.settings.saveOnboarding({
+    bookId,
+    groupSize: 20,
+    groupStrategy: "book_order"
+  });
+  const session = await repositories.quiz.getSession("quiz-dictation-1");
+  const response = await repositories.quiz.submitAnswer({
+    sessionId: session.sessionId,
+    requestId: `request-${bookId}`,
+    questionId,
+    cardId,
+    answer
+  });
+
+  expect(session.question.cardId).toBe(cardId);
+  expect(response.precomputed.cardId).toBe(cardId);
 });

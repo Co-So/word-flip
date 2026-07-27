@@ -3,6 +3,12 @@ import type { Book, BookProgress, LearningPlan } from "@/domain/books";
 import type { WordGroup } from "@/domain/groups";
 import type { LearningCard, StudySession } from "@/domain/learning";
 import type { CardMedia } from "@/domain/media";
+import type {
+  QuizIdempotencyRecord,
+  QuizSession,
+  QuizSessionResult,
+  QuizSkill
+} from "@/domain/quiz";
 import type { AppSettings } from "@/domain/settings";
 import type { StatsSummary } from "@/domain/stats";
 import type { TodaySummary } from "@/domain/today";
@@ -25,13 +31,17 @@ export interface PlanDemoState {
   today: TodaySummary;
   bookProgress: BookProgress;
   study: { sessions: Record<string, StudySession>; afterStudySession: TodaySummary };
-  quiz: { mode: "dictation" | "choice" | null };
+  quiz: {
+    sessions: Record<string, QuizSession>;
+    results: Record<string, QuizSessionResult>;
+    idempotency: QuizIdempotencyRecord[];
+  };
   media: { byCardId: Record<string, CardMedia> };
   stats: StatsSummary;
 }
 
 export interface DemoState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   clock: { today: "2026-07-23" };
   auth: { session: AuthSession | null };
   settings: AppSettings;
@@ -109,6 +119,72 @@ const ecologyCard: LearningCard = {
   }
 };
 
+function quizSession(skill: QuizSkill, card: LearningCard): QuizSession {
+  const isDictation = skill === "dictation";
+  return {
+    sessionId: isDictation ? "quiz-dictation-1" : "quiz-choice-1",
+    status: "active",
+    skill,
+    scope: "current-plan",
+    totalQuestions: 1,
+    currentIndex: 0,
+    score: 0,
+    progressLabel: "QUESTION 1 / 1",
+    question: {
+      questionId: isDictation
+        ? `question-dictation-${card.wordKey}`
+        : `question-choice-${card.wordKey}`,
+      questionIndex: 0,
+      cardId: card.cardId,
+      skill,
+      prompt: isDictation ? card.definition : card.headword,
+      hint: isDictation ? `${card.phonetic} · adjective` : card.phonetic,
+      options: isDictation
+        ? undefined
+        : [
+            { key: `meaning-${card.wordKey}`, label: card.definition },
+            { key: "meaning-temporary", label: "临时的" },
+            { key: "meaning-fragile", label: "脆弱的" }
+          ]
+    }
+  };
+}
+
+function completedQuizResult(session: QuizSession): QuizSessionResult {
+  return {
+    sessionId: session.sessionId,
+    status: "completed",
+    score: 1,
+    total: 1,
+    accuracy: 100,
+    rating: "excellent",
+    dictation: {
+      label: "听写摘要",
+      attempted: session.skill === "dictation" ? 1 : 0,
+      correct: session.skill === "dictation" ? 1 : 0,
+      progressLabel: session.skill === "dictation" ? "稳定性 30 天" : "本次未作答"
+    },
+    choice: {
+      label: "选择摘要",
+      attempted: session.skill === "choice" ? 1 : 0,
+      correct: session.skill === "choice" ? 1 : 0,
+      progressLabel: session.skill === "choice" ? "稳定性 24 天" : "本次未作答"
+    }
+  };
+}
+
+/** 为服务端已发布学习卡创建固定测验会话；不在 Web 端抽题或计算题池。 */
+export function createQuizDemoState(card: LearningCard): PlanDemoState["quiz"] {
+  return {
+    sessions: {
+      "quiz-dictation-1": quizSession("dictation", card),
+      "quiz-choice-1": quizSession("choice", card)
+    },
+    results: {},
+    idempotency: []
+  };
+}
+
 function createPlanState(
   cardSources: LearningCard[],
   group: WordGroup,
@@ -129,7 +205,7 @@ function createPlanState(
       sessions: { [studySession.sessionId]: structuredClone(studySession) },
       afterStudySession: structuredClone(afterStudySession)
     },
-    quiz: { mode: null },
+    quiz: createQuizDemoState(cards[0]),
     media: {
       byCardId: Object.fromEntries(
         cards.map((card) => [card.cardId, { cardId: card.cardId, imageUrl: null, stainLevel: 0 }])
@@ -144,7 +220,7 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
   const corePlan: LearningPlan = { planId: "plan-core", bookId: "book-core", title: "核心词汇" };
   const advancedPlan: LearningPlan = { planId: "plan-advanced", bookId: "book-advanced", title: "进阶词汇" };
   const state: DemoState = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     clock: { today: "2026-07-23" },
     auth: {
       session:
@@ -282,9 +358,11 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
   }
   if (scenario === "quiz-complete") {
     activePlan.study.sessions["study-demo"].status = "completed";
-  }
-  if (scenario === "quiz-dictation" || scenario === "quiz-choice") {
-    activePlan.quiz.mode = scenario === "quiz-dictation" ? "dictation" : "choice";
+    const session = activePlan.quiz.sessions["quiz-dictation-1"];
+    session.status = "completed";
+    session.currentIndex = 1;
+    session.score = 1;
+    activePlan.quiz.results[session.sessionId] = completedQuizResult(session);
   }
   if (scenario === "after-quiz") {
     activePlan.today = {
@@ -294,6 +372,11 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
       reviewedCount: 19,
       completionRate: 76
     };
+    const session = activePlan.quiz.sessions["quiz-dictation-1"];
+    session.status = "completed";
+    session.currentIndex = 1;
+    session.score = 1;
+    activePlan.quiz.results[session.sessionId] = completedQuizResult(session);
   }
   if (scenario === "mutated") {
     activePlan.media.byCardId[sustainableCard.cardId].stainLevel = 2;

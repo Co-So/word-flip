@@ -1,4 +1,5 @@
 import type { AppError } from "@/data/contracts/AppError";
+import { createQuizDemoState } from "@/data/mock/createDemoState";
 import type { DemoStateStore } from "@/data/mock/DemoStateStore";
 import type { PlanDemoState } from "@/data/mock/createDemoState";
 import type { LearningPlan } from "@/domain/books";
@@ -80,7 +81,14 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
         sessions: { "study-demo": firstStudySession("card-ielts-sustainable") },
         afterStudySession: emptyTodaySnapshot("雅思核心词汇")
       },
-      quiz: { mode: null },
+      quiz: createQuizDemoState({
+        cardId: "card-ielts-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
+        ...sustainablePresentation,
+        progress: {
+          dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
+          choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
+        }
+      }),
       media: { byCardId: { "card-ielts-sustainable": { cardId: "card-ielts-sustainable", imageUrl: null, stainLevel: 0 } } },
       stats: { totalReviewed: 0, retentionRate: 0, streakDays: 0 }
     }
@@ -88,11 +96,11 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
   "book-core": {
     plan: { planId: "plan-core", bookId: "book-core", title: "核心词汇" },
     planState: {
-      groups: { items: [{ groupId: "group-core-01", name: "第 1 组", cardIds: ["card-core-sustainable"] }] },
+      groups: { items: [{ groupId: "group-core-01", name: "第 1 组", cardIds: ["card-sustainable"] }] },
       cards: {
         byCardId: {
-          "card-core-sustainable": {
-            cardId: "card-core-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
+          "card-sustainable": {
+            cardId: "card-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
             ...sustainablePresentation,
             progress: {
               dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
@@ -102,7 +110,7 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
         },
         byWordKey: {
           sustainable: {
-            cardId: "card-core-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
+            cardId: "card-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
             ...sustainablePresentation,
             progress: {
               dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
@@ -114,22 +122,29 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
       today: emptyTodaySnapshot("核心词汇"),
       bookProgress: { learnedCount: 0, publishedCardCount: 300, completionRate: 0 },
       study: {
-        sessions: { "study-demo": firstStudySession("card-core-sustainable") },
+        sessions: { "study-demo": firstStudySession("card-sustainable") },
         afterStudySession: emptyTodaySnapshot("核心词汇")
       },
-      quiz: { mode: null },
-      media: { byCardId: { "card-core-sustainable": { cardId: "card-core-sustainable", imageUrl: null, stainLevel: 0 } } },
+      quiz: createQuizDemoState({
+        cardId: "card-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
+        ...sustainablePresentation,
+        progress: {
+          dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
+          choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
+        }
+      }),
+      media: { byCardId: { "card-sustainable": { cardId: "card-sustainable", imageUrl: null, stainLevel: 0 } } },
       stats: { totalReviewed: 0, retentionRate: 0, streakDays: 0 }
     }
   },
   "book-advanced": {
     plan: { planId: "plan-advanced", bookId: "book-advanced", title: "进阶词汇" },
     planState: {
-      groups: { items: [{ groupId: "group-advanced-01", name: "第 1 组", cardIds: ["card-advanced-resilient"] }] },
+      groups: { items: [{ groupId: "group-advanced-01", name: "第 1 组", cardIds: ["card-resilient"] }] },
       cards: {
         byCardId: {
-          "card-advanced-resilient": {
-            cardId: "card-advanced-resilient", wordKey: "resilient", headword: "resilient", definition: "有韧性的",
+          "card-resilient": {
+            cardId: "card-resilient", wordKey: "resilient", headword: "resilient", definition: "有韧性的",
             ...resilientPresentation,
             progress: {
               dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
@@ -139,7 +154,7 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
         },
         byWordKey: {
           resilient: {
-            cardId: "card-advanced-resilient", wordKey: "resilient", headword: "resilient", definition: "有韧性的",
+            cardId: "card-resilient", wordKey: "resilient", headword: "resilient", definition: "有韧性的",
             ...resilientPresentation,
             progress: {
               dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
@@ -151,11 +166,18 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
       today: emptyTodaySnapshot("进阶词汇"),
       bookProgress: { learnedCount: 0, publishedCardCount: 180, completionRate: 0 },
       study: {
-        sessions: { "study-demo": firstStudySession("card-advanced-resilient") },
+        sessions: { "study-demo": firstStudySession("card-resilient") },
         afterStudySession: emptyTodaySnapshot("进阶词汇")
       },
-      quiz: { mode: null },
-      media: { byCardId: { "card-advanced-resilient": { cardId: "card-advanced-resilient", imageUrl: null, stainLevel: 0 } } },
+      quiz: createQuizDemoState({
+        cardId: "card-resilient", wordKey: "resilient", headword: "resilient", definition: "有韧性的",
+        ...resilientPresentation,
+        progress: {
+          dictation: { skill: "dictation", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false },
+          choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
+        }
+      }),
+      media: { byCardId: { "card-resilient": { cardId: "card-resilient", imageUrl: null, stainLevel: 0 } } },
       stats: { totalReviewed: 0, retentionRate: 0, streakDays: 0 }
     }
   }
