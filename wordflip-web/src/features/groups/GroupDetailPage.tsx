@@ -15,9 +15,21 @@ export function GroupDetailPage() {
 
   useEffect(() => {
     let active = true;
+    setGroup(null);
+    setError(null);
     groups.getDetail(groupId)
-      .then((detail) => { if (active) setGroup(detail); })
-      .catch((reason) => { if (active) setError((reason as AppError).message ?? "暂时无法获取分组"); });
+      .then((detail) => {
+        if (active) {
+          setGroup(detail);
+          setError(null);
+        }
+      })
+      .catch((reason) => {
+        if (active) {
+          setGroup(null);
+          setError((reason as AppError).message ?? "暂时无法获取分组");
+        }
+      });
     return () => { active = false; };
   }, [groupId, groups]);
 
