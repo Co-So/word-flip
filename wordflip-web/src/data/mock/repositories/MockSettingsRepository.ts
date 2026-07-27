@@ -4,6 +4,7 @@ import type { DemoStateStore } from "@/data/mock/DemoStateStore";
 import type { PlanDemoState } from "@/data/mock/createDemoState";
 import type { LearningPlan } from "@/domain/books";
 import type { AppSettings, OnboardingInput, SettingsRepository } from "@/domain/settings";
+import { createStatsSnapshot } from "@/data/mock/statsFixtures";
 
 interface OnboardingSnapshot {
   plan: LearningPlan;
@@ -89,8 +90,17 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
           choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
         }
       }),
-      media: { byCardId: { "card-ielts-sustainable": { cardId: "card-ielts-sustainable", imageUrl: null, stainLevel: 0 } } },
-      stats: { totalReviewed: 0, retentionRate: 0, streakDays: 0 }
+      media: {
+        byCardId: {
+          "card-ielts-sustainable": {
+            cardId: "card-ielts-sustainable",
+            imageUrl: null,
+            stainLevel: 0,
+            transform: { rotation: 0, scale: 1, positionX: 0, positionY: 0 }
+          }
+        }
+      },
+      stats: createStatsSnapshot(0, 0, 0, 0, "empty")
     }
   },
   "book-core": {
@@ -133,8 +143,17 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
           choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
         }
       }),
-      media: { byCardId: { "card-sustainable": { cardId: "card-sustainable", imageUrl: null, stainLevel: 0 } } },
-      stats: { totalReviewed: 0, retentionRate: 0, streakDays: 0 }
+      media: {
+        byCardId: {
+          "card-sustainable": {
+            cardId: "card-sustainable",
+            imageUrl: "/card-images/sustainable.webp",
+            stainLevel: 0,
+            transform: { rotation: 0, scale: 1, positionX: 0, positionY: 0 }
+          }
+        }
+      },
+      stats: createStatsSnapshot(0, 0, 0, 0, "empty")
     }
   },
   "book-advanced": {
@@ -177,8 +196,17 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
           choice: { skill: "choice", state: "unlearned", stability: 1, heatLevel: 0, lastQuizSucceeded: false }
         }
       }),
-      media: { byCardId: { "card-resilient": { cardId: "card-resilient", imageUrl: null, stainLevel: 0 } } },
-      stats: { totalReviewed: 0, retentionRate: 0, streakDays: 0 }
+      media: {
+        byCardId: {
+          "card-resilient": {
+            cardId: "card-resilient",
+            imageUrl: null,
+            stainLevel: 0,
+            transform: { rotation: 0, scale: 1, positionX: 0, positionY: 0 }
+          }
+        }
+      },
+      stats: createStatsSnapshot(0, 0, 0, 0, "empty")
     }
   }
 };
@@ -220,7 +248,11 @@ export class MockSettingsRepository implements SettingsRepository {
   }
 
   updateSettings(settings: AppSettings): Promise<AppSettings> {
+    if (![10, 20, 30, 50].includes(settings.groupSize)) {
+      return Promise.reject(validation("设置参数无效"));
+    }
     this.store.update((draft) => {
+      // 保存仅回放这一份明确的 post-save 快照，不在页面推导其他业务状态。
       draft.settings = structuredClone(settings);
     });
     return Promise.resolve(this.store.read().settings);
@@ -231,5 +263,10 @@ export class MockSettingsRepository implements SettingsRepository {
       return Promise.reject(validation("首次设置参数无效"));
     }
     return Promise.resolve(activatePrecomputedBookPlan(this.store, input.bookId, input.groupSize));
+  }
+
+  resetDemo(): Promise<AppSettings> {
+    this.store.reset();
+    return Promise.resolve(this.store.read().settings);
   }
 }

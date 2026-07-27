@@ -1,0 +1,29 @@
+.page { display: grid; gap: 24px; }
+.hero h1 { font-size: clamp(30px, 4vw, 48px); letter-spacing: -.05em; margin: 6px 0 10px; }
+.hero p { color: var(--wf-text-muted); margin: 0; }
+.eyebrow { color: var(--wf-text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: .09em; }
+.summaryGrid { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
+.summaryGrid li { background: var(--wf-surface); border: 1px solid var(--wf-border); border-radius: var(--wf-radius-panel); display: grid; gap: 10px; min-width: 0; padding: 20px; }
+.summaryGrid span { color: var(--wf-text-muted); font-size: 13px; }
+.summaryGrid strong { font-size: clamp(25px, 3vw, 36px); letter-spacing: -.05em; }
+.heatmap { display: grid; gap: 8px; grid-template-columns: repeat(12, minmax(48px, 1fr)); overflow-x: auto; padding-bottom: 4px; }
+.heatCell { border: 1px solid var(--wf-border); border-radius: 12px; display: grid; gap: 8px; min-height: 76px; padding: 10px; }
+.heatCell time { font-size: 11px; }
+.heatCell strong { font-size: 18px; }
+.heatCell[data-intensity="1"] { background: #edf0e7; }
+.heatCell[data-intensity="2"] { background: #dce5cf; }
+.heatCell[data-intensity="3"] { background: #becda9; }
+.heatCell[data-intensity="4"] { background: var(--wf-sage-container); border-color: var(--wf-sage); }
+.lowerGrid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+.skillGrid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+.skillGrid article { background: var(--wf-canvas); border-radius: var(--wf-radius-control); padding: 16px; }
+.skillGrid h3, .skillGrid p { margin: 0; }
+.skillGrid strong { display: block; font-size: 30px; margin: 12px 0 6px; }
+.skillGrid p, .achievements span { color: var(--wf-text-muted); font-size: 13px; }
+.achievements { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.achievements li { border-bottom: 1px solid var(--wf-border); display: grid; gap: 4px; padding-bottom: 12px; }
+.achievements li:last-child { border-bottom: 0; padding-bottom: 0; }
+@media (max-width: 900px) {
+  .summaryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lowerGrid { grid-template-columns: 1fr; }
+}

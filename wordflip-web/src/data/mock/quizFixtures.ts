@@ -1,4 +1,5 @@
 import type { PrecomputedQuizResult, QuizScope } from "@/domain/quiz";
+import { createStatsSnapshot } from "@/data/mock/statsFixtures";
 
 export interface MockQuizFixture {
   planId: string;
@@ -11,8 +12,8 @@ export interface MockQuizFixture {
 }
 
 /**
- * 每个结果都是服务端响应的独立静态字面量。
- * 本文件不得用条件、阈值、算术或从其他结果派生来生成学习与统计快照。
+ * 每个结果都是服务端响应的独立静态快照。
+ * createStatsSnapshot 只补齐固定展示字段，不从答题或记忆数据计算汇总。
  */
 export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
   {
@@ -37,7 +38,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-review", title: "到期复习", description: "23 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.901, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.901, 14, 127)
     }
   },
   {
@@ -62,7 +63,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-review", title: "到期复习", description: "23 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.901, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.901, 14, 127)
     }
   },
   {
@@ -87,7 +88,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.889, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.889, 14, 126)
     }
   },
   {
@@ -112,7 +113,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.889, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.889, 14, 126)
     }
   },
   {
@@ -140,7 +141,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-review", title: "到期复习", description: "23 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.901, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.901, 14, 127)
     }
   },
   {
@@ -168,7 +169,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-review", title: "到期复习", description: "23 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.901, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.901, 14, 127)
     }
   },
   {
@@ -196,7 +197,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.889, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.889, 14, 126)
     }
   },
   {
@@ -224,7 +225,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.889, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.889, 14, 126)
     }
   },
 
@@ -250,7 +251,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "8 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.903, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.903, 14, 43, "advanced")
     }
   },
   {
@@ -275,7 +276,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "8 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.903, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.903, 14, 43, "advanced")
     }
   },
   {
@@ -300,7 +301,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.887, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.887, 14, 42, "advanced")
     }
   },
   {
@@ -325,7 +326,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.887, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.887, 14, 42, "advanced")
     }
   },
   {
@@ -353,7 +354,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "8 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.903, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.903, 14, 43, "advanced")
     }
   },
   {
@@ -381,7 +382,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "8 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.903, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.903, 14, 43, "advanced")
     }
   },
   {
@@ -409,7 +410,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.887, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.887, 14, 42, "advanced")
     }
   },
   {
@@ -437,7 +438,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
       },
-      statsSnapshot: { totalReviewed: 843, retentionRate: 0.887, streakDays: 14 }
+      statsSnapshot: createStatsSnapshot(843, 0.887, 14, 42, "advanced")
     }
   },
 
@@ -463,7 +464,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "19 张新卡等待学习" }]
       },
-      statsSnapshot: { totalReviewed: 1, retentionRate: 0.901, streakDays: 1 }
+      statsSnapshot: createStatsSnapshot(1, 0.901, 1, 1, "new")
     }
   },
   {
@@ -488,7 +489,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "19 张新卡等待学习" }]
       },
-      statsSnapshot: { totalReviewed: 1, retentionRate: 0.901, streakDays: 1 }
+      statsSnapshot: createStatsSnapshot(1, 0.901, 1, 1, "new")
     }
   },
   {
@@ -513,7 +514,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
       },
-      statsSnapshot: { totalReviewed: 1, retentionRate: 0.5, streakDays: 1 }
+      statsSnapshot: createStatsSnapshot(1, 0.5, 1, 0, "new")
     }
   },
   {
@@ -538,7 +539,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
       },
-      statsSnapshot: { totalReviewed: 1, retentionRate: 0.5, streakDays: 1 }
+      statsSnapshot: createStatsSnapshot(1, 0.5, 1, 0, "new")
     }
   },
   {
@@ -566,7 +567,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "19 张新卡等待学习" }]
       },
-      statsSnapshot: { totalReviewed: 1, retentionRate: 0.901, streakDays: 1 }
+      statsSnapshot: createStatsSnapshot(1, 0.901, 1, 1, "new")
     }
   },
   {
@@ -594,7 +595,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "19 张新卡等待学习" }]
       },
-      statsSnapshot: { totalReviewed: 1, retentionRate: 0.901, streakDays: 1 }
+      statsSnapshot: createStatsSnapshot(1, 0.901, 1, 1, "new")
     }
   },
   {
@@ -622,7 +623,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
       },
-      statsSnapshot: { totalReviewed: 1, retentionRate: 0.5, streakDays: 1 }
+      statsSnapshot: createStatsSnapshot(1, 0.5, 1, 0, "new")
     }
   },
   {
@@ -650,7 +651,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
         tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
       },
-      statsSnapshot: { totalReviewed: 1, retentionRate: 0.5, streakDays: 1 }
+      statsSnapshot: createStatsSnapshot(1, 0.5, 1, 0, "new")
     }
   }
 ];

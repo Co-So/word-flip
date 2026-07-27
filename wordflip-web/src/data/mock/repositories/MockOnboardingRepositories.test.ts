@@ -72,4 +72,14 @@ test.each([
 
   expect(session.question.cardId).toBe(cardId);
   expect(response.precomputed.cardId).toBe(cardId);
+  const plan = store.readActivePlanState()!;
+  expect(plan.media.byCardId[cardId].transform).toEqual({
+    rotation: 0,
+    scale: 1,
+    positionX: 0,
+    positionY: 0
+  });
+  expect(plan.stats.heatmapDays).toHaveLength(12);
+  expect(plan.stats.skillProgress).toHaveProperty("dictation");
+  expect(plan.stats.skillProgress).toHaveProperty("choice");
 });

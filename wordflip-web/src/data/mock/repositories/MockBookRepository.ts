@@ -50,7 +50,7 @@ export class MockBookRepository implements BookRepository {
       // 历史计划只切指针；首次计划才回放 Task 4 的固定计划快照。
       const plan = historicalPlan
         ? this.store.switchActivePlan(historicalPlan.planId)
-        : activatePrecomputedBookPlan(this.store, bookId, state.settings.groupSize ?? 20);
+        : activatePrecomputedBookPlan(this.store, bookId, state.settings.groupSize);
       return Promise.resolve(plan);
     } catch (error) {
       return Promise.reject(error);

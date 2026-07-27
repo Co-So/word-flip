@@ -1,0 +1,24 @@
+.page { display: grid; gap: 24px; }
+.hero h1 { font-size: clamp(30px, 4vw, 48px); letter-spacing: -.05em; margin: 6px 0 10px; }
+.hero p { color: var(--wf-text-muted); margin: 0; }
+.eyebrow { color: var(--wf-text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: .09em; }
+.workspace { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); }
+.form { display: grid; gap: 0; }
+.switchRow { align-items: center; border-bottom: 1px solid var(--wf-border); display: flex; gap: 18px; justify-content: space-between; padding: 16px 0; }
+.switchRow:first-child { padding-top: 0; }
+.switchRow span { display: grid; gap: 4px; }
+.switchRow small, .muted { color: var(--wf-text-muted); }
+.switchRow input { height: 22px; width: 22px; }
+.selectRow { align-items: center; display: flex; font-weight: 700; justify-content: space-between; padding: 16px 0; }
+.selectRow select { background: var(--wf-surface); border: 1px solid var(--wf-border); border-radius: var(--wf-radius-control); color: inherit; padding: 9px 12px; }
+.saveRow { align-items: center; display: flex; gap: 14px; }
+.saveRow span { color: var(--wf-sage); font-size: 13px; font-weight: 700; }
+.mediaLink { background: var(--wf-sage-container); border-radius: var(--wf-radius-control); color: #26370f; display: inline-flex; font-weight: 700; margin: 4px 10px 12px 0; padding: 10px 14px; }
+.backdrop { align-items: center; background: rgb(37 35 30 / 42%); display: flex; inset: 0; justify-content: center; padding: 24px; position: fixed; z-index: 40; }
+.dialog { background: var(--wf-surface); border: 1px solid var(--wf-border); border-radius: var(--wf-radius-panel); box-shadow: 0 18px 48px rgb(48 45 41 / 18%); max-width: 440px; padding: 28px; width: 100%; }
+.dialog h2 { margin: 6px 0 10px; }
+.dialog p:not(.eyebrow) { color: var(--wf-text-muted); line-height: 1.6; }
+.dialogActions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+@media (max-width: 900px) {
+  .workspace { grid-template-columns: 1fr; }
+}

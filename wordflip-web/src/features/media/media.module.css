@@ -1,0 +1,26 @@
+.page { display: grid; gap: 24px; }
+.hero h1 { font-size: clamp(30px, 4vw, 48px); letter-spacing: -.05em; margin: 6px 0 10px; }
+.hero p { color: var(--wf-text-muted); margin: 0; }
+.eyebrow { color: var(--wf-text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: .09em; }
+.workspace { display: grid; gap: 16px; grid-template-columns: minmax(240px, .65fr) minmax(0, 1.35fr); }
+.cardList { display: grid; gap: 8px; }
+.cardOption { background: transparent; border: 1px solid var(--wf-border); border-radius: var(--wf-radius-control); color: inherit; cursor: pointer; display: grid; gap: 4px; padding: 14px; text-align: left; }
+.cardOption[aria-pressed="true"] { background: var(--wf-sage-container); border-color: var(--wf-sage); }
+.cardOption span, .cardOption code { color: var(--wf-text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.editor { display: grid; gap: 16px; }
+.previewFrame { align-items: center; aspect-ratio: 16 / 9; background: var(--wf-canvas); border: 1px solid var(--wf-border); border-radius: var(--wf-radius-panel); display: flex; justify-content: center; overflow: hidden; }
+.preview { height: 100%; object-fit: cover; transform-origin: center; width: 100%; }
+.emptyPreview { color: var(--wf-text-muted); padding: 24px; text-align: center; }
+.transformLabel { color: var(--wf-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; }
+.controls { display: grid; gap: 12px; grid-template-columns: auto 1fr 1fr; }
+.controls label, .fileField { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
+.fileField input { border: 1px solid var(--wf-border); border-radius: var(--wf-radius-control); padding: 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.fieldError { color: var(--wf-error); font-size: 13px; margin: -8px 0 0; }
+@media (max-width: 900px) {
+  .workspace { grid-template-columns: 1fr; }
+  .controls { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preview { transition: none; }
+}

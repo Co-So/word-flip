@@ -13,6 +13,7 @@ import { FIXED_DICTATION_RESULT } from "@/data/mock/quizFixtures";
 import type { AppSettings } from "@/domain/settings";
 import type { StatsSummary } from "@/domain/stats";
 import type { TodaySummary } from "@/domain/today";
+import { createStatsSnapshot } from "@/data/mock/statsFixtures";
 
 export type DemoScenario =
   | "logged-out"
@@ -42,7 +43,7 @@ export interface PlanDemoState {
 }
 
 export interface DemoState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   clock: { today: "2026-07-23" };
   auth: { session: AuthSession | null };
   settings: AppSettings;
@@ -169,7 +170,8 @@ function createPlanState(
   today: TodaySummary,
   afterStudySession: TodaySummary,
   studySession: StudySession,
-  bookProgress: BookProgress
+  bookProgress: BookProgress,
+  statsProfile: "core" | "advanced"
 ): PlanDemoState {
   const cards = cardSources.map((card) => structuredClone(card));
   const byCardId = Object.fromEntries(cards.map((card) => [card.cardId, card]));
@@ -186,10 +188,23 @@ function createPlanState(
     quiz: createQuizDemoState(cards[0]),
     media: {
       byCardId: Object.fromEntries(
-        cards.map((card) => [card.cardId, { cardId: card.cardId, imageUrl: null, stainLevel: 0 }])
+        cards.map((card) => [
+          card.cardId,
+          {
+            cardId: card.cardId,
+            imageUrl:
+              card.cardId === "card-sustainable"
+                ? "/card-images/sustainable.webp"
+                : card.cardId === "card-infrastructure"
+                  ? "/card-images/infrastructure.webp"
+                  : null,
+            stainLevel: 0,
+            transform: { rotation: 0, scale: 1, positionX: 0, positionY: 0 }
+          }
+        ])
       )
     },
-    stats: { totalReviewed: 842, retentionRate: 0.9, streakDays: 14 }
+    stats: createStatsSnapshot(842, 0.9, 14, today.masteredCount, statsProfile)
   };
 }
 
@@ -198,7 +213,7 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
   const corePlan: LearningPlan = { planId: "plan-core", bookId: "book-core", title: "核心词汇" };
   const advancedPlan: LearningPlan = { planId: "plan-advanced", bookId: "book-advanced", title: "进阶词汇" };
   const state: DemoState = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     clock: { today: "2026-07-23" },
     auth: {
       session:
@@ -269,7 +284,8 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
             { label: "已浏览", value: "8" }
           ]
         },
-        { learnedCount: 126, publishedCardCount: 300, completionRate: 42 }
+        { learnedCount: 126, publishedCardCount: 300, completionRate: 42 },
+        "core"
       ),
       [advancedPlan.planId]: createPlanState(
         [resilientCard],
@@ -307,7 +323,8 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
             { label: "已浏览", value: "3" }
           ]
         },
-        { learnedCount: 42, publishedCardCount: 180, completionRate: 23 }
+        { learnedCount: 42, publishedCardCount: 180, completionRate: 23 },
+        "advanced"
       )
     }
   };
@@ -349,6 +366,7 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
     };
     activePlan.quiz.sessions["quiz-dictation-1"] = structuredClone(FIXED_DICTATION_RESULT.sessionSnapshot);
     activePlan.quiz.results["quiz-dictation-1"] = structuredClone(FIXED_DICTATION_RESULT.resultSnapshot);
+    activePlan.stats = structuredClone(FIXED_DICTATION_RESULT.statsSnapshot);
   }
   if (scenario === "mutated") {
     activePlan.media.byCardId[sustainableCard.cardId].stainLevel = 2;

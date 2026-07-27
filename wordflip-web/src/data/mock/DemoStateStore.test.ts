@@ -93,7 +93,7 @@ describe("DemoStateStore", () => {
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ schemaVersion: 1 }));
     const store = createStore();
 
-    expect(store.read().schemaVersion).toBe(2);
+    expect(store.read().schemaVersion).toBe(3);
     expect(store.read().clock.today).toBe("2026-07-23");
   });
 
@@ -128,13 +128,13 @@ describe("DemoStateStore", () => {
   test("同版本但截断的持久化状态会恢复固定种子", () => {
     window.localStorage.setItem(
       DEMO_STORAGE_KEY,
-      JSON.stringify({ schemaVersion: 2, cards: { byCardId: {} } })
+      JSON.stringify({ schemaVersion: 3, cards: { byCardId: {} } })
     );
 
     const store = createStore();
 
     expect(store.read().clock.today).toBe("2026-07-23");
-    expect(JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}").schemaVersion).toBe(2);
+    expect(JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}").schemaVersion).toBe(3);
   });
 
   test("同版本但学习完成快照截断时恢复固定种子", () => {

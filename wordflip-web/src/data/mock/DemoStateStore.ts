@@ -10,7 +10,7 @@ import type {
   QuizSkill
 } from "@/domain/quiz";
 
-export const DEMO_STORAGE_KEY = "wordflip.web.demo.v2";
+export const DEMO_STORAGE_KEY = "wordflip.web.demo.v3";
 
 export interface DemoStateStoreOptions {
   initialState?: DemoState;
@@ -106,8 +106,55 @@ function isStatsSnapshot(value: unknown): boolean {
   return (
     isRecord(value) &&
     isNumber(value.totalReviewed) &&
+    isNumber(value.masteredCount) &&
     isNumber(value.retentionRate) &&
-    isNumber(value.streakDays)
+    isNumber(value.streakDays) &&
+    Array.isArray(value.heatmapDays) &&
+    value.heatmapDays.length === 12 &&
+    value.heatmapDays.every(
+      (day) =>
+        isRecord(day) &&
+        typeof day.date === "string" &&
+        (day.intensity === 0 || day.intensity === 1 || day.intensity === 2 || day.intensity === 3 || day.intensity === 4) &&
+        isNumber(day.count)
+    ) &&
+    Array.isArray(value.achievements) &&
+    value.achievements.every(
+      (achievement) =>
+        isRecord(achievement) &&
+        typeof achievement.achievementId === "string" &&
+        typeof achievement.title === "string" &&
+        typeof achievement.description === "string"
+    ) &&
+    isRecord(value.skillProgress) &&
+    isRecord(value.skillProgress.dictation) &&
+    typeof value.skillProgress.dictation.label === "string" &&
+    typeof value.skillProgress.dictation.value === "string" &&
+    typeof value.skillProgress.dictation.detail === "string" &&
+    isRecord(value.skillProgress.choice) &&
+    typeof value.skillProgress.choice.label === "string" &&
+    typeof value.skillProgress.choice.value === "string" &&
+    typeof value.skillProgress.choice.detail === "string"
+  );
+}
+
+function isImageTransform(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    (value.rotation === 0 || value.rotation === 90 || value.rotation === 180 || value.rotation === 270) &&
+    isNumber(value.scale) &&
+    value.scale >= 0.5 &&
+    value.scale <= 2 &&
+    isNumber(value.positionX) &&
+    isNumber(value.positionY)
+  );
+}
+
+function isSafeCardImagePath(value: unknown): boolean {
+  return (
+    value === "/card-images/sustainable.webp" ||
+    value === "/card-images/infrastructure.webp" ||
+    value === "/card-images/custom-placeholder.webp"
   );
 }
 
@@ -303,7 +350,21 @@ function isPlanState(value: unknown): boolean {
   ) {
     return false;
   }
-  if (!isRecord(value.media) || !isRecord(value.media.byCardId) || !Object.values(value.media.byCardId).every((media) => isRecord(media) && typeof media.cardId === "string" && (media.imageUrl === null || typeof media.imageUrl === "string") && (media.stainLevel === 0 || media.stainLevel === 1 || media.stainLevel === 2 || media.stainLevel === 3))) {
+  if (
+    !isRecord(value.media) ||
+    !isRecord(value.media.byCardId) ||
+    !Object.entries(value.media.byCardId).every(
+      ([cardId, media]) =>
+        isRecord(media) &&
+        media.cardId === cardId &&
+        byCardId[cardId] !== undefined &&
+        (media.imageUrl === null || isSafeCardImagePath(media.imageUrl)) &&
+        (media.stainLevel === 0 || media.stainLevel === 1 || media.stainLevel === 2 || media.stainLevel === 3) &&
+        isImageTransform(media.transform)
+    ) ||
+    Object.keys(value.media.byCardId).length !== Object.keys(byCardId).length ||
+    !Object.keys(byCardId).every((cardId) => value.media !== null && isRecord(value.media) && isRecord(value.media.byCardId) && value.media.byCardId[cardId] !== undefined)
+  ) {
     return false;
   }
   return isStatsSnapshot(value.stats);
@@ -311,13 +372,21 @@ function isPlanState(value: unknown): boolean {
 
 /** 校验同版本数据的完整形状，避免截断 payload 通过版本检查后污染运行态。 */
 function isCompatibleState(value: unknown): value is DemoState {
-  if (!isRecord(value) || value.schemaVersion !== 2 || !isRecord(value.clock) || typeof value.clock.today !== "string") {
+  if (!isRecord(value) || value.schemaVersion !== 3 || !isRecord(value.clock) || typeof value.clock.today !== "string") {
     return false;
   }
   if (!isRecord(value.auth) || (value.auth.session !== null && (!isRecord(value.auth.session) || typeof value.auth.session.userId !== "string" || typeof value.auth.session.displayName !== "string" || typeof value.auth.session.authenticated !== "boolean"))) {
     return false;
   }
-  if (!isRecord(value.settings) || typeof value.settings.soundEnabled !== "boolean" || typeof value.settings.reducedMotion !== "boolean") {
+  if (
+    !isRecord(value.settings) ||
+    typeof value.settings.soundEnabled !== "boolean" ||
+    typeof value.settings.reducedMotion !== "boolean" ||
+    (value.settings.groupSize !== 10 &&
+      value.settings.groupSize !== 20 &&
+      value.settings.groupSize !== 30 &&
+      value.settings.groupSize !== 50)
+  ) {
     return false;
   }
   const books = value.books;

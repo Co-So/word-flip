@@ -13,6 +13,9 @@ import { StudyPage } from "@/features/study/StudyPage";
 import { QuizPage } from "@/features/quiz/QuizPage";
 import { QuizResultPage } from "@/features/quiz/QuizResultPage";
 import { QuizSetupPage } from "@/features/quiz/QuizSetupPage";
+import { MediaPage } from "@/features/media/MediaPage";
+import { StatsPage } from "@/features/stats/StatsPage";
+import { SettingsPage } from "@/features/settings/SettingsPage";
 import { AppShell } from "@/layouts/AppShell/AppShell";
 
 export function App() {
@@ -28,7 +31,10 @@ export function App() {
         { path: "/books/:bookId", element: <BookDetailPage /> },
         { path: "/groups", element: <GroupsPage /> },
         { path: "/groups/:groupId", element: <GroupDetailPage /> },
-        { path: "/quiz", element: <QuizSetupPage /> }
+        { path: "/quiz", element: <QuizSetupPage /> },
+        { path: "/media", element: <MediaPage /> },
+        { path: "/stats", element: <StatsPage /> },
+        { path: "/settings", element: <SettingsPage /> }
       ]
     },
     {
