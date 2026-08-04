@@ -6,15 +6,15 @@
 
 ## 项目概览
 
-**WordFlip** 是移动端单词卡片学习应用 Monorepo：Android（Kotlin + Compose）+ Spring Boot 3 后端 + OpenAPI 契约 + MySQL 内容/学习数据。
+**WordFlip** 是单词卡片学习应用 Monorepo：当前优先交付 React Web，Android 暂缓；两端共用 Spring Boot 3 后端、OpenAPI 契约与 MySQL 内容/学习数据。
 
 | 项 | 说明 |
 |----|------|
 | 当前基线 | **v7.0：单主词书 + 词书专属学习卡 + 双层 FSRS** |
-| 当前阶段 | **V7 收敛验收**：真实 v2 数据库、内容发布、服务端集成、Android 真机、发布准备 |
+| 当前阶段 | **Web 视觉演示版**：完整可点击页面已落地，默认使用版本化模拟数据，下一阶段按模块接入真实 API |
 | 当前任务入口 | [TASK.md](TASK.md) |
-| MVP 范围 | 登录、主词书/学习计划、分组、今日、学习、测验、图片/污渍、统计、设置 |
-| 不在 MVP | iOS、React Web、推送、云备份、多设备同步、微服务拆分、个性化 FSRS 训练 |
+| 当前 Web 范围 | 登录、首次设置、今日、词书、分组、学习、双轨测验、媒体、统计、设置与代表性状态 |
+| 当前不做 | Android 新页面、生产 Web 部署、全量真实 API 联调、iOS、推送、多设备同步、微服务拆分、个性化 FSRS 训练 |
 
 ---
 
@@ -44,7 +44,7 @@
 | 数据 | MySQL 8、Redis 7、MinIO |
 | 内容 | Python 内容管线：verify / build / publish |
 | 契约 | OpenAPI 3.0.3 + pytest 契约测试 |
-| Web（二期） | React + TypeScript + Vite |
+| Web（当前主线） | React 18 + TypeScript + Vite、React Router、TanStack Query、Mock/HTTP Repository |
 
 ---
 
@@ -83,13 +83,27 @@ wordflip-android/                       # Compose Android
 tools/content-pipeline/                # v2 内容构建与发布
 scripts/                               # v2 重建、冒烟与提交辅助脚本
 docker/                                # MySQL + Redis + MinIO
-wordflip-web/                          # 二期占位
+wordflip-web/                          # 当前 Web 视觉演示版与后续真实 API 客户端
 prototypes/                            # 历史原型
 ```
 
 ---
 
 ## 开发与验证命令
+
+### Web（当前主线）
+
+```powershell
+cd wordflip-web
+npm install
+npm run dev
+npm test
+npm run lint
+npm run build
+npm run test:e2e
+```
+
+默认数据源是 `MockRepository`，固定种子持久化在版本化 `localStorage` 中。页面只能依赖 Repository 契约；真实 API 通过 `HttpRepository` 按功能模块替换，禁止在浏览器重新实现 FSRS、判题、分组或统计算法。
 
 ### 基础设施
 
@@ -110,7 +124,7 @@ cd wordflip-server
 
 开发配置默认连接 `wordflip_v2_dev`。当前 Flyway 目录为 `classpath:db/migration-v2`。
 
-### Android
+### Android（暂停新增功能，保留现有验证）
 
 ```powershell
 cd wordflip-android
@@ -207,7 +221,7 @@ app/          # Hilt 装配、Plan Gate、导航
 
 ## 实现工作流
 
-1. 在 [TASK.md](TASK.md) 选择 `V7-*` 任务。
+1. 在 [TASK.md](TASK.md) 选择当前 `WEB-*` 任务；恢复后端或 Android 时再选择对应 `V7-*` 任务。
 2. 阅读关联 requirements REQ、OpenAPI path/schema 与数据库不变量。
 3. API 变更遵循 OpenAPI-first；数据库变更只能进入 migration-v2。
 4. 先写测试或最小复现，再做实现。
@@ -296,6 +310,7 @@ requirements（行为变化时）
 - [ ] 只有测验判题写双层记忆与 `review_events`
 - [ ] 新增/修改业务代码包含简体中文注释
 - [ ] 相关测试、真实数据库或真机步骤已执行
+- [ ] Web 变更已运行相关 Vitest、Lint、构建与必要的 Playwright 验收
 - [ ] TASK 只勾选有证据的完成项
 - [ ] 未提交 secrets、备份、全量内容源或真实用户数据
 - [ ] diff 范围合理，未自动 commit/push
@@ -310,3 +325,4 @@ requirements（行为变化时）
 | 2026-06-30 | v1.0 | 初版 Monorepo Agent 指令 |
 | 2026-06-30 | v1.1 | 强制简体中文注释 |
 | 2026-07-23 | v2.0 | 全面切换到 v7 学习计划、词书专属学习卡、双层 FSRS 与 v2 数据库基线 |
+| 2026-08-04 | v3.0 | Web 视觉演示成为当前主线；Android 暂缓；明确 Mock/HTTP Repository 切换边界 |

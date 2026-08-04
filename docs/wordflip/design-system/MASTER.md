@@ -1,11 +1,11 @@
 # WordFlip Design System — MASTER
 
-> 版本：v1.2  
-> 日期：2026-07-01  
-> 平台：Android · Jetpack Compose · Material 3  
+> 版本：v1.3
+> 日期：2026-08-04
+> 平台：Android · Jetpack Compose · Material 3；Web · React · CSS Modules
 > 关联：[android-ui-spec.md](../android-ui-spec.md) · [requirements.md](../requirements.md)
 
-本文档为 WordFlip **全局视觉单一真相来源**。页面级 override 可放在 `design-system/pages/`（按需新增）。
+本文档为 WordFlip **全局视觉单一真相来源**。Android 继续使用既有 Natural Sage Light/Dark token；Web 在其上增加暖纸张工作台扩展，Web token 不自动反向修改 Android。
 
 ---
 
@@ -126,6 +126,28 @@ C 类屏面试题反馈（1400ms）、热力图单格等**短时或小面积**�
 - [ ] 掌握度 chip 仅在三态背景色 + 图标 + 文案，不额外叠 `primary`
 - [ ] 无 Composable 内硬编码 hex（见 §8）
 - [ ] C 类屏静态态截图估算：支配 ≥55%，点缀 ≤12%（或 C 类合计 ≤15%）
+
+### 1.3 Web 专属暖纸张扩展
+
+Web 视觉演示借鉴成熟桌面工作台的克制层级、留白、等宽状态标签和快捷键表达，不复制第三方品牌组件或产品结构。主要验收宽度为 1440px 与 1280px。
+
+| CSS Token | 值 | 用途 |
+|-----------|----|------|
+| `--wf-canvas` | `#F8F5EF` | 主画布 |
+| `--wf-sidebar` | `#EEE9DF` | 左侧导航 |
+| `--wf-surface` | `#FDFBF7` | 面板、卡片和输入表面 |
+| `--wf-border` | `#DED7CB` | 低对比边框 |
+| `--wf-text` | `#302D29` | 主文字 |
+| `--wf-text-muted` | `#7F776C` | 次要文字 |
+| `--wf-sage` | `#6F9038` | 学习、成功与主要动作 |
+| `--wf-sage-container` | `#B7D07A` | 轻强调容器 |
+| `--wf-terracotta` | `#C76A49` | 专注入口与少量关键强调 |
+
+- 普通页面使用左侧五项导航 `AppShell`；学习与测验使用收敛的 `FocusShell`。
+- 常规面板圆角 12px，小控件 8px；阴影只用于必要层级。
+- 翻卡默认 360ms，其余反馈 160–220ms；`prefers-reduced-motion` 下移除非必要 transform。
+- 页面级不得横向滚动；低于 1024px 收窄导航，低于 900px 将专注侧栏堆叠到内容下方。
+- 陶土橙只承担专注和提示，不替代 Natural Sage 的学习/成功语义。
 
 ---
 
@@ -373,3 +395,4 @@ C 类屏面试题反馈（1400ms）、热力图单格等**短时或小面积**�
 | 2026-06-30 | v1.0 | Natural Sage 主色；Light/Dark 双主题；primary `#6F9038` + container `#B7D07A` |
 | 2026-06-30 | v1.1 | 新增 §4 图标体系；Launcher 概念；Material Symbols 规范 |
 | 2026-07-01 | v1.2 | 新增 §1.2 色彩面积原则（60-30-10）；页面 A/B/C 分级；§8 反模式补充 |
+| 2026-08-04 | v1.3 | 增加 Web 专属暖纸张与陶土橙扩展；明确 Web token 不改变 Android 主题行为 |

@@ -1,8 +1,8 @@
 # WordFlip 技术选型与架构设计
 
-> 版本：v1.8  
-> 日期：2026-07-10  
-> 状态：**已定稿（MVP 阶段）**  
+> 版本：v1.9
+> 日期：2026-08-04
+> 状态：**Web 客户端阶段已更新；服务端残留 v6 段落仍待 `V7-D07` 收敛，冲突时服从 requirements/OpenAPI/database-design/api-modules**
 > 关联文档：[requirements.md](./requirements.md) · [user-design.md](./user-design.md) · [android-ui-spec.md](./android-ui-spec.md) · [api-modules.md](./api-modules.md) · [database-design.md](./database-design.md) · [openapi.yaml](../../wordflip-api/openapi.yaml) · [STRUCTURE.md](../../STRUCTURE.md) · [WordFlip-PRD.md](../prd/WordFlip-PRD.md) · 原型 [wordflip-v5.html](../../prototypes/wordflip-v5.html)
 
 本文档汇总 WordFlip 从 MVP 到全端扩展的**技术选型、系统架构、模块边界与基础设施设计**。业务行为以 `requirements.md` 为准；本文档只描述技术实现层面。
@@ -15,8 +15,8 @@
 
 | 维度 | 选型 | 说明 |
 |------|------|------|
-| 首发客户端 | **Android** | Kotlin + Jetpack Compose + Material 3（见 [android-ui-spec.md](./android-ui-spec.md)） |
-| Web 客户端 | **React**（二期） | TypeScript + Vite，与 Android 共用 REST API |
+| 当前客户端主线 | **React Web** | TypeScript + Vite；先完成可点击模拟演示，再按模块接入 REST API |
+| Android 客户端 | **暂缓新增功能** | 现有 Kotlin + Jetpack Compose 实现保留，Web 稳定后恢复真机收敛 |
 | 后端 | **Spring Boot 3** | 业务规则与数据持久化的唯一真相来源 |
 | 数据库 | **MySQL 8** | InnoDB，utf8mb4 |
 | 数据库迁移 | **Flyway** | 版本化 DDL，JPA `ddl-auto: validate` |
@@ -25,7 +25,7 @@
 | 对象存储 | **MinIO** | 卡片图片；MySQL 只存元数据与 storage key |
 | 认证 | **JWT** | Access Token + Refresh Token（Redis 管理） |
 | API 契约 | **OpenAPI 3** | 生成 Android / React 客户端 |
-| 原型 | prototypes/wordflip-v5.html | 交互与 UI 参考；逻辑迁移至服务端 + Android |
+| 视觉基线 | Web 视觉演示规格 | 暖纸张工作台；v5 只保留为历史交互参考 |
 
 **核心架构原则：**
 
@@ -33,7 +33,7 @@
 2. **掌握度以测验为准**：三态为未学习 / 模糊 / 不认识；学习页翻转不直接改状态。
 3. **分组增量追加**：保存词书设置时只追加新词分组，不重建已有分组。
 4. **客户端负责交互**：翻转动画、图片编辑 transform、相机/相册、页面导航。
-5. **MVP 先 Android**：Web 二期接入同一套 API，不重复业务逻辑。
+5. **Web 当前优先**：首版以 Mock Repository 验证完整体验，再按模块切换 HTTP 数据源；Android 暂缓但保留。
 6. **登录即上云**：邮箱或手机号 + 密码；用户数据在 MySQL，无独立云备份模块。
 
 ---
@@ -44,7 +44,7 @@
 flowchart TB
   subgraph clients [客户端层]
     Android["Android App<br/>Kotlin + Compose"]
-    Web["React Web<br/>二期"]
+    Web["React Web<br/>当前主线"]
   end
 
   subgraph gateway [接入层]
@@ -117,7 +117,7 @@ Android 本地编辑 → POST /api/v1/learning/cards/{cardId}/image (multipart +
 
 ## 3. 客户端架构
 
-### 3.1 Android（MVP 首发）
+### 3.1 Android（当前暂缓）
 
 视觉与交互规格见 **[android-ui-spec.md](./android-ui-spec.md)** 与 **[design-system/MASTER.md](./design-system/MASTER.md)**。
 
@@ -158,17 +158,20 @@ wordflip-android/
 - 测验答案判定
 - 词书文件解析入库（上传后由服务端处理）
 
-### 3.2 React Web（二期）
+### 3.2 React Web（当前主线）
 
-| 层级 | 技术 |
-|------|------|
-| 框架 | React 18 + TypeScript |
-| 构建 | Vite |
-| 路由 | React Router |
-| 请求 | axios + OpenAPI 生成类型 |
-| UI | 待定（Ant Design / shadcn/ui） |
+| 层级 | 技术 | 职责 |
+|------|------|------|
+| 框架 | React 18 + TypeScript | 页面与可访问交互 |
+| 构建 | Vite | 开发与生产构建 |
+| 路由 | React Router | AppShell 管理页与 FocusShell 学习/测验流程 |
+| 服务端状态 | TanStack Query | 异步状态、缓存与模块切换 |
+| 数据访问 | Repository 契约 | 页面隔离于 Mock 数据和 OpenAPI DTO |
+| 模拟模式 | 固定种子 + 版本化 localStorage | 稳定演示、场景回放和自动化测试 |
+| HTTP 模式 | axios + mapper + OpenAPI DTO | 后续按模块接入真实 API |
+| 样式 | CSS Modules + 全局 Web token | 暖纸张、鼠尾草绿、少量陶土橙 |
 
-Web 与 Android **仅共享 API 契约**，UI 独立实现。卡片翻转、图片编辑在 Web 上可简化（二期评估是否全量复刻 v5 交互）。
+Web 与 Android 共享 v7 业务规则和 `wordflip-api/openapi.yaml`，UI 独立实现。运行时可为不同模块装配 `MockRepository` 或 `HttpRepository`；页面、路由和领域模型不因数据源切换而重写。模拟层只回放预计算结果，禁止实现 FSRS、判题、分组、今日任务或统计算法。
 
 ---
 
@@ -500,7 +503,7 @@ wordflip/                          # Monorepo 根目录
 │   └── openapi.yaml
 ├── wordflip-server/               # Spring Boot（待初始化）
 ├── wordflip-android/              # Compose MVP（待初始化）
-├── wordflip-web/                  # React 二期（待初始化）
+├── wordflip-web/                  # React 视觉演示（当前主线）
 └── docker/
     └── docker-compose.yml         # 待创建
 ```
@@ -521,33 +524,39 @@ Spring Boot 使用 `application-dev.yml` 连接本地三件套；启动时 Flywa
 
 ### 10.2 启动顺序
 
-1. `docker compose up -d`
-2. `./mvnw spring-boot:run`（Flyway 建表 + seed）
-3. Android 指向 `http://10.0.2.2:8080`（模拟器）或本机 IP
+视觉演示模式不依赖后端：
+
+1. `cd wordflip-web && npm install`
+2. `npm run dev`
+3. `npm test && npm run lint && npm run build && npm run test:e2e`
+
+接入真实 API 时再启动 Docker 与 Spring Boot；Android 恢复后使用模拟器或真机对应地址。
 
 ---
 
-## 11. MVP 范围与分期
+## 11. 当前范围与分期
 
-### 11.1 MVP（P0–P3）
+### 11.1 Web 视觉演示
 
-| 阶段 | 交付 | 后端 | Android |
-|------|------|------|---------|
-| **P0 基础** | 登录 + 词书 + 分组列表 | Auth、Book、Group API | 主导航壳、词书页 |
-| **P1 学习闭环** | 学习 + 今日页 + SRS | Study、Review、Today API | 学习页、分组详情（只读掌握度） |
-| **P2 测验** | 默写测验 + 三态更新 | Quiz + ReviewService | 测验页 |
-| **P3 媒体** | 卡拍 + 图片编辑 + 污渍 | Image、Stain、MinIO | 卡拍、编辑器、CameraX |
+已覆盖登录、首次设置、今日、词书、分组、翻卡学习、双轨测验、媒体、统计、设置，以及登录失败、空任务、空词书、无效会话和测验完成等代表性状态。主要验收宽度为 1440px 与 1280px，768px 以上保证核心流程可用且无页面级横向滚动。
 
-### 11.2 二期
+### 11.2 真实 API 渐进接入
 
-| 项 | 说明 |
-|----|------|
-| React Web | 接入已有 API |
-| 推送提醒 | FCM + 服务端定时 |
-| 词书导出 / Anki | 导出 API |
-| 多设备实时同步 | WebSocket 或轮询（待定） |
+| 顺序 | 模块 | 迁移方式 |
+|------|------|----------|
+| 1 | 认证 | 增加 DTO mapper 与 `HttpAuthRepository` |
+| 2 | 设置、学习计划与词书 | 保持页面领域模型稳定，切换 Repository 装配 |
+| 3 | 今日与分组 | 直接展示服务端当前计划快照 |
+| 4 | 学习 session | 浏览只上报 session，不写 FSRS |
+| 5 | 双轨测验 | 只提交答案并应用服务端预计算结果 |
+| 6 | 统计 | 使用服务端汇总与热力图 |
+| 7 | 媒体 | 使用 `cardId` 上传与读取图片 |
 
-### 11.3 明确不做（MVP）
+### 11.3 Android 恢复
+
+Web 体验和真实 API 边界稳定后，再恢复 Android 真机完整流程和发布验收。既有 Compose 代码与 v7 任务不删除。
+
+### 11.4 明确不做（当前范围）
 
 - 微服务拆分（单体 Spring Boot 足够）
 - 独立云备份模块（数据已在 MySQL）
@@ -598,11 +607,15 @@ Spring Boot 使用 `application-dev.yml` 连接本地三件套；启动时 Flywa
 - CameraX
 - Room（可选缓存）
 
-### Web（二期）
+### Web（当前主线）
 
 - React 18 + TypeScript
 - Vite
+- React Router 6
+- TanStack Query 5
 - axios
+- Vitest + Testing Library
+- Playwright
 
 ### 基础设施
 
@@ -640,19 +653,15 @@ Spring Boot 使用 `application-dev.yml` 连接本地三件套；启动时 Flywa
 | 2026-06-30 | v1.6 | 新增根目录 [STRUCTURE.md](../../STRUCTURE.md) 目录结构规范 |
 | 2026-06-30 | v1.7 | 关联 [TASK.md](../../TASK.md) 任务清单 |
 | 2026-07-10 | v1.8 | Phase A：§4.6 Headword→Sense→Example；dict_* 与清洗工具 |
+| 2026-08-04 | v1.9 | Web 视觉演示切为当前主线；增加 Mock/HTTP Repository 渐进接入架构；Android 标记暂缓 |
 
 ---
 
 ## 16. 下一步行动
 
-1. 按 [TASK.md](../../TASK.md) §I 搭建 Docker  
-2. 按 TASK §S / §A 初始化 server 与 Android 脚手架  
-3. 按 TASK §P0 起逐阶段打勾交付  
-
-~~1. 初始化 `wordflip-server` 工程~~  
-~~2. 编写 `docker-compose.yml` 与 `V1__init_schema.sql`~~  
-~~3. ~~输出 `wordflip-api/openapi.yaml` 骨架~~ ✅ 已完成  
-~~4. 初始化 `wordflip-android` 工程~~  
-~~5. 按 P0 迭代：Auth → Books → Groups~~
+1. 完成 [TASK.md](../../TASK.md) 的 `WEB-10` 文档与发布分支。
+2. 按 `WEB-API01~07` 从认证开始逐模块接入真实 API。
+3. 恢复 v2 数据库与 Spring Boot 真实环境收敛。
+4. Web 稳定后恢复 Android 真机验收。
 
 *业务验收对照 [requirements.md](./requirements.md) REQ 编号；架构变更需同步更新本文档。*

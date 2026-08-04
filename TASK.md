@@ -1,7 +1,7 @@
 # WordFlip v7 任务清单（TASK）
 
-> 版本：v4.0
-> 日期：2026-07-23
+> 版本：v4.1
+> 日期：2026-08-04
 > 当前基线：**v7.0（单主词书 + 词书专属学习卡 + 双层 FSRS）**
 > 用法：完成一项后将 `[ ]` 改为 `[x]`；只标记已有代码、测试或人工验收证据的任务。
 > 权威依据：[requirements.md](docs/wordflip/requirements.md) · [openapi.yaml](wordflip-api/openapi.yaml) · [database-design.md](docs/wordflip/database-design.md) · [api-modules.md](docs/wordflip/api-modules.md)
@@ -10,30 +10,61 @@
 
 ## 1. 当前焦点
 
-v7 契约、v2 数据库基线、服务端主链路和 Android 适配已经进入仓库。当前阶段不是继续扩展旧 v6 功能，而是完成 **v7 收敛验收**：
+v7 契约、v2 数据库基线、服务端主链路和 Android 适配已经进入仓库。当前产品优先级切换为 **Web 视觉演示版**：先用一致模拟数据完成桌面端优先的完整可点击体验，再按功能模块接入真实 API。Android 代码与既有任务保留，但暂停新增页面和真机收敛，待 Web 体验稳定后恢复。
 
-1. 在真实 MySQL 上建立全新 `wordflip_v2`，发布三本内置词书内容。
-2. 补齐被 Docker 环境跳过的数据库集成测试。
-3. 真机走通「注册 → 选主词书 → 学习计划 → 分组 → 学习 → 测验 → 统计」。
-4. 验证切换主词书后旧计划、FSRS 记忆和审计事件仍保留。
-5. 完成安全、生产配置、发布构建与 MVP 演示材料。
+当前顺序：
+
+1. 完成 Web 视觉演示版文档、验证与发布分支。
+2. 按认证 → 设置/词书 → 今日/分组 → 学习 → 测验 → 统计 → 媒体的顺序接入真实 API。
+3. 继续保持服务端为 FSRS、判题、分组、今日任务和统计的唯一业务真相。
+4. Web 稳定后恢复 Android 真机验收与 v7 发布收敛。
 
 ### 1.1 当前状态
 
 | 轨道 | 状态 | 下一道门 |
 |------|------|----------|
+| Web 视觉演示 | ✅ `WEB-01~10` 已验证 | 推送交付分支后进入真实 API 接入 |
+| Web 真实 API | ⏳ 未开始 | 先接认证模块，页面和路由不重写 |
 | v7 产品与 API 契约 | ✅ 已落地 | 契约变更继续遵守 OpenAPI-first |
-| v2 数据库基线 | 🟡 文件已落地 | 真实 MySQL 重建与内容发布 |
-| Spring Boot 主链路 | 🟡 单元测试通过 | Testcontainers/MySQL 集成与 E2E |
-| Android v7 适配 | 🟡 构建和单测通过 | 真机完整流程 |
-| 发布准备 | ⏳ 未完成 | Dockerfile、prod 配置、release、演示 |
+| v2 数据库与 Spring Boot | 🟡 主链路已落地 | 真实 MySQL、集成测试与 E2E 暂列后续 |
+| Android v7 适配 | ⏸️ 暂缓 | 保留代码与任务，Web 稳定后恢复真机流程 |
 
-### 1.2 最近验证证据（2026-07-22）
+### 1.2 最近验证证据（2026-08-04）
+
+- `wordflip-web`: `npm test` → **16 files，106 tests passed**
+- `wordflip-web`: `npm run lint` → **exit 0**
+- `wordflip-web`: `npm run build` → **exit 0**
+- `wordflip-web`: `npm run test:e2e` → **32 passed**
+
+保留的 v7 原生端/服务端最近证据（2026-07-22）：
 
 - `wordflip-api`: `python -m pytest -q tests` → **10 passed**
 - `wordflip-server`: `.\mvnw.cmd test` → **32 tests，0 failures，2 skipped**
 - `wordflip-android`: `.\gradlew.bat test :app:assembleDebug` → **BUILD SUCCESSFUL**
 - 后端跳过的 2 个测试为 MySQL/Testcontainers 集成测试；Docker Desktop 不可用时不视为完成。
+
+### 1.3 WEB-VISUAL 视觉演示任务
+
+- [x] **WEB-01** 初始化 React 18、TypeScript、Vite、Vitest、ESLint 与 Playwright
+- [x] **WEB-02** 建立暖纸张设计系统、通用组件、AppShell 与 FocusShell
+- [x] **WEB-03** 建立领域模型、Repository 契约、固定种子和版本化模拟状态
+- [x] **WEB-04** 完成登录、注册、路由守卫与首次设置
+- [x] **WEB-05** 完成今日、词书、词书详情、分组与分组详情
+- [x] **WEB-06** 完成翻卡学习工作台，并验证浏览不改变双轨掌握度
+- [x] **WEB-07** 完成听写/选择双轨测验与结果页，并验证唯一写入口
+- [x] **WEB-08** 完成媒体、统计、设置、重置与代表性状态
+- [x] **WEB-09** 完成无障碍、1440/1280/1024/768 响应式和端到端验收
+- [x] **WEB-10** 同步文档并完成最终验证
+
+### 1.4 WEB-API 后续真实接口接入
+
+- [ ] **WEB-API01** 身份认证与令牌生命周期
+- [ ] **WEB-API02** 学习计划、词书与设置
+- [ ] **WEB-API03** 今日任务与当前计划分组
+- [ ] **WEB-API04** 学习 session
+- [ ] **WEB-API05** 双轨测验与服务端预计算结果
+- [ ] **WEB-API06** 统计与热力图
+- [ ] **WEB-API07** cardId 图片与媒体
 
 ---
 
@@ -116,7 +147,7 @@ v7 契约、v2 数据库基线、服务端主链路和 Android 适配已经进�
 
 ---
 
-## 6. V7-A Android
+## 6. V7-A Android（当前暂停，保留任务）
 
 ### 6.1 已落地主链路
 
@@ -163,7 +194,7 @@ v7 契约、v2 数据库基线、服务端主链路和 Android 适配已经进�
 
 ## 8. 二期 Backlog（不阻塞 v7 MVP）
 
-- [ ] **B-01** React Web 登录、当前计划与今日页
+- [x] **B-01** React Web 完整可点击视觉演示（由 `WEB-01~09` 验证）
 - [ ] **B-02** Room 离线缓存与离线只读学习
 - [ ] **B-03** FCM 每日/到期复习提醒
 - [ ] **B-04** 词书导出 CSV / Anki / Quizlet
@@ -176,11 +207,11 @@ v7 契约、v2 数据库基线、服务端主链路和 Android 适配已经进�
 ## 9. 实施顺序
 
 ```text
-V7-D 入口文档收敛
-  → V7-DB09~13 内容构建与真实新库
-  → V7-S13~20 服务端集成、安全、性能
-  → V7-A10~17 Android 真机
-  → V7-Q04~13 发布准备
+WEB-10 文档与发布分支
+  → WEB-API01~07 按模块接入真实 API
+  → V7-DB09~13 / V7-S13~20 完成真实数据与服务端收敛
+  → 恢复 V7-A10~17 Android 真机
+  → V7-Q04~13 全端发布准备
 ```
 
 API 或持久化变更仍按以下顺序：
@@ -214,6 +245,7 @@ requirements（行为变化时）
 - [ ] 只有测验判题写双层记忆与 `review_events`
 - [ ] 业务代码新增/修改处使用简体中文注释
 - [ ] 相关自动化测试或真实联调已执行
+- [ ] Web 页面只依赖 Repository；Mock 与 HTTP 数据源均不承载服务端业务算法
 - [ ] TASK 对应项有完成证据后才勾选
 - [ ] 未提交密钥、`.env`、keystore 或真实用户数据
 - [ ] 未自动 commit/push；除非用户明确要求

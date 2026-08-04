@@ -1,20 +1,14 @@
 # WordFlip
 
-WordFlip 是一款 Android 单词卡片学习应用，采用 Spring Boot 单体后端与 OpenAPI 契约。当前产品基线为 **v7.0：单主词书、词书专属学习卡、学习计划、双层 FSRS**。
+WordFlip 是一款单词卡片学习应用，采用 React Web、Android、Spring Boot 单体后端与 OpenAPI 契约。当前业务基线为 **v7.0：单主词书、词书专属学习卡、学习计划、双层 FSRS**；当前开发优先级为 Web，Android 暂缓但不删除。
 
 [任务清单](TASK.md) · [需求 v7](docs/wordflip/requirements.md) · [OpenAPI](wordflip-api/openapi.yaml) · [数据库设计](docs/wordflip/database-design.md) · [Agent 指令](AGENTS.md) · [贡献规范](CONTRIBUTING.md)
 
 ## 当前状态
 
-v7 契约、v2 数据库基线、服务端主链路、Android Plan Gate 与 Apple 风格 UI 已进入仓库。当前重点是：
+Web 视觉演示版已经完成主要页面、代表性状态和完整可点击主流程。首版默认使用固定种子与版本化本地状态，页面通过 Repository 契约读取数据；下一阶段逐模块把 `MockRepository` 替换为 `HttpRepository`，不重写页面和路由，也不把 FSRS、判题、分组或统计算法搬进浏览器。
 
-1. 构建并审核三本内置词书内容。
-2. 在真实 MySQL 上建立全新 v2 数据库并完成发布。
-3. 跑完数据库集成测试和服务端冒烟。
-4. 真机走通首次选书、学习、测验、FSRS、统计和切书保留历史。
-5. 完成生产配置、release build 与 MVP 演示材料。
-
-详见 [TASK.md](TASK.md) 的 `V7-DB`、`V7-S`、`V7-A`、`V7-Q`。
+Android v7 适配、服务端主链路和 v2 数据库代码继续保留。详见 [TASK.md](TASK.md) 的 `WEB-*` 当前主线与暂停的 `V7-*` 任务。
 
 ## v7 核心模型
 
@@ -40,12 +34,12 @@ v7 契约、v2 数据库基线、服务端主链路、Android Plan Gate 与 Appl
 ├── wordflip-server/                      # Spring Boot 3
 │   ├── src/main/resources/db/migration-v2/
 │   └── db-archive/migration-v1/          # 历史迁移，只读
-├── wordflip-android/                     # Kotlin + Compose 多模块客户端
+├── wordflip-android/                     # Kotlin + Compose 多模块客户端（当前暂缓）
+├── wordflip-web/                         # React 完整可点击视觉演示（当前主线）
 ├── tools/content-pipeline/               # 内容 verify/build/publish
 ├── scripts/                              # v2 重建、冒烟与辅助脚本
 ├── docker/                               # MySQL 8 + Redis 7 + MinIO
-├── prototypes/                           # 历史 UI/动效参考
-└── wordflip-web/                         # 二期占位
+└── prototypes/                           # 历史 UI/动效参考
 ```
 
 完整目录规范见 [STRUCTURE.md](STRUCTURE.md)。
@@ -54,13 +48,34 @@ v7 契约、v2 数据库基线、服务端主链路、Android Plan Gate 与 Appl
 
 - JDK 21：后端
 - JDK 17+ 与 Android SDK 34：Android 构建
+- Node.js 20 + npm：Web 构建与测试
+- Playwright Chromium：Web 端到端与视觉回归（首次可运行 `npx playwright install chromium`）
 - Docker Desktop：MySQL、Redis、MinIO 与数据库集成测试
 - Python 3.10+：契约测试和内容管线
 - MySQL CLI：执行 v2 安全重建脚本时需要 `mysql` / `mysqldump`
 
 ## 本地快速启动
 
-### 1. 基础设施
+### 1. Web 视觉演示（当前主线）
+
+```powershell
+cd wordflip-web
+npm install
+npm run dev
+```
+
+浏览 Vite 输出的本地地址。演示账号为 `demo@wordflip.local` / `wordflip-demo`。默认运行 Mock 数据模式；开发环境还提供稳定场景路由供空状态、错误状态与视觉回归使用。
+
+Web 验证：
+
+```powershell
+npm test
+npm run lint
+npm run build
+npm run test:e2e
+```
+
+### 2. 基础设施（真实 API 接入时）
 
 ```powershell
 cd docker
@@ -84,7 +99,7 @@ docker compose ps
 
 > 如果 Docker volume 已经初始化为旧 `wordflip` 库，只改 `.env` 不会自动创建 v2 库。请走下方“内容与 v2 数据库”流程，不要删除旧 volume 或覆盖旧库。
 
-### 2. 后端
+### 3. 后端
 
 ```powershell
 cd ..\wordflip-server
@@ -100,7 +115,7 @@ cd ..\wordflip-server
 
 启动时 Flyway 只读取 `db/migration-v2`。旧 V1–V24 已归档，不会参与 v7 启动。
 
-### 3. Android
+### 4. Android（当前暂缓）
 
 ```powershell
 cd ..\wordflip-android
@@ -116,7 +131,7 @@ cd ..\wordflip-android
 
 Debug 包通过 `http://127.0.0.1:8080/api/v1` 访问本机后端。模拟器可使用 `http://10.0.2.2:8080/api/v1`。
 
-### 4. API 契约
+### 5. API 契约
 
 ```powershell
 cd ..\wordflip-api
@@ -179,7 +194,13 @@ $env:WORDFLIP_DB_PASSWORD = "<数据库密码>"
 ## 验证基线
 
 ```powershell
-cd wordflip-api
+cd wordflip-web
+npm test
+npm run lint
+npm run build
+npm run test:e2e
+
+cd ..\wordflip-api
 python -m pytest -q tests
 
 cd ..\wordflip-server
@@ -220,7 +241,7 @@ Docker Desktop 可用时，后端结果不得因 Testcontainers/MySQL 不可用�
 
 按 [TASK.md](TASK.md) 顺序推进：
 
-1. `V7-DB09~13`：内容构建、全新 v2 库、MySQL 集成。
-2. `V7-S13~20`：服务端 E2E、事务、越权、安全和性能。
-3. `V7-A10~17`：Android 真机完整链路。
-4. `V7-Q04~13`：发布配置、release、演示与合并准备。
+1. `WEB-10`：完成视觉演示文档与交付分支。
+2. `WEB-API01~07`：从认证开始按模块接入真实 API。
+3. `V7-DB09~13`、`V7-S13~20`：恢复真实数据与服务端收敛。
+4. `V7-A10~17`：Web 稳定后恢复 Android 真机完整链路。

@@ -40,7 +40,7 @@
 ├── wordflip-api/                # 📜 OpenAPI 契约
 ├── wordflip-server/             # ☕ Spring Boot（占位 → 脚手架）
 ├── wordflip-android/            # 🤖 Android（占位 → 脚手架）
-├── wordflip-web/                # ⚛️ React Web 二期（占位）
+├── wordflip-web/                # ⚛️ React Web 视觉演示（当前主线）
 └── docker/                      # 🐳 本地依赖服务
 ```
 
@@ -273,29 +273,40 @@ feature-study/
 
 ---
 
-## 10. `wordflip-web/` — Web 客户端（二期）
+## 10. `wordflip-web/` — Web 客户端（当前主线）
 
 ```
 wordflip-web/
 ├── README.md
 ├── package.json
+├── playwright.config.ts
+├── vitest.config.ts
 ├── vite.config.ts
 ├── tsconfig.json
 ├── index.html
+├── e2e/                        # Playwright 主流程、状态、响应式与视觉回归
+├── public/card-images/         # 固定演示素材
 └── src/
     ├── main.tsx
-    ├── app/                     # 路由壳
-    ├── pages/                   # 与 Android feature 对应
-    ├── components/
-    ├── api/                     # axios + OpenAPI 生成类型
-    ├── hooks/
-    └── styles/
+    ├── app/                     # 路由、Provider 与守卫
+    ├── components/              # 跨功能通用 UI
+    ├── data/
+    │   ├── contracts/           # Repository 与统一错误契约
+    │   ├── mock/                # 固定种子、场景与模拟仓储
+    │   └── runtime/             # 数据源装配
+    ├── design-system/           # Web token、全局样式与动效
+    ├── domain/                  # 稳定页面领域模型
+    ├── features/                # auth/today/books/groups/study/quiz/media/stats/settings
+    ├── layouts/                 # AppShell / AuthShell / FocusShell
+    └── test/                    # Vitest 测试工具
 ```
 
 | 规则 | 说明 |
 |------|------|
-| MVP | 可不初始化；目录保留占位 |
-| 共享 | 仅共享 `wordflip-api/openapi.yaml`，UI 独立实现 |
+| 当前模式 | 默认 `MockRepository` + 固定种子 + 版本化 localStorage，支持完整可点击演示 |
+| API 迁移 | 按模块替换为 `HttpRepository`；页面和路由不重写 |
+| 共享 | 与 Android 仅共享 `wordflip-api/openapi.yaml` 和业务规则，UI 独立实现 |
+| 禁止 | 在浏览器实现 FSRS、测验判题、分组、今日任务或统计业务算法 |
 
 ---
 
@@ -350,6 +361,8 @@ tools/
 | 新 REST 端点 | `wordflip-api/openapi.yaml` |
 | 数据库表变更 | `wordflip-server/.../db/migration/V{n}__*.sql` + 更新 `database-design.md` |
 | Android 新页面 | `wordflip-android/feature-*/` |
+| Web 新页面 | `wordflip-web/src/features/<feature>/`，并在 `src/app/` 注册路由 |
+| Web 数据源 | `wordflip-web/src/data/`；页面不得直接读取模拟 JSON 或 OpenAPI DTO |
 | 设计 token / 颜色 | `docs/wordflip/design-system/MASTER.md` |
 | 词库清洗工具 | `tools/word-lexicon-cleaner/` |
 | 新的 HTML 原型 | `prototypes/wordflip-v{N}.html` |
@@ -364,7 +377,7 @@ tools/
 - ❌ 在多个端重复实现掌握度 / SRS / 判题逻辑  
 - ❌ 未更新 OpenAPI 就直接改 Controller 路径  
 - ❌ 把 `localStorage` 原型逻辑原样搬进 Android 作为主数据源  
-- ❌ 在 `docs/prd/` 当作唯一需求源做开发（以 `requirements.md` v6 为准）  
+- ❌ 在 `docs/prd/` 当作唯一需求源做开发（以 `requirements.md` v7 为准）
 - ❌ 提交 `.env`、`application-local.yml`、Keystore、JWT 私钥  
 - ❌ 在 `docs/` 放 SQL 迁移或生产词库大文件（迁移走 Flyway；清洗产物经审阅再入库）  
 
@@ -377,6 +390,7 @@ tools/
 - [ ] `wordflip-server` 能 `mvn spring-boot:run` 且 Flyway 执行 `V1__init_schema.sql`
 - [ ] `docker compose up -d` 启动三件套
 - [ ] `wordflip-android` 模块树与 §9.1 一致
+- [ ] `wordflip-web` 可通过 `npm test`、`npm run lint`、`npm run build` 和 `npm run test:e2e`
 - [ ] OpenAPI 生成脚本指向 `wordflip-api/openapi.yaml`
 - [ ] 根目录 `README.md` 与本文 §2 一致
 - [ ] 无新增根目录 `.html` / 临时文件
