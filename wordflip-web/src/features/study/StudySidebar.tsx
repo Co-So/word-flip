@@ -24,9 +24,9 @@ export function StudySidebar({ session }: { session: StudySessionView }) {
       <section aria-labelledby="keyboard-help">
         <h3 id="keyboard-help">键盘帮助</h3>
         <ul className={styles.keyboardHelp}>
-          <li><kbd>Space</kbd><span>翻面</span></li>
-          <li><kbd>←</kbd><span>上一词</span></li>
-          <li><kbd>→</kbd><span>下一词</span></li>
+          <li><kbd>Space</kbd><span>翻转当前卡片</span></li>
+          <li><kbd>←</kbd><span>聚焦上一张</span></li>
+          <li><kbd>→</kbd><span>聚焦下一张</span></li>
         </ul>
       </section>
     </div>

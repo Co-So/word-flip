@@ -29,6 +29,28 @@ test("左侧导航只显示五个稳定入口", () => {
   }
 });
 
+test("五个导航入口展示对应装饰图标且不改变可访问名称", () => {
+  render(
+    <MemoryRouter future={routerFuture}>
+      <AppShell />
+    </MemoryRouter>
+  );
+
+  for (const [label, iconFile] of [
+    ["今日", "today.svg"],
+    ["词书", "books.svg"],
+    ["分组", "groups.svg"],
+    ["统计", "stats.svg"],
+    ["设置", "settings.svg"]
+  ]) {
+    const link = screen.getByRole("link", { name: label });
+    const icon = link.querySelector('[aria-hidden="true"]');
+
+    expect(icon).toBeInTheDocument();
+    expect(icon?.getAttribute("style")).toContain(iconFile);
+  }
+});
+
 test("Ctrl K 打开全局命令入口", async () => {
   const user = userEvent.setup();
 

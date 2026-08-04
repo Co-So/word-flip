@@ -21,10 +21,10 @@ test("登录到统计变化的完整演示流程", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/study\/study-demo$/);
   await expect(page.getByRole("heading", { name: "专注学习" })).toBeVisible();
-  await page.keyboard.press("Space");
+  await page.getByRole("button", {
+    name: "翻转 sustainable 学习卡查看释义"
+  }).click();
   await expect(page.getByText("可持续的", { exact: true })).toBeVisible();
-  await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("button", { name: /翻转 .+ 学习卡/ })).toBeVisible();
   await page.getByRole("button", { name: "完成学习" }).click();
 
   await expect(page).toHaveURL(/\/study\/study-demo\/complete$/);

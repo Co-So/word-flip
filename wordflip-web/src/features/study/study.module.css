@@ -1,8 +1,40 @@
 .workspace {
-  align-items: center;
+  align-items: stretch;
   display: flex;
   flex-direction: column;
   gap: 22px;
+  width: 100%;
+}
+
+.wallHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.wallEyebrow,
+.wallCount {
+  margin: 0;
+}
+
+.wallEyebrow {
+  color: var(--wf-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.wallCount {
+  color: var(--wf-text-muted);
+  font-size: 13px;
+}
+
+.cardWall {
+  align-items: stretch;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   width: 100%;
 }
 
@@ -10,12 +42,13 @@
   appearance: none;
   background: var(--wf-surface);
   border: 1px solid var(--wf-border);
-  border-radius: 28px;
-  box-shadow: 0 28px 80px rgb(48 45 41 / 12%);
+  border-radius: 24px;
+  box-shadow: 0 18px 48px rgb(48 45 41 / 10%);
   color: var(--wf-text);
   cursor: pointer;
-  min-height: 480px;
-  padding: clamp(28px, 5vw, 52px);
+  min-height: 320px;
+  overflow: hidden;
+  padding: 24px 18px;
   transform: perspective(1200px) rotateY(0);
   transform-style: preserve-3d;
   transition: box-shadow var(--wf-motion-normal), transform var(--wf-motion-flip);
@@ -23,7 +56,13 @@
 }
 
 .card:hover {
-  box-shadow: 0 32px 88px rgb(48 45 41 / 16%);
+  box-shadow: 0 22px 58px rgb(48 45 41 / 15%);
+}
+
+.card:focus-visible {
+  border-color: var(--wf-sage);
+  box-shadow: 0 0 0 3px rgb(111 144 56 / 22%), 0 22px 58px rgb(48 45 41 / 15%);
+  outline: none;
 }
 
 .flipped {
@@ -34,7 +73,7 @@
   align-items: center;
   display: flex;
   flex-direction: column;
-  min-height: 374px;
+  min-height: 270px;
   justify-content: center;
   transform: rotateY(0);
 }
@@ -45,10 +84,12 @@
 
 .cardContent h2 {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(42px, 7vw, 68px);
+  font-size: clamp(25px, 2.8vw, 38px);
   font-weight: 500;
   letter-spacing: -.04em;
+  line-height: 1.08;
   margin: 8px 0;
+  overflow-wrap: anywhere;
 }
 
 .cardEyebrow,
@@ -64,24 +105,26 @@
 .phonetic {
   color: var(--wf-text-muted);
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 20px;
-  margin: 0 0 18px;
+  font-size: 16px;
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
 }
 
 .definition {
   color: var(--wf-terracotta-foreground);
-  font-size: 27px;
-  margin-top: 10px;
+  font-size: 21px;
+  line-height: 1.35;
+  margin-top: 8px;
 }
 
 .example {
   color: var(--wf-text-muted);
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 19px;
+  font-size: 15px;
   font-style: italic;
   line-height: 1.6;
-  margin: 24px auto;
-  max-width: 460px;
+  margin: 16px auto;
+  max-width: 280px;
 }
 
 .imagePlaceholder {
@@ -90,11 +133,11 @@
     linear-gradient(135deg, #e6ddca 0 46%, #cfb9a4 46% 58%, #9eaa7d 58% 100%);
   border: 1px solid rgb(48 45 41 / 10%);
   border-radius: 18px;
-  height: 128px;
-  margin-bottom: 22px;
+  height: 104px;
+  margin-bottom: 16px;
   overflow: hidden;
   position: relative;
-  width: min(100%, 260px);
+  width: min(100%, 190px);
 }
 
 .imagePlaceholder span {
@@ -112,7 +155,7 @@
   border-radius: 999px;
   color: var(--wf-terracotta-foreground);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: .05em;
   padding: 6px 10px;
@@ -120,29 +163,12 @@
 
 .flipHint {
   color: var(--wf-text-muted);
-  font-size: 12px;
-  margin-top: 20px;
-}
-
-.controls {
-  align-items: center;
-  display: grid;
-  gap: 18px;
-  grid-template-columns: 1fr auto 1fr;
-  width: min(100%, 420px);
-}
-
-.controls button:last-child {
-  justify-self: end;
-}
-
-.controls span {
-  color: var(--wf-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: 11px;
+  margin-top: 14px;
 }
 
 .completeButton {
+  align-self: center;
   min-width: 150px;
 }
 
@@ -313,13 +339,57 @@
 }
 
 @media (max-width: 760px) {
+  .cardWall {
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .card {
-    min-height: 420px;
-    padding: 26px 20px;
+    border-radius: 20px;
+    min-height: 260px;
+    padding: 18px 10px;
+  }
+
+  .cardContent {
+    min-height: 224px;
   }
 
   .cardContent h2 {
-    font-size: clamp(36px, 12vw, 54px);
-    overflow-wrap: anywhere;
+    font-size: clamp(21px, 6vw, 30px);
+  }
+
+  .imagePlaceholder {
+    height: 68px;
+    margin-bottom: 12px;
+    width: min(92%, 130px);
+  }
+
+  .definition {
+    font-size: 18px;
+  }
+
+  .example {
+    font-size: 13px;
+    line-height: 1.45;
+    margin: 12px auto;
+  }
+
+  .phonetic {
+    font-size: 13px;
+  }
+
+  .flipHint {
+    font-size: 10px;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 340px) {
+  .cardWall {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    min-height: 300px;
   }
 }

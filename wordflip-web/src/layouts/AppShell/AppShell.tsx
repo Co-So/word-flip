@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import booksIcon from "@/assets/icons/books.svg";
+import groupsIcon from "@/assets/icons/groups.svg";
+import settingsIcon from "@/assets/icons/settings.svg";
+import statsIcon from "@/assets/icons/stats.svg";
+import todayIcon from "@/assets/icons/today.svg";
 import { CommandPalette, type CommandDestination } from "@/components/CommandPalette/CommandPalette";
 import styles from "./AppShell.module.css";
 
-const destinations: CommandDestination[] = [
-  { label: "今日", to: "/today" },
-  { label: "词书", to: "/books" },
-  { label: "分组", to: "/groups" },
-  { label: "统计", to: "/stats" },
-  { label: "设置", to: "/settings" }
+type NavigationDestination = CommandDestination & { icon: string };
+
+const destinations: NavigationDestination[] = [
+  { icon: todayIcon, label: "今日", to: "/today" },
+  { icon: booksIcon, label: "词书", to: "/books" },
+  { icon: groupsIcon, label: "分组", to: "/groups" },
+  { icon: statsIcon, label: "统计", to: "/stats" },
+  { icon: settingsIcon, label: "设置", to: "/settings" }
 ];
 
 export function AppShell() {
@@ -50,7 +57,14 @@ export function AppShell() {
     <aside className={styles.sidebar}>
       <div className={styles.brand}><span>WordFlip</span><small>STUDY DESK</small></div>
       <nav aria-label="主导航" className={styles.navigation}>
-        {destinations.map(({ label, to }) => <NavLink className={({ isActive }) => isActive ? styles.active : undefined} end={to === "/today"} key={to} to={to}>{label}</NavLink>)}
+        {destinations.map(({ icon, label, to }) => <NavLink className={({ isActive }) => isActive ? styles.active : undefined} end={to === "/today"} key={to} to={to}>
+          <span
+            aria-hidden="true"
+            className={styles.navIcon}
+            style={{ WebkitMaskImage: `url("${icon}")`, maskImage: `url("${icon}")` }}
+          />
+          <span>{label}</span>
+        </NavLink>)}
       </nav>
       <button className={styles.commandTrigger} onClick={openCommands} ref={commandTriggerRef} type="button">
         搜索 <kbd>Ctrl K</kbd>

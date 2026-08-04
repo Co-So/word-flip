@@ -11,9 +11,12 @@ export interface StudyCardProps {
 export function StudyCard({ card, isFlipped, onFlip }: StudyCardProps) {
   return (
     <button
-      aria-label={`翻转 ${card.headword} 学习卡`}
+      aria-label={isFlipped
+        ? `将 ${card.headword} 学习卡翻回正面`
+        : `翻转 ${card.headword} 学习卡查看释义`}
       aria-pressed={isFlipped}
       className={`${styles.card} ${isFlipped ? styles.flipped : ""}`}
+      data-study-card
       onClick={onFlip}
       type="button"
     >

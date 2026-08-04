@@ -15,6 +15,21 @@ function errorMessage(error: unknown): string {
   return (error as AppError).message ?? "暂时无法获取学习会话";
 }
 
+/** 卡片朗读使用浏览器系统语音，并用取消队列模拟 Android 的 QUEUE_FLUSH 行为。 */
+function speakStudyCard(headword: string) {
+  if (
+    typeof window === "undefined" ||
+    !("speechSynthesis" in window) ||
+    typeof SpeechSynthesisUtterance === "undefined"
+  ) return;
+
+  const utterance = new SpeechSynthesisUtterance(headword);
+  utterance.lang = "en-US";
+  utterance.rate = 1;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+}
+
 function isInteractiveTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -26,14 +41,30 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
   );
 }
 
+/** 方向键只在当前卡片墙内移动焦点，并在首尾边界停止。 */
+function moveCardFocus(target: EventTarget | null, direction: -1 | 1) {
+  if (!(target instanceof HTMLElement)) return;
+  const currentCard = target.closest<HTMLButtonElement>("[data-study-card]");
+  const cardWall = currentCard?.closest("[data-testid='study-card-wall']");
+  if (!currentCard || !cardWall) return;
+
+  const cards = Array.from(
+    cardWall.querySelectorAll<HTMLButtonElement>("[data-study-card]")
+  );
+  const currentIndex = cards.indexOf(currentCard);
+  if (currentIndex < 0) return;
+  const nextIndex = Math.min(Math.max(currentIndex + direction, 0), cards.length - 1);
+  cards[nextIndex]?.focus();
+}
+
 export function StudyPage() {
   const { sessionId = "" } = useParams();
-  const { study } = useRepositories();
+  const { settings, study } = useRepositories();
   const navigate = useNavigate();
   const [session, setSession] = useState<StudySessionView | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [cardIndex, setCardIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [flippedCardIds, setFlippedCardIds] = useState<Set<string>>(() => new Set());
   const [isCompleting, setIsCompleting] = useState(false);
   const [isExitOpen, setIsExitOpen] = useState(false);
   const exitButtonRef = useRef<HTMLButtonElement>(null);
@@ -43,12 +74,13 @@ export function StudyPage() {
     let active = true;
     setSession(null);
     setError(null);
-    setCardIndex(0);
-    setIsFlipped(false);
-    study.getSession(sessionId)
-      .then((snapshot) => {
+    setSoundEnabled(false);
+    setFlippedCardIds(new Set());
+    Promise.all([study.getSession(sessionId), settings.getSettings()])
+      .then(([snapshot, appSettings]) => {
         if (!active) return;
         setSession(snapshot);
+        setSoundEnabled(appSettings.soundEnabled);
         if (snapshot.status === "completed") {
           navigate(`/study/${sessionId}/complete`, { replace: true });
         }
@@ -57,19 +89,20 @@ export function StudyPage() {
         if (active) setError(errorMessage(reason));
       });
     return () => { active = false; };
-  }, [navigate, sessionId, study]);
+  }, [navigate, sessionId, settings, study]);
 
-  const flipCard = useCallback(() => {
-    setIsFlipped((value) => !value);
-  }, []);
-
-  const moveCard = useCallback((direction: -1 | 1) => {
-    setCardIndex((current) => {
-      const lastIndex = Math.max((session?.cards.length ?? 1) - 1, 0);
-      return Math.min(Math.max(current + direction, 0), lastIndex);
+  const flipCard = useCallback((cardId: string, headword: string) => {
+    setFlippedCardIds((current) => {
+      const next = new Set(current);
+      if (next.has(cardId)) {
+        next.delete(cardId);
+      } else {
+        next.add(cardId);
+      }
+      return next;
     });
-    setIsFlipped(false);
-  }, [session?.cards.length]);
+    if (soundEnabled) speakStudyCard(headword);
+  }, [soundEnabled]);
 
   const requestExit = useCallback(() => {
     if (!session || session.status === "completed") {
@@ -90,21 +123,21 @@ export function StudyPage() {
         if (!isExitOpen) requestExit();
         return;
       }
-      if (isInteractiveTarget(event.target)) return;
-      if (event.key === " ") {
+      if (event.key === "ArrowRight" && targetIsStudyCard(event.target)) {
         event.preventDefault();
-        flipCard();
-      } else if (event.key === "ArrowRight") {
-        event.preventDefault();
-        moveCard(1);
-      } else if (event.key === "ArrowLeft") {
-        event.preventDefault();
-        moveCard(-1);
+        moveCardFocus(event.target, 1);
+        return;
       }
+      if (event.key === "ArrowLeft" && targetIsStudyCard(event.target)) {
+        event.preventDefault();
+        moveCardFocus(event.target, -1);
+        return;
+      }
+      if (isInteractiveTarget(event.target)) return;
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [flipCard, isExitOpen, moveCard, requestExit, session]);
+  }, [isExitOpen, requestExit, session]);
 
   const completeSession = async () => {
     setIsCompleting(true);
@@ -146,29 +179,19 @@ export function StudyPage() {
         />
       ) : (
         <div className={styles.workspace}>
-          <StudyCard
-            card={session.cards[cardIndex]}
-            isFlipped={isFlipped}
-            onFlip={flipCard}
-          />
-          <div className={styles.controls}>
-            <Button
-              aria-label="上一词"
-              disabled={cardIndex === 0}
-              onClick={() => moveCard(-1)}
-              variant="ghost"
-            >
-              上一词
-            </Button>
-            <span>{cardIndex + 1} / {session.cards.length}</span>
-            <Button
-              aria-label="下一词"
-              disabled={cardIndex === session.cards.length - 1}
-              onClick={() => moveCard(1)}
-              variant="ghost"
-            >
-              下一词
-            </Button>
+          <div className={styles.wallHeader}>
+            <p className={styles.wallEyebrow}>CARD WALL</p>
+            <p className={styles.wallCount}>{session.cards.length} 张词汇卡</p>
+          </div>
+          <div className={styles.cardWall} data-testid="study-card-wall">
+            {session.cards.map((card) => (
+              <StudyCard
+                card={card}
+                isFlipped={flippedCardIds.has(card.cardId)}
+                key={card.cardId}
+                onFlip={() => flipCard(card.cardId, card.headword)}
+              />
+            ))}
           </div>
           <Button
             className={styles.completeButton}
@@ -190,4 +213,8 @@ export function StudyPage() {
       ) : null}
     </FocusShell>
   );
+}
+
+function targetIsStudyCard(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest("[data-study-card]") !== null;
 }

@@ -3,6 +3,6 @@
 .header div { text-align: center; }
 .header p { color: var(--wf-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; margin: 0 0 4px; }
 .header h1 { font-size: 20px; margin: 0; }
-.main { align-self: center; margin: 0 auto; max-width: 720px; min-width: 0; padding: 32px 42px; width: 100%; }
+.main { align-self: center; margin: 0 auto; max-width: 1040px; min-width: 0; padding: 32px 42px; width: 100%; }
 .aside { border-left: 1px solid var(--wf-border); padding: 32px; }
 @media (max-width: 900px) { .shell { display: block; padding: 16px; } .main { padding: 34px 0; } .aside { border-left: 0; border-top: 1px solid var(--wf-border); padding: 24px 0; } }

@@ -87,7 +87,7 @@ export function SettingsPage() {
         <Panel title="学习偏好">
           <form className={styles.form} onSubmit={save}>
             <label className={styles.switchRow}>
-              <span><strong>播放发音</strong><small>打开卡片时允许播放单词音频</small></span>
+              <span><strong>播放发音</strong><small>点击学习卡片时自动发音（正反面）</small></span>
               <input
                 aria-label="播放发音"
                 checked={form.soundEnabled}

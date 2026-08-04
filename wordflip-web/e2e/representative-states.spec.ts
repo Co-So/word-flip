@@ -51,3 +51,18 @@ test("无效学习会话有解释和恢复动作", async ({ page }) => {
   await expect(page.getByRole("link", { name: "返回 Today" })).toBeVisible();
   expect(pageErrors).toEqual([]);
 });
+
+test("学习退出确认框使用可读的实体表面和遮罩", async ({ page }) => {
+  await page.goto(scenarios.study);
+  await page.getByRole("button", { name: "退出" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "退出本次学习？" });
+  await expect(dialog).toBeVisible();
+  const appearance = await dialog.evaluate((element) => ({
+    backdropBackground: getComputedStyle(element.parentElement!).backgroundColor,
+    dialogBackground: getComputedStyle(element).backgroundColor
+  }));
+
+  expect(appearance.backdropBackground).toBe("rgba(48, 45, 41, 0.42)");
+  expect(appearance.dialogBackground).toBe("rgb(253, 251, 247)");
+});

@@ -3,12 +3,14 @@
 .brand { display: grid; font-size: 20px; font-weight: 760; letter-spacing: -.04em; padding: 0 8px; }
 .brand small { color: var(--wf-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: .1em; margin-top: 5px; }
 .navigation { display: grid; gap: 4px; }
-.navigation a { border-radius: var(--wf-radius-control); color: var(--wf-text-muted); font-size: 14px; font-weight: 650; padding: 10px 12px; transition: background-color var(--wf-motion-fast), color var(--wf-motion-fast); }
+.navigation a { align-items: center; border-radius: var(--wf-radius-control); color: var(--wf-text-muted); display: flex; font-size: 14px; font-weight: 650; gap: 10px; padding: 10px 12px; transition: background-color var(--wf-motion-fast), color var(--wf-motion-fast); }
 .navigation a:hover { background: rgb(255 255 255 / 45%); color: var(--wf-text); }
 .navigation a.active { background: var(--wf-sage-container); color: #26370f; }
+.navIcon { background: currentColor; block-size: 18px; flex: 0 0 18px; inline-size: 18px; -webkit-mask-position: center; mask-position: center; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-size: contain; mask-size: contain; }
 .commandTrigger { background: transparent; border: 1px solid var(--wf-border); border-radius: var(--wf-radius-control); color: var(--wf-text-muted); cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; margin-top: auto; padding: 9px 10px; text-align: left; }
 .commandTrigger kbd { float: right; }
 .content { min-width: 0; padding: 42px clamp(20px, 5vw, 72px); }
 .contentInner { margin: 0 auto; max-width: var(--wf-content-max); }
+@media (min-width: 1024px) { .sidebar { align-self: start; height: 100vh; height: 100dvh; overflow-y: auto; position: sticky; top: 0; } }
 @media (max-width: 1023px) { .shell { display: block; } .sidebar { align-items: center; border-bottom: 1px solid var(--wf-border); border-right: 0; flex-direction: row; gap: 14px; padding: 12px 16px; } .brand { font-size: 17px; padding: 0; } .brand small { display: none; } .navigation { display: flex; flex: 1; gap: 2px; justify-content: flex-end; overflow-x: auto; } .navigation a { padding: 8px 9px; white-space: nowrap; } .commandTrigger { margin-left: auto; margin-top: 0; white-space: nowrap; } .commandTrigger kbd { float: none; } .content { padding: 28px 20px; } }
 @media (max-width: 620px) { .sidebar { align-items: stretch; flex-wrap: wrap; } .navigation { flex-basis: 100%; justify-content: space-between; order: 2; } .navigation a { font-size: 13px; padding: 8px 6px; } }
