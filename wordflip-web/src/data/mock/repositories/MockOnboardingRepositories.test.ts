@@ -9,7 +9,7 @@ test("配置完成的用户退出后重新登录仍保留当前计划", async ()
   const historicalPlanIds = store.read().books.plans.map((plan) => plan.planId);
 
   await repositories.auth.signOut();
-  await repositories.auth.signIn({ email: "demo@wordflip.local", password: "wordflip-demo" });
+  await repositories.auth.signIn({ account: "demo@wordflip.local", password: "wordflip-demo" });
 
   expect(store.read().books.activePlanId).toBe(activePlanId);
   expect(store.read().books.plans.map((plan) => plan.planId)).toEqual(historicalPlanIds);

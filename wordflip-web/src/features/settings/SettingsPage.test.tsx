@@ -2,6 +2,7 @@ import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test } from "vitest";
 import { vi } from "vitest";
+import { MockAuthRepository } from "@/data/mock/repositories/MockAuthRepository";
 import { MockSettingsRepository } from "@/data/mock/repositories/MockSettingsRepository";
 import { renderScenarioApp } from "@/test/renderApp";
 
@@ -11,6 +12,53 @@ afterEach(() => {
 });
 
 describe("设置", () => {
+  test("退出登录需要确认，取消恢复焦点，确认后清理会话并返回登录页", async () => {
+    const user = userEvent.setup();
+    const app = renderScenarioApp("configured", "/settings");
+    const trigger = await screen.findByRole("button", { name: "退出登录" });
+
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "确认退出登录" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(screen.getByRole("button", { name: "取消" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "确认退出登录" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "确认退出" }));
+
+    expect(await screen.findByRole("heading", { name: "登录 WordFlip" })).toBeVisible();
+    expect(app.store.read().auth.session).toBeNull();
+  });
+
+  test("退出 pending 时只提交一次，意外失败后保留确认框并允许重试", async () => {
+    let rejectSignOut!: (reason: unknown) => void;
+    const signOutPromise = new Promise<{ signedOut: true }>((_resolve, reject) => {
+      rejectSignOut = reject;
+    });
+    const signOutSpy = vi.spyOn(MockAuthRepository.prototype, "signOut").mockReturnValue(signOutPromise);
+    const user = userEvent.setup();
+    renderScenarioApp("configured", "/settings");
+
+    await user.click(await screen.findByRole("button", { name: "退出登录" }));
+    const confirm = screen.getByRole("button", { name: "确认退出" });
+    await user.dblClick(confirm);
+    await user.keyboard("{Enter}");
+
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+    expect(confirm).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "确认退出登录" })).toBeVisible();
+
+    rejectSignOut(new Error("暂时无法退出登录"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法退出登录");
+    expect(confirm).toBeEnabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeEnabled();
+  });
+
   test("保存固定设置快照并持久化，不出现全局词典切换", async () => {
     const user = userEvent.setup();
     const app = renderScenarioApp("configured", "/settings");

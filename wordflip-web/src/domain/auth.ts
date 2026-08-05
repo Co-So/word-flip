@@ -5,13 +5,11 @@ export interface AuthSession {
 }
 
 export interface SignInInput {
-  email: string;
+  account: string;
   password: string;
 }
 
-export interface RegisterInput extends SignInInput {
-  displayName: string;
-}
+export type RegisterInput = SignInInput;
 
 export interface AuthRepository {
   getSession(): Promise<AuthSession | null>;

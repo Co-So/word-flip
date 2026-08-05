@@ -3,9 +3,9 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
 import { AppProviders } from "@/app/AppProviders";
 import { createAppRouter } from "@/app/router";
-import { createMockRepositoryBundle } from "@/data/mock/fixtures";
 import { createDemoStateStore } from "@/data/mock/DemoStateStore";
 import { bootstrapDemoScenario } from "@/data/mock/demoScenarioBootstrap";
+import { createRepositoryBundle } from "@/data/runtime/createRepositoryBundle";
 import { RepositoryProvider } from "@/data/runtime/RepositoryContext";
 import "@/design-system/global.css";
 
@@ -22,7 +22,12 @@ if (import.meta.env.DEV) {
 }
 
 const demoStore = createDemoStateStore();
-const repositories = createMockRepositoryBundle(demoStore);
+const repositories = createRepositoryBundle({
+  dataSource: import.meta.env.VITE_DATA_SOURCE,
+  apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
+  storage: window.localStorage,
+  demoStore
+});
 
 if (!rootElement) {
   throw new Error("找不到 WordFlip 应用根节点");

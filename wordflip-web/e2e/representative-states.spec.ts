@@ -1,15 +1,15 @@
 import { expect, test } from "@playwright/test";
 import { collectPageErrors, scenarios } from "./helpers";
 
-test("登录失败保留邮箱并给出安全恢复动作", async ({ page }) => {
+test("登录失败保留账号并给出安全恢复动作", async ({ page }) => {
   const pageErrors = collectPageErrors(page);
   await page.goto(scenarios.loggedOut);
-  await page.getByLabel("邮箱").fill("demo@wordflip.local");
+  await page.getByLabel("邮箱或手机号").fill("demo@wordflip.local");
   await page.getByLabel("密码").fill("wrong-password");
   await page.getByRole("button", { name: "登录" }).click();
 
-  await expect(page.getByRole("alert")).toHaveText("邮箱或密码不正确");
-  await expect(page.getByLabel("邮箱")).toHaveValue("demo@wordflip.local");
+  await expect(page.getByRole("alert")).toHaveText("账号或密码错误");
+  await expect(page.getByLabel("邮箱或手机号")).toHaveValue("demo@wordflip.local");
   await expect(page.getByRole("button", { name: "登录" })).toBeEnabled();
   expect(pageErrors).toEqual([]);
 });

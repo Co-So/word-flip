@@ -3,6 +3,11 @@
 .hero p { color: var(--wf-text-muted); margin: 0; }
 .eyebrow { color: var(--wf-text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: .09em; }
 .workspace { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); }
+.accountPanel { grid-column: 1 / -1; }
+.accountActions { align-items: center; display: flex; gap: 16px; justify-content: space-between; }
+.accountActions span { display: grid; gap: 4px; }
+.accountActions small { color: var(--wf-text-muted); }
+.dangerButton { border-color: var(--wf-error); color: var(--wf-error); }
 .form { display: grid; gap: 0; }
 .switchRow { align-items: center; border-bottom: 1px solid var(--wf-border); display: flex; gap: 18px; justify-content: space-between; padding: 16px 0; }
 .switchRow:first-child { padding-top: 0; }
@@ -19,7 +24,11 @@
 .dialog h2 { margin: 6px 0 10px; }
 .dialog p:not(.eyebrow) { color: var(--wf-text-muted); line-height: 1.6; }
 .dialog .resetError { color: var(--wf-error); }
+.dialog .signOutError { color: var(--wf-error); }
 .dialogActions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
 @media (max-width: 900px) {
   .workspace { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .accountActions { align-items: flex-start; flex-direction: column; }
 }

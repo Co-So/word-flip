@@ -53,7 +53,7 @@ export function OnboardingPage() {
     <p className={styles.eyebrow}>FIRST STEP</p>
     <h1>设置你的学习计划</h1>
     <p className={styles.intro}>选择一本主词书，稍后仍可保留旧计划并切换。</p>
-    <p className={styles.demoNote}>仅在此浏览器创建演示账户，不会发送或保存到服务器。</p>
+    <p className={styles.demoNote}>选择当前主词书后即可生成第一份学习计划。</p>
     <form onSubmit={submit}>
       <fieldset>
         <legend>主词书</legend>

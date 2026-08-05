@@ -14,6 +14,15 @@ npx playwright install chromium
 npm run dev
 ```
 
+默认使用完整 Mock 数据，不需要启动后端。若要把认证模块接到本地 Spring Boot，复制 `.env.example` 为 `.env.local`，并设置：
+
+```dotenv
+VITE_DATA_SOURCE=http
+VITE_API_BASE_URL=http://127.0.0.1:8080/api/v1
+```
+
+当前 `http` 模式只替换认证 Repository；设置、词书、今日、分组、学习、测验、统计与媒体仍使用 Mock，后续按模块迁移。
+
 演示账号：
 
 - 邮箱：`demo@wordflip.local`
@@ -53,7 +62,7 @@ src/
 ## 数据模式
 
 - `MockRepository`：默认视觉演示模式，固定种子持久化到 `wordflip.web.demo.v1`，支持稳定场景和重置。
-- `HttpRepository`：后续按认证、设置/词书、今日/分组、学习、测验、统计、媒体的顺序接入；页面和路由不重写。
+- `HttpRepository`：认证模块已支持按环境变量接入真实 API；其余模块按设置/词书、今日/分组、学习、测验、统计、媒体的顺序接入，页面和路由不重写。
 
 模拟测验只回放预计算服务端结果，并通过统一 `applyQuizResult` 入口更新指定 skill；翻卡学习不会改变掌握度。
 

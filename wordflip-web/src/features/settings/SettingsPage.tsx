@@ -7,20 +7,27 @@ import { Panel } from "@/components/Panel/Panel";
 import { useRepositories } from "@/data/runtime/RepositoryContext";
 import type { AppSettings } from "@/domain/settings";
 import { ResetDemoDialog } from "./ResetDemoDialog";
+import { SignOutDialog } from "./SignOutDialog";
 import styles from "./settings.module.css";
 
 const groupSizes = [10, 20, 30, 50] as const;
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "暂时无法读取设置";
+function messageOf(error: unknown, fallback = "暂时无法读取设置"): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return fallback;
 }
 
 export function SettingsPage() {
-  const { settings } = useRepositories();
+  const { auth, settings } = useRepositories();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const resetTriggerRef = useRef<HTMLButtonElement>(null);
   const resettingRef = useRef(false);
+  const signOutTriggerRef = useRef<HTMLButtonElement>(null);
+  const signingOutRef = useRef(false);
   const wasDialogOpen = useRef(false);
   const [form, setForm] = useState<AppSettings | null>(null);
   const [status, setStatus] = useState<"loading" | "error" | "ready">("loading");
@@ -29,6 +36,9 @@ export function SettingsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [signOutDialogOpen, setSignOutDialogOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -76,6 +86,24 @@ export function SettingsPage() {
     } finally {
       resettingRef.current = false;
       setResetting(false);
+    }
+  }
+
+  async function signOut() {
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+    setSigningOut(true);
+    setSignOutError(null);
+    try {
+      await auth.signOut();
+      queryClient.clear();
+      setSignOutDialogOpen(false);
+      navigate("/login", { replace: true });
+    } catch (reason) {
+      setSignOutError(messageOf(reason, "暂时无法退出登录，请重试"));
+    } finally {
+      signingOutRef.current = false;
+      setSigningOut(false);
     }
   }
 
@@ -132,6 +160,24 @@ export function SettingsPage() {
             重置演示数据
           </Button>
         </Panel>
+        <div className={styles.accountPanel}>
+          <Panel title="账户">
+            <div className={styles.accountActions}>
+              <span><strong>退出当前账户</strong><small>清除当前浏览器会话并返回登录页。</small></span>
+              <Button
+                className={styles.dangerButton}
+                onClick={() => {
+                  setSignOutError(null);
+                  setSignOutDialogOpen(true);
+                }}
+                ref={signOutTriggerRef}
+                variant="ghost"
+              >
+                退出登录
+              </Button>
+            </div>
+          </Panel>
+        </div>
       </div> : null}
     </AsyncState>
     {dialogOpen ? <ResetDemoDialog
@@ -141,6 +187,15 @@ export function SettingsPage() {
       }}
       onConfirm={() => { void reset(); }}
       resetting={resetting}
+    /> : null}
+    {signOutDialogOpen ? <SignOutDialog
+      error={signOutError}
+      onCancel={() => {
+        if (!signingOutRef.current) setSignOutDialogOpen(false);
+      }}
+      onConfirm={() => { void signOut(); }}
+      returnFocusRef={signOutTriggerRef}
+      signingOut={signingOut}
     /> : null}
   </div>;
 }

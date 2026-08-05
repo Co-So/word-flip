@@ -6,7 +6,7 @@ test("登录到统计变化的完整演示流程", async ({ page }) => {
   await page.goto(scenarios.loggedOut);
 
   await expect(page.getByRole("heading", { name: "登录 WordFlip" })).toBeVisible();
-  await page.getByLabel("邮箱").fill("demo@wordflip.local");
+  await page.getByLabel("邮箱或手机号").fill("demo@wordflip.local");
   await page.getByLabel("密码").fill("wordflip-demo");
   await page.getByRole("button", { name: "登录" }).click();
 
