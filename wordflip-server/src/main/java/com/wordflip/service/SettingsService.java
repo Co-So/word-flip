@@ -9,16 +9,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+
 /**
- * 用户显示偏好设置；选书和切书统一由学习计划服务负责。
+ * 用户偏好设置；分组配置变化只追加未入组卡片，不重排已有成员，也不写学习记忆。
  */
 @Service
 public class SettingsService {
 
     private final UserSettingsRepository userSettingsRepository;
+    private final GroupService groupService;
 
-    public SettingsService(UserSettingsRepository userSettingsRepository) {
+    public SettingsService(
+            UserSettingsRepository userSettingsRepository,
+            GroupService groupService
+    ) {
         this.userSettingsRepository = userSettingsRepository;
+        this.groupService = groupService;
     }
 
     @Transactional(readOnly = true)
@@ -27,13 +33,29 @@ public class SettingsService {
         return UserSettingsResponse.of(settings);
     }
 
-    /** PATCH /settings/preferences：仅更新偏好，不触发 append */
+    /**
+     * 更新偏好；分组配置实际变化时，在同一事务保存设置并追加当前计划的未入组卡片。
+     */
     @Transactional
     public UserSettingsResponse patchPreferences(Long userId, PreferencesPatchRequest request) {
         if (!request.hasAnyField()) {
             throw new WordflipException("VALIDATION_ERROR", "至少提供一个偏好字段");
         }
         UserSettings settings = requireSettings(userId);
+        boolean groupingChanged = (request.getGroupSize() != null
+                && request.getGroupSize() != settings.getGroupSize())
+                || (request.getGroupStrategy() != null
+                && request.getGroupStrategy() != settings.getGroupStrategy());
+        if (request.getGroupSize() != null) {
+            int groupSize = request.getGroupSize();
+            if (groupSize != 10 && groupSize != 20 && groupSize != 30 && groupSize != 50) {
+                throw new WordflipException("VALIDATION_ERROR", "groupSize 只允许 10、20、30 或 50");
+            }
+            settings.setGroupSize(groupSize);
+        }
+        if (request.getGroupStrategy() != null) {
+            settings.setGroupStrategy(request.getGroupStrategy());
+        }
         if (request.getAutoSpeak() != null) {
             settings.setAutoSpeak(request.getAutoSpeak());
         }
@@ -54,7 +76,11 @@ public class SettingsService {
             settings.setDefaultQuestionLimit(limit);
         }
         settings.setUpdatedAt(Instant.now());
-        userSettingsRepository.save(settings);
+        userSettingsRepository.saveAndFlush(settings);
+        if (groupingChanged && settings.getActivePlanId() != null) {
+            // 保存成功后再追加，追加异常会让事务整体回滚；已有分组成员保持不变。
+            groupService.appendAutoGroups(userId, settings.getActivePlanId());
+        }
         return UserSettingsResponse.of(settings);
     }
 

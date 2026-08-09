@@ -77,7 +77,7 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
         }
       },
       today: emptyTodaySnapshot("雅思核心词汇"),
-      bookProgress: { learnedCount: 0, publishedCardCount: 3000, completionRate: 0 },
+      bookProgress: { masteredCount: 0, assignedCardCount: 3000, completionPercent: 0 },
       study: {
         sessions: { "study-demo": firstStudySession("card-ielts-sustainable") },
         afterStudySession: emptyTodaySnapshot("雅思核心词汇")
@@ -130,7 +130,7 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
         }
       },
       today: emptyTodaySnapshot("核心词汇"),
-      bookProgress: { learnedCount: 0, publishedCardCount: 300, completionRate: 0 },
+      bookProgress: { masteredCount: 0, assignedCardCount: 300, completionPercent: 0 },
       study: {
         sessions: { "study-demo": firstStudySession("card-sustainable") },
         afterStudySession: emptyTodaySnapshot("核心词汇")
@@ -183,7 +183,7 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
         }
       },
       today: emptyTodaySnapshot("进阶词汇"),
-      bookProgress: { learnedCount: 0, publishedCardCount: 180, completionRate: 0 },
+      bookProgress: { masteredCount: 0, assignedCardCount: 180, completionPercent: 0 },
       study: {
         sessions: { "study-demo": firstStudySession("card-resilient") },
         afterStudySession: emptyTodaySnapshot("进阶词汇")
@@ -242,6 +242,10 @@ export function activatePrecomputedBookPlan(
 /** 首次设置只原子回放固定服务端快照，不在 Web 端计算分组、今日任务或 FSRS。 */
 export class MockSettingsRepository implements SettingsRepository {
   constructor(private readonly store: DemoStateStore) {}
+
+  supportsDemoReset(): boolean {
+    return true;
+  }
 
   getSettings(): Promise<AppSettings> {
     return Promise.resolve(this.store.read().settings);

@@ -33,11 +33,13 @@ export function BookDetailPage() {
       </header>
       <Panel title="学习进度">
         {book.progress ? <div className={styles.detailProgress}>
-          <strong>{book.progress.completionRate}%</strong>
-          <div><span>{book.progress.learnedCount} / {book.progress.publishedCardCount} 张已掌握</span>
-            <div aria-label="词书完成度" className={styles.progressTrack}><i style={{ width: `${book.progress.completionRate}%` }} /></div>
+          <strong>{book.progress.completionPercent}%</strong>
+          <div><span>{book.progress.masteredCount} / {book.progress.assignedCardCount} 张已掌握</span>
+            <div aria-label="词书完成度" className={styles.progressTrack}><i style={{ width: `${book.progress.completionPercent}%` }} /></div>
           </div>
-        </div> : <p className={styles.historyNote}>仅当前计划显示预计算进度。切换到此词书后即可查看。</p>}
+        </div> : <p className={styles.historyNote}>{book.planId === null
+          ? "创建学习计划后即可查看进度。"
+          : "进度统计暂时不可用，请稍后重试。"}</p>}
       </Panel>
     </div> : null}
   </AsyncState>;

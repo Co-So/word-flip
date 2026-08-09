@@ -1,11 +1,7 @@
 import type { AxiosInstance } from "axios";
 import { AuthSessionManager } from "@/data/http/auth/AuthSessionManager";
 import type { AuthResponseDto } from "@/data/http/auth/authDtos";
-import { TokenStore } from "@/data/http/auth/TokenStore";
-import {
-  createAuthenticatedHttpClient,
-  createPublicHttpClient
-} from "@/data/http/createHttpClient";
+import { createHttpRuntime } from "@/data/http/createHttpRuntime";
 import type {
   AuthRepository,
   AuthSession,
@@ -73,16 +69,10 @@ export function createHttpAuthRepository({
   storage: Storage | null;
   now?: () => number;
 }): HttpAuthRepository {
-  const publicClient = createPublicHttpClient(baseURL);
-  const tokens = new TokenStore(storage);
-  const sessions = new AuthSessionManager(
-    tokens,
-    async (refreshToken) => {
-      const response = await publicClient.post<AuthResponseDto>("/auth/refresh", { refreshToken });
-      return response.data;
-    },
-    now
+  const runtime = createHttpRuntime({ baseURL, storage, now });
+  return new HttpAuthRepository(
+    runtime.publicClient,
+    runtime.authenticatedClient,
+    runtime.sessions
   );
-  const authenticatedClient = createAuthenticatedHttpClient({ baseURL, sessions });
-  return new HttpAuthRepository(publicClient, authenticatedClient, sessions);
 }

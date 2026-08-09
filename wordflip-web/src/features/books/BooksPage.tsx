@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AsyncState } from "@/components/AsyncState/AsyncState";
 import { Button } from "@/components/Button/Button";
@@ -22,15 +22,30 @@ const statusCopy = {
 
 export function BooksPage() {
   const { books } = useRepositories();
+  const activatingRef = useRef(false);
+  const loadEpochRef = useRef(0);
+  const mountedRef = useRef(false);
   const [items, setItems] = useState<BookOverview[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activating, setActivating] = useState<string | null>(null);
+  const [activating, setActivating] = useState(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadEpochRef.current += 1;
+    };
+  }, []);
 
   const load = useCallback(async () => {
+    const requestEpoch = ++loadEpochRef.current;
     try {
-      setItems(await books.list());
+      const nextItems = await books.list();
+      if (!mountedRef.current || requestEpoch !== loadEpochRef.current) return;
+      setItems(nextItems);
       setError(null);
     } catch (reason) {
+      if (!mountedRef.current || requestEpoch !== loadEpochRef.current) return;
       setError(messageOf(reason));
     }
   }, [books]);
@@ -38,18 +53,23 @@ export function BooksPage() {
   useEffect(() => { void load(); }, [load]);
 
   async function activate(bookId: string) {
-    setActivating(bookId);
+    // 激活请求必须串行，避免较慢的旧选择覆盖用户当前计划。
+    if (activatingRef.current) return;
+    activatingRef.current = true;
+    setActivating(true);
     try {
       await books.activateBook(bookId);
+      if (!mountedRef.current) return;
       await load();
     } catch (reason) {
-      setError(messageOf(reason));
+      if (mountedRef.current) setError(messageOf(reason));
     } finally {
-      setActivating(null);
+      activatingRef.current = false;
+      if (mountedRef.current) setActivating(false);
     }
   }
 
-  return <AsyncState error={error ?? undefined} status={error ? "error" : items ? "ready" : "loading"}>
+  return <AsyncState error={error ?? undefined} onRetry={load} status={error ? "error" : items ? "ready" : "loading"}>
     {items ? <div className={styles.page}>
       <header className={styles.hero}>
         <div><p className={styles.eyebrow}>BOOKSHELF</p><h1>词书与学习计划</h1></div>
@@ -57,7 +77,7 @@ export function BooksPage() {
       </header>
       {items.length === 0 ? <EmptyState
         action={<Link className={styles.detailLink} to="/onboarding">返回首次设置</Link>}
-        description="演示数据中暂时没有可创建计划的已发布词书。"
+        description="当前没有可创建计划的已发布词书。"
         title="还没有可用词书"
       /> : <div className={styles.bookGrid}>
         {items.map((book) => <article aria-label={book.title} key={book.bookId}>
@@ -68,13 +88,15 @@ export function BooksPage() {
             </div>
             <p className={styles.cardCount}>{book.cardCount.toLocaleString()} 张已发布学习卡</p>
             {book.progress ? <div className={styles.progress}>
-              <span>当前进度</span><strong>{book.progress.completionRate}%</strong>
-            </div> : <p className={styles.historyNote}>{book.planStatus === "history" ? "历史数据已保留，切回后可查看。" : "将从固定计划快照开始。"}</p>}
+              <span>当前进度</span><strong>{book.progress.completionPercent}%</strong>
+            </div> : <p className={styles.historyNote}>{book.planId === null
+              ? "创建学习计划后即可查看进度。"
+              : "进度统计暂时不可用，请稍后重试。"}</p>}
             <div className={styles.actions}>
               <Link className={styles.detailLink} to={`/books/${book.bookId}`}>查看详情</Link>
               {book.planStatus === "current"
                 ? <Button disabled variant="ghost">当前计划</Button>
-                : <Button disabled={activating === book.bookId} onClick={() => void activate(book.bookId)}>
+                : <Button disabled={activating} onClick={() => void activate(book.bookId)}>
                   {book.planStatus === "history" ? "切换到此计划" : "开始学习"}
                 </Button>}
             </div>

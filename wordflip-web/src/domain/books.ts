@@ -11,9 +11,9 @@ export interface Book {
 }
 
 export interface BookProgress {
-  learnedCount: number;
-  publishedCardCount: number;
-  completionRate: number;
+  masteredCount: number;
+  assignedCardCount: number;
+  completionPercent: number;
 }
 
 export interface BookOverview extends Book {

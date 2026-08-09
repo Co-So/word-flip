@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 用户设置：仅提供读取与偏好更新；词书选择由学习计划 API 负责。
+ * 用户设置：分组配置更新可追加未入组卡片，但不重排已有成员，也不写学习记忆。
  */
 @RestController
 @RequestMapping("/api/v1/settings")

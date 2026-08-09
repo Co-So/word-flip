@@ -1,19 +1,38 @@
 package com.wordflip.dto.settings;
 
+import com.wordflip.domain.GroupStrategy;
 import com.wordflip.domain.HeatDisplayMode;
 import com.wordflip.domain.QuizLaunchMode;
 import com.wordflip.domain.ThemeMode;
 
 /**
- * 用户偏好 PATCH 请求（不触发分组追加）。
+ * 用户偏好 PATCH 请求；分组配置变化时由服务端追加未入组卡片。
  */
 public class PreferencesPatchRequest {
 
+    private Integer groupSize;
+    private GroupStrategy groupStrategy;
     private Boolean autoSpeak;
     private ThemeMode themeMode;
     private HeatDisplayMode heatDisplayMode;
     private QuizLaunchMode quizLaunchMode;
     private Integer defaultQuestionLimit;
+
+    public Integer getGroupSize() {
+        return groupSize;
+    }
+
+    public void setGroupSize(Integer groupSize) {
+        this.groupSize = groupSize;
+    }
+
+    public GroupStrategy getGroupStrategy() {
+        return groupStrategy;
+    }
+
+    public void setGroupStrategy(GroupStrategy groupStrategy) {
+        this.groupStrategy = groupStrategy;
+    }
 
     public Boolean getAutoSpeak() {
         return autoSpeak;
@@ -56,7 +75,9 @@ public class PreferencesPatchRequest {
     }
 
     public boolean hasAnyField() {
-        return autoSpeak != null
+        return groupSize != null
+                || groupStrategy != null
+                || autoSpeak != null
                 || themeMode != null
                 || heatDisplayMode != null
                 || quizLaunchMode != null

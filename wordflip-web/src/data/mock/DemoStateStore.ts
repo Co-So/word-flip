@@ -10,7 +10,8 @@ import type {
   QuizSkill
 } from "@/domain/quiz";
 
-export const DEMO_STORAGE_KEY = "wordflip.web.demo.v3";
+export const DEMO_STORAGE_KEY = "wordflip.web.demo.v4";
+const LEGACY_DEMO_STORAGE_KEY = "wordflip.web.demo.v3";
 
 export interface DemoStateStoreOptions {
   initialState?: DemoState;
@@ -37,6 +38,10 @@ function isRecord(value: unknown): value is UnknownRecord {
 
 function isNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return isNumber(value) && Number.isInteger(value) && value >= 0;
 }
 
 function isSkillProgress(value: unknown, skill: QuizSkill): boolean {
@@ -299,9 +304,11 @@ function isPlanState(value: unknown): boolean {
   }
   if (
     !isRecord(value.bookProgress) ||
-    !isNumber(value.bookProgress.learnedCount) ||
-    !isNumber(value.bookProgress.publishedCardCount) ||
-    !isNumber(value.bookProgress.completionRate)
+    !isNonNegativeInteger(value.bookProgress.masteredCount) ||
+    !isNonNegativeInteger(value.bookProgress.assignedCardCount) ||
+    value.bookProgress.masteredCount > value.bookProgress.assignedCardCount ||
+    !isNonNegativeInteger(value.bookProgress.completionPercent) ||
+    value.bookProgress.completionPercent > 100
   ) {
     return false;
   }
@@ -372,7 +379,7 @@ function isPlanState(value: unknown): boolean {
 
 /** 校验同版本数据的完整形状，避免截断 payload 通过版本检查后污染运行态。 */
 function isCompatibleState(value: unknown): value is DemoState {
-  if (!isRecord(value) || value.schemaVersion !== 3 || !isRecord(value.clock) || typeof value.clock.today !== "string") {
+  if (!isRecord(value) || value.schemaVersion !== 4 || !isRecord(value.clock) || typeof value.clock.today !== "string") {
     return false;
   }
   if (!isRecord(value.auth) || (value.auth.session !== null && (!isRecord(value.auth.session) || typeof value.auth.session.userId !== "string" || typeof value.auth.session.displayName !== "string" || typeof value.auth.session.authenticated !== "boolean"))) {
@@ -606,6 +613,11 @@ export class DemoStateStore {
   private restore(): void {
     const serialized = this.storage?.getItem(DEMO_STORAGE_KEY);
     if (!serialized) {
+      if (this.storage?.getItem(LEGACY_DEMO_STORAGE_KEY)) {
+        // v3 的 BookProgress 字段已破坏性改名，旧数据不能无损迁移，统一回放 v4 固定种子。
+        this.storage.removeItem(LEGACY_DEMO_STORAGE_KEY);
+        this.reset();
+      }
       return;
     }
     try {

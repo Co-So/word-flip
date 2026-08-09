@@ -27,7 +27,7 @@ test("空词书状态有说明和恢复动作", async ({ page }) => {
   const pageErrors = collectPageErrors(page);
   await page.goto(scenarios.emptyBooks);
   await expect(page.getByRole("heading", { name: "还没有可用词书" })).toBeVisible();
-  await expect(page.getByText("演示数据中暂时没有可创建计划的已发布词书。")).toBeVisible();
+  await expect(page.getByText("当前没有可创建计划的已发布词书。")).toBeVisible();
   await expect(page.getByRole("link", { name: "返回首次设置" })).toBeVisible();
   expect(pageErrors).toEqual([]);
 });

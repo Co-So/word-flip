@@ -1,5 +1,6 @@
 package com.wordflip.service;
 
+import com.wordflip.domain.GroupStrategy;
 import com.wordflip.dto.group.CreateCustomGroupRequest;
 import com.wordflip.dto.group.GroupCardsResponse;
 import com.wordflip.dto.group.GroupDetail;
@@ -12,6 +13,7 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -23,8 +25,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class GroupService {
 
+    private static final String INSERT_GROUP_CARD_SQL =
+            "INSERT INTO study_group_cards(group_id, plan_id, card_id, sort_order) VALUES (?, ?, ?, ?)";
+
     private final JdbcTemplate jdbc;
     private final LearningCardQueryService cards;
+    private final AutoGroupCardOrderer autoGroupCardOrderer = new AutoGroupCardOrderer();
 
     public GroupService(JdbcTemplate jdbc, LearningCardQueryService cards) {
         this.jdbc = jdbc;
@@ -152,49 +158,117 @@ public class GroupService {
      */
     @Transactional
     public void appendAutoGroups(Long userId, Long planId) {
-        Integer owned = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM user_learning_plans WHERE id=? AND user_id=?",
-                Integer.class, planId, userId
+        // 单一锁定查询同时验证当前计划归属并固定设置快照，串行化同一计划的自动补组。
+        List<Map<String, Object>> currentPlans = jdbc.queryForList(
+                """
+                SELECT p.id AS plan_id, us.group_size, us.group_strategy
+                FROM user_settings us
+                JOIN user_learning_plans p
+                  ON p.id=us.active_plan_id AND p.user_id=us.user_id
+                WHERE us.user_id=? AND us.active_plan_id=?
+                FOR UPDATE
+                """,
+                userId, planId
         );
-        if (owned == null || owned == 0) {
+        if (currentPlans.isEmpty()) {
             throw new WordflipException("NOT_FOUND", "学习计划不存在");
         }
-        Integer groupSize = jdbc.queryForObject(
-                "SELECT group_size FROM user_settings WHERE user_id=?", Integer.class, userId
-        );
-        int chunkSize = groupSize == null ? 20 : groupSize;
-        List<Long> unassigned = jdbc.queryForList(
+        Map<String, Object> settings = currentPlans.getFirst();
+        int chunkSize = ((Number) settings.get("group_size")).intValue();
+        GroupStrategy strategy = GroupStrategy.valueOf((String) settings.get("group_strategy"));
+        // NOT EXISTS 是幂等快路径，最终仍由 (plan_id, card_id) 唯一约束防止并发重复。
+        List<Map<String, Object>> rows = jdbc.queryForList(
                 """
-                SELECT c.id FROM user_learning_plans p
+                SELECT c.id AS card_id, bi.sort_order AS book_order,
+                       CAST(JSON_UNQUOTE(JSON_EXTRACT(bi.metadata_json, '$.frequencyRank')) AS UNSIGNED)
+                           AS frequency_rank
+                FROM user_learning_plans p
                 JOIN book_items bi ON bi.book_id=p.book_id
                 JOIN learning_cards c ON c.book_item_id=bi.id AND c.status='published'
                 WHERE p.id=? AND NOT EXISTS(
                   SELECT 1 FROM study_group_cards x WHERE x.plan_id=p.id AND x.card_id=c.id
-                ) ORDER BY bi.sort_order
+                )
                 """,
-                Long.class, planId
+                planId
         );
+        List<AutoGroupCardOrderer.Candidate> unassigned = autoGroupCardOrderer.order(
+                rows.stream().map(row -> new AutoGroupCardOrderer.Candidate(
+                        ((Number) row.get("card_id")).longValue(),
+                        ((Number) row.get("book_order")).intValue(),
+                        row.get("frequency_rank") == null
+                                ? null : ((Number) row.get("frequency_rank")).intValue()
+                )).toList(),
+                strategy,
+                userId,
+                planId
+        );
+        if (unassigned.isEmpty()) {
+            return;
+        }
+
+        int candidateIndex = 0;
+        List<Object[]> memberAssignments = new ArrayList<>(unassigned.size());
+        // 数据库只返回排序最末的未满自动组，自定义组和已满组均不参与续填。
+        List<Map<String, Object>> lastAutoGroups = jdbc.queryForList(
+                """
+                SELECT g.id AS group_id, COUNT(sgc.id) AS group_size, g.sort_order AS sort_order
+                FROM study_groups g
+                LEFT JOIN study_group_cards sgc ON sgc.group_id=g.id
+                WHERE g.plan_id=? AND g.source='auto'
+                GROUP BY g.id, g.sort_order
+                HAVING COUNT(sgc.id) < ?
+                ORDER BY g.sort_order DESC, g.id DESC
+                LIMIT 1
+                """,
+                planId, chunkSize
+        );
+        if (!lastAutoGroups.isEmpty()) {
+            Map<String, Object> lastGroup = lastAutoGroups.getFirst();
+            long groupId = ((Number) lastGroup.get("group_id")).longValue();
+            int currentSize = ((Number) lastGroup.get("group_size")).intValue();
+            // 只向最后一个未满的自动组尾部追加，不移动任何已有成员。
+            while (currentSize < chunkSize && candidateIndex < unassigned.size()) {
+                memberAssignments.add(new Object[]{
+                        groupId, planId, unassigned.get(candidateIndex++).cardId(), currentSize++
+                });
+            }
+        }
+
+        if (candidateIndex >= unassigned.size()) {
+            insertGroupCards(memberAssignments);
+            return;
+        }
         Integer next = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(sort_order), -1)+1 FROM study_groups WHERE plan_id=?",
                 Integer.class, planId
         );
         int groupOrder = next == null ? 0 : next;
-        for (int offset = 0; offset < unassigned.size(); offset += chunkSize) {
+        while (candidateIndex < unassigned.size()) {
             int currentOrder = groupOrder++;
             jdbc.update(
                     "INSERT INTO study_groups(plan_id, name, source, sort_order) VALUES (?, ?, 'auto', ?)",
                     planId, "第 " + (currentOrder + 1) + " 组", currentOrder
             );
+            // 同一事务复用连接，直接读取刚插入组的自增主键，避免按非唯一排序字段反查。
             Long groupId = jdbc.queryForObject(
-                    "SELECT id FROM study_groups WHERE plan_id=? AND sort_order=?", Long.class, planId, currentOrder
+                    "SELECT LAST_INSERT_ID()", Long.class
             );
-            List<Long> chunk = unassigned.subList(offset, Math.min(offset + chunkSize, unassigned.size()));
-            for (int index = 0; index < chunk.size(); index++) {
-                jdbc.update(
-                        "INSERT INTO study_group_cards(group_id, plan_id, card_id, sort_order) VALUES (?, ?, ?, ?)",
-                        groupId, planId, chunk.get(index), index
-                );
+            int cardOrder = 0;
+            while (cardOrder < chunkSize && candidateIndex < unassigned.size()) {
+                memberAssignments.add(new Object[]{
+                        groupId, planId, unassigned.get(candidateIndex++).cardId(), cardOrder++
+                });
             }
+        }
+        insertGroupCards(memberAssignments);
+    }
+
+    /**
+     * 在同一事务中批量写入组成员，避免大词书按卡产生数千次数据库往返。
+     */
+    private void insertGroupCards(List<Object[]> memberAssignments) {
+        if (!memberAssignments.isEmpty()) {
+            jdbc.batchUpdate(INSERT_GROUP_CARD_SQL, memberAssignments);
         }
     }
 

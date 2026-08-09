@@ -4,6 +4,7 @@ export interface AppSettings {
   soundEnabled: boolean;
   reducedMotion: boolean;
   groupSize: 10 | 20 | 30 | 50;
+  groupStrategy?: "book_order" | "frequency" | "random";
 }
 
 export interface OnboardingInput {
@@ -16,5 +17,6 @@ export interface SettingsRepository {
   getSettings(): Promise<AppSettings>;
   updateSettings(settings: AppSettings): Promise<AppSettings>;
   saveOnboarding(input: OnboardingInput): Promise<LearningPlan>;
+  supportsDemoReset(): boolean;
   resetDemo(): Promise<AppSettings>;
 }

@@ -21,6 +21,8 @@
         <java.version>21</java.version>
         <mockito.version>5.15.2</mockito.version>
         <byte-buddy.version>1.17.2</byte-buddy.version>
+        <!-- 测试环境 Docker 兼容版本，支持 Docker Engine 29.6.1。 -->
+        <testcontainers.version>1.21.4</testcontainers.version>
         <springdoc.version>2.6.0</springdoc.version>
         <minio.version>8.5.12</minio.version>
         <fsrs.version>1.0.0</fsrs.version>

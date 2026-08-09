@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/Button/Button";
 import type { AppError } from "@/data/contracts/AppError";
@@ -15,11 +15,23 @@ function messageOf(error: unknown): string {
 export function OnboardingPage() {
   const { books, settings } = useRepositories();
   const navigate = useNavigate();
+  const mountedRef = useRef(false);
+  const submitEpochRef = useRef(0);
+  const submittingRef = useRef(false);
   const [availableBooks, setAvailableBooks] = useState<Book[]>([]);
   const [bookId, setBookId] = useState("");
   const [groupSize, setGroupSize] = useState<10 | 20 | 30 | 50>(20);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      submitEpochRef.current += 1;
+      submittingRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -33,19 +45,28 @@ export function OnboardingPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // 同一份首次设置只能串行提交，避免重复创建或旧请求导航。
+    if (submittingRef.current) return;
     if (!bookId) {
       setError("请选择一本主词书");
       return;
     }
+    submittingRef.current = true;
+    const requestEpoch = ++submitEpochRef.current;
     setError(null);
     setSubmitting(true);
     try {
       await settings.saveOnboarding({ bookId, groupSize, groupStrategy: "book_order" });
+      if (!mountedRef.current || requestEpoch !== submitEpochRef.current) return;
       navigate("/today", { replace: true });
     } catch (reason) {
+      if (!mountedRef.current || requestEpoch !== submitEpochRef.current) return;
       setError(messageOf(reason));
     } finally {
-      setSubmitting(false);
+      if (requestEpoch === submitEpochRef.current) {
+        submittingRef.current = false;
+        if (mountedRef.current) setSubmitting(false);
+      }
     }
   }
 

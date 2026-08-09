@@ -15,7 +15,7 @@ info:
     - 答错映射 FSRS `Again`，答对映射 `Good`；浏览和翻卡不写入记忆状态
     - `card_skill_memory` 是调度依据；`lexeme_skill_memory` 仅记录跨词书词形熟悉度，不能直接将新卡标记为掌握
     - **时区：** 服务端存 UTC；「当日」由 `X-Timezone` 请求头（缺省 `Asia/Shanghai`）或用户 profile 决定
-    - **已掌握统计：** `stability >= 80` 且最近测验成功且建议间隔 ≥ 30 天（REQ-EBBING-7）
+    - **已掌握统计：** `card_skill_memory.state='review'`、`stability >= 80`、最近对应 skill 测验成功（`review_events.correct=true`）且 `scheduled_days >= 30`（REQ-TODAY-12）
     - **学习完成度：** `round(masteredCount / 已入组总词数 × 100)`，已入组总词数为 0 时返回 0
 
 servers:
@@ -160,7 +160,10 @@ paths:
   /settings/preferences:
     patch:
       tags: [Settings]
-      summary: 更新用户偏好（不触发分组追加）
+      summary: 更新用户偏好
+      description: >-
+        更新普通偏好；当 groupSize 或 groupStrategy 变化时，在同一事务中保存设置并为当前计划
+        增量追加自动分组。已有分组、进度、记忆和审计事件不重建、不删除。
       requestBody:
         required: true
         content:
@@ -331,7 +334,9 @@ paths:
     post:
       tags: [LearningPlans]
       summary: 创建并激活学习计划
-      description: 为指定词书创建计划并原子切换为唯一当前计划；原计划保留历史。
+      description: >-
+        为指定词书创建计划并原子切换为唯一当前计划；若同一用户的该词书计划已存在，则复用并激活
+        已有计划，不会创建重复计划。原当前计划保留为历史。
       requestBody:
         required: true
         content:
@@ -1333,8 +1338,8 @@ components:
       description: |
         自动分组策略（REQ-BOOK-22~24）：
         book_order 按词书勾选顺序合并去重；
-        frequency 按 word_freq_ranks 全局词频升序（无 rank 词排末尾，保持 book_order 相对序）；
-        random 基于 userId+bookIds 稳定随机。
+        frequency 按 book_items.metadata_json.frequencyRank 全局词频升序，缺少频率排名时回退 book_items.sort_order；
+        random 基于稳定种子 (userId, planId)。
 
     ThemeMode:
       type: string
@@ -1370,6 +1375,10 @@ components:
       type: object
       minProperties: 1
       properties:
+        groupSize:
+          $ref: '#/components/schemas/GroupSize'
+        groupStrategy:
+          $ref: '#/components/schemas/GroupStrategy'
         autoSpeak:
           type: boolean
         themeMode:
@@ -1437,15 +1446,34 @@ components:
 
     BookListResponse:
       type: object
+      required: [books]
       properties:
         books:
           type: array
           items:
             $ref: '#/components/schemas/BookItem'
 
+    BookProgress:
+      type: object
+      nullable: true
+      description: 没有关联学习计划时为 null；有学习计划时必返关联计划的完整进度统计。
+      required: [masteredCount, assignedCardCount, completionPercent]
+      properties:
+        masteredCount:
+          type: integer
+          minimum: 0
+          description: 当前计划已入组卡片中，默写记忆满足 state='review'、stability >= 80、最近对应 skill 测验 correct=true 且 scheduled_days >= 30 的卡片数。
+        assignedCardCount:
+          type: integer
+          minimum: 0
+        completionPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+
     BookItem:
       type: object
-      required: [id, name, source, wordCount, selected, canDelete]
+      required: [id, name, source, wordCount, selected, canDelete, planId, planStatus, progress]
       properties:
         id:
           type: integer
@@ -1464,6 +1492,18 @@ components:
           type: boolean
         canDelete:
           type: boolean
+        planId:
+          type: integer
+          format: int64
+          nullable: true
+          description: 没有关联学习计划时为 null；有学习计划时返回关联计划的 ID。
+        planStatus:
+          type: string
+          enum: [active, paused, completed]
+          nullable: true
+          description: 没有关联学习计划时为 null；有学习计划时返回关联计划状态。
+        progress:
+          $ref: '#/components/schemas/BookProgress'
 
     BookImportPreviewResponse:
       type: object
@@ -2004,7 +2044,7 @@ components:
       properties:
         masteredCount:
           type: integer
-          description: 当前计划默写技能 FSRS stability >= 30 天的学习卡数
+          description: 当前计划已入组卡片中，默写记忆满足 state='review'、stability >= 80、最近对应 skill 测验 correct=true 且 scheduled_days >= 30 的卡片数。
         streakDays:
           type: integer
         quizAccuracy:

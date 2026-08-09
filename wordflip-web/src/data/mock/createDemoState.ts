@@ -43,7 +43,7 @@ export interface PlanDemoState {
 }
 
 export interface DemoState {
-  schemaVersion: 3;
+  schemaVersion: 4;
   clock: { today: "2026-07-23" };
   auth: { session: AuthSession | null };
   settings: AppSettings;
@@ -213,7 +213,7 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
   const corePlan: LearningPlan = { planId: "plan-core", bookId: "book-core", title: "核心词汇" };
   const advancedPlan: LearningPlan = { planId: "plan-advanced", bookId: "book-advanced", title: "进阶词汇" };
   const state: DemoState = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     clock: { today: "2026-07-23" },
     auth: {
       session:
@@ -284,7 +284,7 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
             { label: "已浏览", value: "8" }
           ]
         },
-        { learnedCount: 126, publishedCardCount: 300, completionRate: 42 },
+        { masteredCount: 126, assignedCardCount: 300, completionPercent: 42 },
         "core"
       ),
       [advancedPlan.planId]: createPlanState(
@@ -323,7 +323,7 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
             { label: "已浏览", value: "3" }
           ]
         },
-        { learnedCount: 42, publishedCardCount: 180, completionRate: 23 },
+        { masteredCount: 42, assignedCardCount: 180, completionPercent: 23 },
         "advanced"
       )
     }

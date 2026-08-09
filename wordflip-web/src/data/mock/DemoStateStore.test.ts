@@ -93,8 +93,23 @@ describe("DemoStateStore", () => {
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ schemaVersion: 1 }));
     const store = createStore();
 
-    expect(store.read().schemaVersion).toBe(3);
+    expect(store.read().schemaVersion).toBe(4);
     expect(store.read().clock.today).toBe("2026-07-23");
+  });
+
+  test("旧 v3 存储明确重置为 v4 固定种子", () => {
+    window.localStorage.clear();
+    const legacyV3 = { ...createDemoState(), schemaVersion: 3 };
+    legacyV3.planStates["plan-core"].today.masteredCount = 999;
+    window.localStorage.setItem("wordflip.web.demo.v3", JSON.stringify(legacyV3));
+
+    const store = createStore();
+    const persistedV4 = JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}");
+
+    expect(store.read().schemaVersion).toBe(4);
+    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(persistedV4.schemaVersion).toBe(4);
+    expect(window.localStorage.getItem("wordflip.web.demo.v3")).toBeNull();
   });
 
   test("切换计划只读取当前计划数据，切回后保留历史分组变更", async () => {
@@ -128,13 +143,41 @@ describe("DemoStateStore", () => {
   test("同版本但截断的持久化状态会恢复固定种子", () => {
     window.localStorage.setItem(
       DEMO_STORAGE_KEY,
-      JSON.stringify({ schemaVersion: 3, cards: { byCardId: {} } })
+      JSON.stringify({ schemaVersion: 4, cards: { byCardId: {} } })
     );
 
     const store = createStore();
 
     expect(store.read().clock.today).toBe("2026-07-23");
-    expect(JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}").schemaVersion).toBe(3);
+    expect(JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}").schemaVersion).toBe(4);
+  });
+
+  test("同版本 bookProgress 数值越界时恢复固定种子", () => {
+    const mutations: Array<(state: ReturnType<typeof createDemoState>) => void> = [
+      (state) => { state.planStates["plan-core"].bookProgress.masteredCount = -1; },
+      (state) => { state.planStates["plan-core"].bookProgress.assignedCardCount = 1.5; },
+      (state) => { state.planStates["plan-core"].bookProgress.completionPercent = 101; },
+      (state) => {
+        state.planStates["plan-core"].bookProgress.masteredCount = 301;
+        state.planStates["plan-core"].bookProgress.assignedCardCount = 300;
+      }
+    ];
+
+    for (const mutate of mutations) {
+      const persisted = createDemoState();
+      mutate(persisted);
+      persisted.planStates["plan-core"].today.masteredCount = 999;
+      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
+
+      const restored = createStore();
+
+      expect(currentPlanState(restored).bookProgress).toEqual({
+        masteredCount: 126,
+        assignedCardCount: 300,
+        completionPercent: 42
+      });
+      expect(currentPlanState(restored).today.masteredCount).toBe(126);
+    }
   });
 
   test("同版本但学习完成快照截断时恢复固定种子", () => {

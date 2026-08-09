@@ -34,8 +34,22 @@ public class StatsService {
         int mastered = count("""
                 SELECT COUNT(DISTINCT m.card_id) FROM card_skill_memory m
                 JOIN study_group_cards sgc ON sgc.card_id=m.card_id AND sgc.plan_id=?
-                WHERE m.user_id=? AND m.skill='dictation' AND m.stability>=30
-                """, planId, userId);
+                LEFT JOIN review_events r ON r.id=(
+                    SELECT r2.id FROM review_events r2
+                    WHERE r2.user_id=?
+                      AND r2.plan_id=sgc.plan_id
+                      AND r2.card_id=m.card_id
+                      AND r2.skill=m.skill
+                    ORDER BY r2.answered_at DESC, r2.id DESC
+                    LIMIT 1
+                )
+                WHERE m.user_id=?
+                  AND m.skill='dictation'
+                  AND m.state='review'
+                  AND m.stability>=80
+                  AND m.scheduled_days>=30
+                  AND r.correct=TRUE
+                """, planId, userId, userId);
         Instant since = Instant.now().minusSeconds(30L * 24 * 3600);
         int reviews = count(
                 "SELECT COUNT(*) FROM review_events WHERE user_id=? AND plan_id=? AND answered_at>=?",
