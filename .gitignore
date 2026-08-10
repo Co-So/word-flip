@@ -30,6 +30,7 @@ wordflip-android/captures/
 # Node / Web
 wordflip-web/node_modules/
 wordflip-web/dist/
+wordflip-web/.vite/
 wordflip-web/.env
 wordflip-web/.env.local
 wordflip-web/playwright-report/
