@@ -157,7 +157,8 @@ public class BookImportService {
         jdbc.update("UPDATE books SET published_card_count=? WHERE id=?", published, bookId);
         redis.delete(previewKey(previewToken));
         return new BookImportConfirmResponse(new BookListResponse.BookItem(
-                bookId, trimmedName, "imported", published, payload.words().size(), false, true
+                bookId, trimmedName, "imported", published, payload.words().size(), false, true,
+                null, null, null
         ));
     }
 
