@@ -53,12 +53,12 @@ public class AuthService {
     public AuthResponse register(RegisterRequest request) {
         if (request.getEmail() != null && !request.getEmail().isBlank()) {
             if (userRepository.existsByEmail(request.getEmail())) {
-                throw new WordflipException("CONFLICT", "账号已存在");
+                throw new WordflipException("CONFLICT", "该邮箱已注册，请直接登录或使用其他邮箱");
             }
         }
         if (request.getPhone() != null && !request.getPhone().isBlank()) {
             if (userRepository.existsByPhone(request.getPhone())) {
-                throw new WordflipException("CONFLICT", "账号已存在");
+                throw new WordflipException("CONFLICT", "该手机号已注册，请直接登录或使用其他号码");
             }
         }
 
