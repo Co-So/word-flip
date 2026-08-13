@@ -30,6 +30,14 @@ class TodayGroupsContractTest(unittest.TestCase):
         )
         tasks = dashboard["properties"]["tasks"]
         self.assertEqual(["newWords", "dueReview", "quiz"], tasks["required"])
+        self.assertIs(
+            dashboard["properties"]["recommendedStudy"]["nullable"], True
+        )
+
+        sources = self.schemas["TodayTask"]["properties"]["sources"]["items"]
+        self.assertEqual(
+            ["groupId", "groupName", "count"], sources["required"]
+        )
 
     def test_group_envelopes_and_page_cards_are_required(self) -> None:
         """列表包装和分页卡片数组必须始终存在，避免客户端空值分支。"""
