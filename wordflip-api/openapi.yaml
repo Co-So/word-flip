@@ -1644,7 +1644,7 @@ components:
         progress:
           type: number
           format: float
-          description: scheduled_days >= 30; dictation state='review'; stability >= 80; correct=true 的掌握卡占比（REQ-GROUP-2）
+          description: scheduled_days >= 30; dictation state='review'; stability >= 80; 最近一次有效测验 correct=true 的掌握卡占比（REQ-GROUP-2）
 
     GroupListResponse:
       type: object
@@ -1719,7 +1719,7 @@ components:
           properties:
             masteredCount:
               type: integer
-              description: scheduled_days >= 30; dictation state='review'; stability >= 80; correct=true 的已入组卡片数（REQ-EBBING-7）
+              description: scheduled_days >= 30; dictation state='review'; stability >= 80; 最近一次有效测验 correct=true 的已入组卡片数（REQ-EBBING-7）
             dueReviewCount:
               type: integer
               description: 与 tasks.dueReview.count 一致

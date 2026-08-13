@@ -42,22 +42,22 @@ class TodayGroupsContractTest(unittest.TestCase):
         )
 
     def test_mastery_descriptions_lock_authoritative_rule(self) -> None:
-        """掌握口径必须同时锁定双轨默写和 FSRS 权威条件。"""
-        serialized = yaml.safe_dump(
-            {
-                "today": self.schemas["TodayDashboard"],
-                "group": self.schemas["GroupDetail"],
-            },
-            allow_unicode=True,
+        """今日和分组都必须分别说明完整且权威的掌握条件。"""
+        descriptions = (
+            self.schemas["TodayDashboard"]["properties"]["stats"]["properties"][
+                "masteredCount"
+            ]["description"],
+            self.schemas["GroupDetail"]["properties"]["progress"]["description"],
         )
-        for fragment in (
-            "dictation",
-            "state='review'",
-            "stability >= 80",
-            "scheduled_days >= 30",
-            "correct=true",
-        ):
-            self.assertIn(fragment, serialized)
+        for description in descriptions:
+            for fragment in (
+                "dictation",
+                "state='review'",
+                "stability >= 80",
+                "scheduled_days >= 30",
+                "最近一次有效测验 correct=true",
+            ):
+                self.assertIn(fragment, description)
 
     def test_protected_operations_declare_expected_errors(self) -> None:
         """当前计划受保护端点必须声明认证、计划和参数错误语义。"""
@@ -71,7 +71,7 @@ class TodayGroupsContractTest(unittest.TestCase):
             ("/groups/custom", "post"): {"201", "400", "401", "404", "409"},
         }
         for (path, method), statuses in expected.items():
-            self.assertTrue(statuses.issubset(paths[path][method]["responses"]))
+            self.assertEqual(statuses, set(paths[path][method]["responses"]))
 
 
 if __name__ == "__main__":
