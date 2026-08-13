@@ -6,9 +6,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
-import com.wordflip.dto.today.RecentGroupDto;
 import com.wordflip.dto.today.TodayDashboard;
-import java.time.Instant;
+import java.sql.Date;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,14 +35,14 @@ class TodayServiceTest {
 
     private TodayService service;
     private List<QueryCall> countCalls;
-    private List<String> rowQuerySql;
+    private List<QueryCall> rowQueryCalls;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         service = new TodayService(jdbc);
         countCalls = new ArrayList<>();
-        rowQuerySql = new ArrayList<>();
+        rowQueryCalls = new ArrayList<>();
 
         when(jdbc.queryForList(anyString(), eq(Long.class), any(Object[].class)))
                 .thenReturn(List.of(PLAN_ID));
@@ -76,14 +76,12 @@ class TodayServiceTest {
         when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class)))
                 .thenAnswer(invocation -> {
                     String sql = invocation.getArgument(0);
-                    rowQuerySql.add(sql);
-                    if (normalize(sql).contains("MAX(activity.activity_at)ASlast_studied")) {
-                        return List.of(
-                                new RecentGroupDto(11L, "分组 1", Instant.parse("2026-08-13T10:00:00Z")),
-                                new RecentGroupDto(12L, "分组 2", Instant.parse("2026-08-12T10:00:00Z")),
-                                new RecentGroupDto(13L, "分组 3", Instant.parse("2026-08-11T10:00:00Z"))
-                        );
-                    }
+                    Object[] args = Arrays.copyOfRange(
+                            invocation.getArguments(),
+                            2,
+                            invocation.getArguments().length
+                    );
+                    rowQueryCalls.add(new QueryCall(sql, args));
                     return List.of();
                 });
     }
@@ -123,6 +121,8 @@ class TodayServiceTest {
 
         assertThat(response.stats().dueReviewCount())
                 .isEqualTo(response.tasks().dueReview().count());
+        assertThat(countCalls.stream().filter(call -> isDueCountSql(call.sql())))
+                .hasSize(1);
     }
 
     /**
@@ -136,31 +136,14 @@ class TodayServiceTest {
     }
 
     /**
-     * 连续打卡也必须限定当前计划，不得将历史词书活动混入今日页。
+     * Dashboard 日期必须使用请求时区，且连续打卡仅查当前计划的该日及以前日志。
      */
     @Test
-    void streakUsesOnlyCurrentPlanActivity() {
-        dashboard();
+    void dashboardDateAndStreakUseRequestedZoneAndCurrentPlan() {
+        TodayDashboard east = dashboardAndAssertDateBinding(ZoneId.of("Pacific/Kiritimati"));
+        TodayDashboard west = dashboardAndAssertDateBinding(ZoneId.of("Pacific/Pago_Pago"));
 
-        String streakSql = rowQuerySql.stream()
-                .filter(sql -> normalize(sql).contains("SELECTDISTINCTlog_date"))
-                .findFirst()
-                .orElseThrow();
-        assertThat(normalize(streakSql)).contains(
-                "user_id=?",
-                "plan_id=?",
-                "log_date<=?"
-        );
-    }
-
-    /**
-     * 最近分组响应不得超过契约规定的三条。
-     */
-    @Test
-    void dashboardLimitsRecentGroupsToThree() {
-        TodayDashboard response = dashboard();
-
-        assertThat(response.recentGroups()).hasSizeLessThanOrEqualTo(3);
+        assertThat(east.date()).isNotEqualTo(west.date());
     }
 
     /**
@@ -170,23 +153,61 @@ class TodayServiceTest {
     void recentGroupsMergeStudyAndCompletedQuizActivity() {
         dashboard();
 
-        String recentSql = rowQuerySql.stream()
-                .filter(sql -> normalize(sql).contains("last_studied"))
+        QueryCall recentCall = rowQueryCalls.stream()
+                .filter(call -> normalize(call.sql()).contains("last_studied"))
                 .findFirst()
                 .orElseThrow();
-        String normalizedRecentSql = normalize(recentSql);
+        String normalizedRecentSql = normalize(recentCall.sql());
         assertThat(normalizedRecentSql).contains(
                 "FROMstudy_logssl",
+                "WHEREsl.user_id=?ANDsl.plan_id=?",
                 "FROMquiz_sessionsqs",
                 "JOINquiz_questionsqq",
                 "JOINstudy_group_cardssgc",
+                "WHEREqs.user_id=?ANDqs.plan_id=?",
                 "qs.status='completed'",
+                "WHEREg.plan_id=?",
                 "LIMIT3"
+        );
+        assertThat(recentCall.args()).containsExactly(
+                USER_ID, PLAN_ID, USER_ID, PLAN_ID, PLAN_ID
         );
     }
 
     private TodayDashboard dashboard() {
-        return service.getDashboard(USER_ID, ZoneId.of("Europe/Paris"));
+        return dashboard(ZoneId.of("Europe/Paris"));
+    }
+
+    private TodayDashboard dashboard(ZoneId zoneId) {
+        return service.getDashboard(USER_ID, zoneId);
+    }
+
+    private TodayDashboard dashboardAndAssertDateBinding(ZoneId zoneId) {
+        int firstQueryIndex = rowQueryCalls.size();
+        LocalDate before = LocalDate.now(zoneId);
+        TodayDashboard response = dashboard(zoneId);
+        LocalDate after = LocalDate.now(zoneId);
+
+        assertThat(response.date()).isIn(before, after);
+        QueryCall streakCall = rowQueryCalls.subList(firstQueryIndex, rowQueryCalls.size()).stream()
+                .filter(call -> normalize(call.sql()).contains("SELECTDISTINCTlog_date"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(normalize(streakCall.sql())).contains(
+                "user_id=?",
+                "plan_id=?",
+                "log_date<=?"
+        );
+        assertThat(streakCall.args()).containsExactly(
+                USER_ID, PLAN_ID, Date.valueOf(response.date())
+        );
+        return response;
+    }
+
+    private static boolean isDueCountSql(String sql) {
+        String normalizedSql = normalize(sql);
+        return normalizedSql.contains("FROMstudy_group_cardssgcJOINcard_skill_memorym")
+                && normalizedSql.contains("m.due_at<=?");
     }
 
     private static String normalize(String sql) {
