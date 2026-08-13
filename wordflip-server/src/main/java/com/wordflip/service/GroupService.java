@@ -41,7 +41,8 @@ public class GroupService {
     public GroupListResponse listGroups(Long userId, String source, String sort) {
         validateListOptions(source, sort);
         Long planId = currentPlanId(userId);
-        String order = "name".equals(sort) ? "g.name, g.id" : "g.sort_order, g.id";
+        String order = "name".equals(sort)
+                ? "g.name, g.id" : "g.created_at DESC, g.id DESC";
         String sql = "SELECT g.id FROM study_groups g WHERE g.plan_id=?"
                 + (source == null ? "" : " AND g.source=?") + " ORDER BY " + order;
         List<Long> ids = source == null
@@ -101,18 +102,24 @@ public class GroupService {
         List<LearningCardDetailResponse> values = ids.stream()
                 .map(cardId -> cards.getCurrentCard(userId, cardId)).toList();
         long count = total == null ? 0 : total;
+        // all=true 对外表示不分页的单页结果，真实总数仍用于告知候选池规模。
+        int responsePage = all ? 1 : page;
+        int totalPages = all
+                ? (count == 0 ? 0 : 1) : (int) Math.ceil((double) count / fetchSize);
         return new UnassignedCardsResponse(
-                page, fetchSize, count, (int) Math.ceil((double) count / fetchSize), values
+                responsePage, fetchSize, count, totalPages, values
         );
     }
 
     @Transactional
     public GroupDetail createCustomGroup(Long userId, CreateCustomGroupRequest request) {
-        Long planId = currentPlanId(userId);
-        Set<Long> cardIds = new LinkedHashSet<>(request.cardIds());
-        if (cardIds.isEmpty()) {
+        // 服务层直接调用同样先处理空请求，避免无效选择触发当前计划查询。
+        Set<Long> cardIds = request == null || request.cardIds() == null
+                ? Set.of() : new LinkedHashSet<>(request.cardIds());
+        if (cardIds.isEmpty() || cardIds.contains(null)) {
             throw new WordflipException("VALIDATION_ERROR", "至少选择一张学习卡");
         }
+        Long planId = currentPlanId(userId);
         for (Long cardId : cardIds) {
             Integer valid = jdbc.queryForObject(
                     """

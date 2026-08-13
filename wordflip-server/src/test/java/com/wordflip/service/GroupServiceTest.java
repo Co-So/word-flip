@@ -4,9 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockingDetails;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -14,11 +17,16 @@ import com.wordflip.dto.group.CreateCustomGroupRequest;
 import com.wordflip.dto.group.GroupDetail;
 import com.wordflip.dto.group.GroupStats;
 import com.wordflip.exception.WordflipException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -61,6 +69,64 @@ class GroupServiceTest {
         verifyNoInteractions(jdbc, cards);
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "name, ORDER BY g.name, g.id",
+            "createdAt, ORDER BY g.created_at DESC, g.id DESC"
+    })
+    void legalSortUsesFixedSqlOrder(String sort, String expectedOrder) {
+        stubCurrentPlan();
+        when(jdbc.queryForList(
+                argThat((String sql) -> sql != null && sql.startsWith("SELECT g.id FROM study_groups")),
+                eq(Long.class), eq(PLAN_ID)
+        )).thenReturn(List.of());
+
+        service().listGroups(USER_ID, null, sort);
+
+        assertThat(executedSql()).anySatisfy(sql -> assertThat(sql)
+                .contains(expectedOrder.toLowerCase(Locale.ROOT)));
+    }
+
+    @Test
+    void allModeUsesFixedFetchWindowAndUnpagedMetadata() {
+        stubCurrentPlan();
+        when(jdbc.queryForObject(
+                argThat((String sql) -> sql != null && sql.startsWith("SELECT COUNT(*)")),
+                eq(Long.class), eq(PLAN_ID), eq("%"), eq("%")
+        )).thenReturn(7_000L);
+        when(jdbc.queryForList(
+                argThat((String sql) -> sql != null && sql.startsWith("SELECT c.id")),
+                eq(Long.class), eq(PLAN_ID), eq("%"), eq("%"), eq(5_000), eq(0)
+        )).thenReturn(List.of());
+
+        var response = service().listUnassignedCards(USER_ID, true, null, 3, 50);
+
+        assertThat(response.page()).isEqualTo(1);
+        assertThat(response.size()).isEqualTo(5_000);
+        assertThat(response.totalElements()).isEqualTo(7_000);
+        assertThat(response.totalPages()).isEqualTo(1);
+        assertThat(response.cards()).isEmpty();
+        verify(jdbc).queryForList(
+                argThat((String sql) -> sql != null && sql.startsWith("SELECT c.id")),
+                eq(Long.class), eq(PLAN_ID), eq("%"), eq("%"), eq(5_000), eq(0)
+        );
+    }
+
+    @Test
+    void emptyCustomGroupIsRejectedBeforeAnySqlForDirectServiceCalls() {
+        GroupService service = service();
+
+        assertValidationError(() -> service.createCustomGroup(USER_ID, null));
+        assertValidationError(() -> service.createCustomGroup(
+                USER_ID, new CreateCustomGroupRequest(null, "空组")
+        ));
+        assertValidationError(() -> service.createCustomGroup(
+                USER_ID, new CreateCustomGroupRequest(List.of(), "空组")
+        ));
+
+        verifyNoInteractions(jdbc, cards);
+    }
+
     @Test
     void groupProgressUsesAuthoritativeMasteryWhileHeatKeepsStabilityBuckets() {
         stubOwnedGroup();
@@ -93,6 +159,30 @@ class GroupServiceTest {
                 "m.stability<30",
                 "m.stability>=30"
         );
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "0, 0, 0, not_started, 0.0",
+            "4, 0, 0, not_started, 0.0",
+            "4, 2, 1, learning, 0.25",
+            "4, 4, 4, completed, 1.0"
+    })
+    void mapsReviewedAndMasteredCountsToStatusAndProgress(
+            int total,
+            int reviewed,
+            int mastered,
+            String expectedStatus,
+            float expectedProgress
+    ) throws SQLException {
+        stubOwnedGroup();
+        stubMappedGroup(total, reviewed, mastered);
+
+        GroupDetail detail = service().getGroup(USER_ID, GROUP_ID);
+
+        assertThat(detail.status()).isEqualTo(expectedStatus);
+        assertThat(detail.progress()).isEqualTo(expectedProgress);
+        assertThat(detail.stats().total()).isEqualTo(total);
     }
 
     @Test
@@ -148,6 +238,10 @@ class GroupServiceTest {
                 .containsExactly(101L, 102L);
         assertThat(inserted).extracting(row -> ((Number) row[3]).intValue())
                 .containsExactly(0, 1);
+        verify(jdbc, times(1)).batchUpdate(
+                argThat((String sql) -> sql.startsWith("INSERT INTO study_group_cards")),
+                anyList()
+        );
     }
 
     private GroupService service() {
@@ -191,6 +285,26 @@ class GroupServiceTest {
                 argThat((String sql) -> sql != null && sql.contains("COUNT(sgc.id) AS total")),
                 any(RowMapper.class), eq(USER_ID), eq(USER_ID), eq(GROUP_ID)
         )).thenReturn(detail);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void stubMappedGroup(int total, int reviewed, int mastered) throws SQLException {
+        ResultSet resultSet = org.mockito.Mockito.mock(ResultSet.class);
+        when(resultSet.getLong("id")).thenReturn(GROUP_ID);
+        when(resultSet.getString("name")).thenReturn("重点");
+        when(resultSet.getString("source")).thenReturn("custom");
+        when(resultSet.getTimestamp("created_at"))
+                .thenReturn(Timestamp.from(Instant.parse("2026-08-13T00:00:00Z")));
+        when(resultSet.getInt("total")).thenReturn(total);
+        when(resultSet.getInt("reviewed")).thenReturn(reviewed);
+        when(resultSet.getInt("mastered")).thenReturn(mastered);
+        when(jdbc.queryForObject(
+                argThat((String sql) -> sql != null && sql.contains("COUNT(sgc.id) AS total")),
+                any(RowMapper.class), eq(USER_ID), eq(USER_ID), eq(GROUP_ID)
+        )).thenAnswer(invocation -> {
+            RowMapper<GroupDetail> mapper = invocation.getArgument(1);
+            return mapper.mapRow(resultSet, 0);
+        });
     }
 
     @SuppressWarnings("unchecked")
