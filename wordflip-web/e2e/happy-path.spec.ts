@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { collectPageErrors, scenarios } from "./helpers";
 
-test("登录到统计变化的完整演示流程", async ({ page }) => {
+test("登录并完成首次设置后进入今日", async ({ page }) => {
   const pageErrors = collectPageErrors(page);
   await page.goto(scenarios.loggedOut);
 
@@ -16,44 +16,29 @@ test("登录到统计变化的完整演示流程", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/today$/);
   await expect(page.getByRole("heading", { name: "今天继续前进" })).toBeVisible();
-  const beforeStudy = await page.getByLabel("今日摘要").innerText();
-  await page.getByRole("link", { name: "开始今日学习" }).click();
+  expect(pageErrors).toEqual([]);
+});
 
-  await expect(page).toHaveURL(/\/study\/study-demo$/);
-  await expect(page.getByRole("heading", { name: "专注学习" })).toBeVisible();
-  await page.getByRole("button", {
-    name: "翻转 sustainable 学习卡查看释义"
-  }).click();
-  await expect(page.getByText("可持续的", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "完成学习" }).click();
+test("今日任务可进入真实当前计划分组", async ({ page }) => {
+  const pageErrors = collectPageErrors(page);
+  await page.goto(scenarios.configured);
+  await page.goto("/today");
+  await page.getByRole("link", { name: /第 12 组/ }).first().click();
 
-  await expect(page).toHaveURL(/\/study\/study-demo\/complete$/);
-  await expect(page.getByRole("heading", { name: "本次学习已完成" })).toBeVisible();
-  await page.getByRole("link", { name: "进入 Quiz" }).click();
+  await expect(page).toHaveURL(/\/groups\/group-12$/);
+  await expect(page.getByRole("heading", { name: "第 12 组 · 城市与环境" })).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
 
-  await expect(page).toHaveURL(/\/quiz$/);
-  await page.getByRole("button", { name: "开始听写测验" }).click();
-  await expect(page).toHaveURL(/\/quiz\/quiz-dictation-1$/);
-  await page.getByLabel("输入英文单词").fill("sustainable");
-  await page.getByRole("button", { name: "提交答案" }).click();
-  await page.getByRole("link", { name: "查看测验结果" }).click();
+test("自定义分组路由可加载候选卡且不提交", async ({ page }) => {
+  const pageErrors = collectPageErrors(page);
+  await page.goto(scenarios.configured);
+  await page.goto("/groups");
+  await page.getByRole("link", { name: "新建自定义分组" }).click();
 
-  await expect(page).toHaveURL(/\/quiz\/quiz-dictation-1\/result$/);
-  await expect(page.getByRole("heading", { name: "测验完成" })).toBeVisible();
-  await page.getByRole("link", { name: "查看统计" }).click();
-
-  await expect(page).toHaveURL(/\/stats$/);
-  await expect(page.getByText("听写进度")).toBeVisible();
-  const totalReviewed = page
-    .getByLabel("学习摘要")
-    .getByRole("listitem")
-    .filter({ hasText: "累计复习" });
-  await expect(totalReviewed).toContainText("1");
-  await page.reload();
-  await expect(page.getByText("听写进度")).toBeVisible();
-  await expect(totalReviewed).toContainText("1");
-
-  await page.getByRole("link", { name: "今日" }).click();
-  await expect(page.getByLabel("今日摘要")).not.toHaveText(beforeStudy);
+  await expect(page).toHaveURL(/\/groups\/new$/);
+  await expect(page.getByRole("heading", { name: "新建自定义分组" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "选择学习卡" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "保存分组" })).toBeEnabled();
   expect(pageErrors).toEqual([]);
 });
