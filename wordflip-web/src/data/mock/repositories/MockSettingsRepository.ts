@@ -23,15 +23,27 @@ const resilientPresentation = {
   imageDescription: "风中仍然挺立的树木图像占位"
 };
 
-function emptyTodaySnapshot(currentBookTitle: string) {
+function emptyTodaySnapshot(groupId: string, groupName: string) {
   return {
-    dueCount: 20,
-    masteredCount: 0,
-    reviewedCount: 0,
-    completionRate: 0,
-    currentBookTitle,
-    recentStudy: [],
-    tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
+    date: "2026-07-23",
+    streakDays: 0,
+    stats: { masteredCount: 0, dueReviewCount: 0, completionPercent: 0 },
+    tasks: {
+      newWords: {
+        count: 20,
+        label: "新词",
+        sources: [{ groupId, groupName, count: 20 }]
+      },
+      dueReview: { count: 0, label: "到期复习", sources: [] },
+      quiz: { count: 0, label: "测验", sources: [] }
+    },
+    recommendedStudy: {
+      groupId,
+      groupName,
+      wordCount: 20,
+      reason: "new_words" as const
+    },
+    recentGroups: []
   };
 }
 
@@ -53,7 +65,16 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
   "book-ielts": {
     plan: { planId: "plan-ielts", bookId: "book-ielts", title: "雅思核心词汇" },
     planState: {
-      groups: { items: [{ groupId: "group-ielts-01", name: "第 1 组", cardIds: ["card-ielts-sustainable"] }] },
+      groups: { items: [{
+        groupId: "group-ielts-01",
+        name: "第 1 组",
+        source: "auto",
+        status: "not_started",
+        createdAt: "2026-07-23T00:00:00Z",
+        stats: { heat0: 1, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: 1 },
+        progress: 0,
+        cardIds: ["card-ielts-sustainable"]
+      }] },
       cards: {
         byCardId: {
           "card-ielts-sustainable": {
@@ -76,11 +97,11 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
           }
         }
       },
-      today: emptyTodaySnapshot("雅思核心词汇"),
+      today: emptyTodaySnapshot("group-ielts-01", "第 1 组"),
       bookProgress: { masteredCount: 0, assignedCardCount: 3000, completionPercent: 0 },
       study: {
         sessions: { "study-demo": firstStudySession("card-ielts-sustainable") },
-        afterStudySession: emptyTodaySnapshot("雅思核心词汇")
+        afterStudySession: emptyTodaySnapshot("group-ielts-01", "第 1 组")
       },
       quiz: createQuizDemoState({
         cardId: "card-ielts-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
@@ -106,7 +127,16 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
   "book-core": {
     plan: { planId: "plan-core", bookId: "book-core", title: "核心词汇" },
     planState: {
-      groups: { items: [{ groupId: "group-core-01", name: "第 1 组", cardIds: ["card-sustainable"] }] },
+      groups: { items: [{
+        groupId: "group-core-01",
+        name: "第 1 组",
+        source: "auto",
+        status: "not_started",
+        createdAt: "2026-07-23T00:00:00Z",
+        stats: { heat0: 1, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: 1 },
+        progress: 0,
+        cardIds: ["card-sustainable"]
+      }] },
       cards: {
         byCardId: {
           "card-sustainable": {
@@ -129,11 +159,11 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
           }
         }
       },
-      today: emptyTodaySnapshot("核心词汇"),
+      today: emptyTodaySnapshot("group-core-01", "第 1 组"),
       bookProgress: { masteredCount: 0, assignedCardCount: 300, completionPercent: 0 },
       study: {
         sessions: { "study-demo": firstStudySession("card-sustainable") },
-        afterStudySession: emptyTodaySnapshot("核心词汇")
+        afterStudySession: emptyTodaySnapshot("group-core-01", "第 1 组")
       },
       quiz: createQuizDemoState({
         cardId: "card-sustainable", wordKey: "sustainable", headword: "sustainable", definition: "可持续的",
@@ -159,7 +189,16 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
   "book-advanced": {
     plan: { planId: "plan-advanced", bookId: "book-advanced", title: "进阶词汇" },
     planState: {
-      groups: { items: [{ groupId: "group-advanced-01", name: "第 1 组", cardIds: ["card-resilient"] }] },
+      groups: { items: [{
+        groupId: "group-advanced-01",
+        name: "第 1 组",
+        source: "auto",
+        status: "not_started",
+        createdAt: "2026-07-23T00:00:00Z",
+        stats: { heat0: 1, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: 1 },
+        progress: 0,
+        cardIds: ["card-resilient"]
+      }] },
       cards: {
         byCardId: {
           "card-resilient": {
@@ -182,11 +221,11 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
           }
         }
       },
-      today: emptyTodaySnapshot("进阶词汇"),
+      today: emptyTodaySnapshot("group-advanced-01", "第 1 组"),
       bookProgress: { masteredCount: 0, assignedCardCount: 180, completionPercent: 0 },
       study: {
         sessions: { "study-demo": firstStudySession("card-resilient") },
-        afterStudySession: emptyTodaySnapshot("进阶词汇")
+        afterStudySession: emptyTodaySnapshot("group-advanced-01", "第 1 组")
       },
       quiz: createQuizDemoState({
         cardId: "card-resilient", wordKey: "resilient", headword: "resilient", definition: "有韧性的",

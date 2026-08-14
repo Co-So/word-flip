@@ -72,12 +72,12 @@ describe("DemoStateStore", () => {
     const store = createStore();
 
     store.update((draft) => {
-      draft.planStates[draft.books.activePlanId!].today.masteredCount = 999;
+      draft.planStates[draft.books.activePlanId!].today.stats.masteredCount = 999;
     });
     store.reset();
 
     expect(store.read().clock.today).toBe("2026-07-23");
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("只回放服务端预计算的快照，不在模拟层计算统计", () => {
@@ -93,39 +93,93 @@ describe("DemoStateStore", () => {
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ schemaVersion: 1 }));
     const store = createStore();
 
-    expect(store.read().schemaVersion).toBe(4);
+    expect(store.read().schemaVersion).toBe(5);
     expect(store.read().clock.today).toBe("2026-07-23");
   });
 
-  test("旧 v3 存储明确重置为 v4 固定种子", () => {
+  test("旧 v4 存储明确重置为 v5 固定种子", () => {
     window.localStorage.clear();
-    const legacyV3 = { ...createDemoState(), schemaVersion: 3 };
-    legacyV3.planStates["plan-core"].today.masteredCount = 999;
-    window.localStorage.setItem("wordflip.web.demo.v3", JSON.stringify(legacyV3));
+    const legacyV4 = { ...createDemoState(), schemaVersion: 4 };
+    legacyV4.planStates["plan-core"].today.stats.masteredCount = 999;
+    window.localStorage.setItem("wordflip.web.demo.v4", JSON.stringify(legacyV4));
 
     const store = createStore();
-    const persistedV4 = JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}");
+    const persistedV5 = JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}");
 
-    expect(store.read().schemaVersion).toBe(4);
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
-    expect(persistedV4.schemaVersion).toBe(4);
-    expect(window.localStorage.getItem("wordflip.web.demo.v3")).toBeNull();
+    expect(store.read().schemaVersion).toBe(5);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
+    expect(persistedV5.schemaVersion).toBe(5);
+    expect(window.localStorage.getItem("wordflip.web.demo.v4")).toBeNull();
   });
 
-  test("切换计划只读取当前计划数据，切回后保留历史分组变更", async () => {
+  test("有效 v5 与 v4 并存时保留 v5 快照并清理 legacy key", () => {
+    window.localStorage.clear();
+    const persistedV5 = createDemoState();
+    persistedV5.planStates["plan-core"].today.stats.masteredCount = 777;
+    window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persistedV5));
+    window.localStorage.setItem("wordflip.web.demo.v4", JSON.stringify({ schemaVersion: 4 }));
+
+    const store = createStore();
+
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(777);
+    expect(window.localStorage.getItem("wordflip.web.demo.v4")).toBeNull();
+  });
+
+  test("创建分组只新增当前计划成员关系，切换计划后历史分组仍保留", async () => {
     const store = createStore();
     const repositories = createMockRepositoryBundle(store);
 
-    await repositories.groups.appendMembers("group-12", ["card-core-added"]);
-    await repositories.books.switchActivePlan("plan-advanced");
+    const beforeCards = Object.keys(currentPlanState(store).cards.byCardId);
+    expect((await repositories.groups.listUnassigned({ all: true })).cards.map((card) => card.cardId))
+      .toContain("card-infrastructure");
+    const created = await repositories.groups.createCustomGroup({
+      name: "  基础设施  ",
+      cardIds: ["card-infrastructure"]
+    });
+    expect(created).not.toHaveProperty("cardIds");
+    expect((await repositories.groups.listCards(created.groupId)).cards.map((card) => card.cardId))
+      .toEqual(["card-infrastructure"]);
+    expect((await repositories.groups.listUnassigned({ all: true })).cards.map((card) => card.cardId))
+      .not.toContain("card-infrastructure");
+    expect(Object.keys(currentPlanState(store).cards.byCardId)).toEqual(beforeCards);
 
-    expect((await repositories.groups.listGroups())[0].cardIds).not.toContain("card-core-added");
-    await repositories.groups.appendMembers("group-advanced", ["card-advanced-added"]);
+    await repositories.books.switchActivePlan("plan-advanced");
+    expect((await repositories.groups.listGroups()).some((group) => group.groupId === created.groupId))
+      .toBe(false);
     await repositories.books.switchActivePlan("plan-core");
+    expect((await repositories.groups.listCards(created.groupId)).cards.map((card) => card.cardId))
+      .toEqual(["card-infrastructure"]);
+  });
 
-    expect((await repositories.groups.listGroups())[0].cardIds).toContain("card-core-added");
-    await repositories.books.switchActivePlan("plan-advanced");
-    expect((await repositories.groups.listGroups())[0].cardIds).toContain("card-advanced-added");
+  test("创建非 heat0 自定义分组时统计与成员卡展示热力保持一致", async () => {
+    const store = createStore();
+    const repositories = createMockRepositoryBundle(store);
+    const beforeUrban = structuredClone(
+      currentPlanState(store).cards.byCardId["card-urban"].progress
+    );
+    const beforeEcology = structuredClone(
+      currentPlanState(store).cards.byCardId["card-ecology"].progress
+    );
+
+    const created = await repositories.groups.createCustomGroup({
+      name: "城市生态",
+      cardIds: ["card-urban", "card-ecology"]
+    });
+    const cards = await repositories.groups.listCards(created.groupId);
+
+    expect(cards.cards.map((card) => card.displayHeatLevel)).toEqual([1, 1]);
+    expect(created.stats).toEqual({
+      heat0: 0,
+      heat1: 2,
+      heat2: 0,
+      heat3: 0,
+      heat4: 0,
+      total: 2
+    });
+    expect(created.status).toBe("learning");
+    expect(created.progress).toBe(0);
+    expect(currentPlanState(store).cards.byCardId["card-urban"].progress).toEqual(beforeUrban);
+    expect(currentPlanState(store).cards.byCardId["card-ecology"].progress).toEqual(beforeEcology);
   });
 
   test("使用真实 activePlanId 能在两个计划之间往返切换", async () => {
@@ -143,13 +197,13 @@ describe("DemoStateStore", () => {
   test("同版本但截断的持久化状态会恢复固定种子", () => {
     window.localStorage.setItem(
       DEMO_STORAGE_KEY,
-      JSON.stringify({ schemaVersion: 4, cards: { byCardId: {} } })
+      JSON.stringify({ schemaVersion: 5, cards: { byCardId: {} } })
     );
 
     const store = createStore();
 
     expect(store.read().clock.today).toBe("2026-07-23");
-    expect(JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}").schemaVersion).toBe(4);
+    expect(JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}").schemaVersion).toBe(5);
   });
 
   test("同版本 bookProgress 数值越界时恢复固定种子", () => {
@@ -166,7 +220,7 @@ describe("DemoStateStore", () => {
     for (const mutate of mutations) {
       const persisted = createDemoState();
       mutate(persisted);
-      persisted.planStates["plan-core"].today.masteredCount = 999;
+      persisted.planStates["plan-core"].today.stats.masteredCount = 999;
       window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
       const restored = createStore();
@@ -176,7 +230,57 @@ describe("DemoStateStore", () => {
         assignedCardCount: 300,
         completionPercent: 42
       });
-      expect(currentPlanState(restored).today.masteredCount).toBe(126);
+      expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
+    }
+  });
+
+  test.each([
+    ["缺少 name", (group: Record<string, unknown>) => { delete group.name; }],
+    ["source 枚举非法", (group: Record<string, unknown>) => { group.source = "manual"; }],
+    ["status 枚举非法", (group: Record<string, unknown>) => { group.status = "done"; }],
+    ["createdAt 类型非法", (group: Record<string, unknown>) => { group.createdAt = 42; }],
+    ["stats 计数非法", (group: Record<string, unknown>) => {
+      (group.stats as Record<string, unknown>).heat0 = -1;
+    }],
+    ["progress 超出比例范围", (group: Record<string, unknown>) => { group.progress = 1.1; }],
+    ["cardIds 成员类型非法", (group: Record<string, unknown>) => { group.cardIds = [12]; }]
+  ])("同版本分组%s时恢复固定种子", (_label, mutate) => {
+    const persisted = createDemoState();
+    mutate(persisted.planStates["plan-core"].groups.items[0] as unknown as Record<string, unknown>);
+    persisted.planStates["plan-core"].today.stats.masteredCount = 999;
+    window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
+
+    const restored = createStore();
+
+    expect(currentPlanState(restored).groups.items[0]).toMatchObject({
+      groupId: "group-12",
+      source: "auto",
+      status: "learning",
+      progress: 0.25,
+      cardIds: ["card-sustainable"]
+    });
+    expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
+  });
+
+  test("完整 v5 Today 快照含非法整数或百分比时恢复固定种子", () => {
+    const mutations: Array<(state: ReturnType<typeof createDemoState>) => void> = [
+      (state) => { state.planStates["plan-core"].today.streakDays = 1.5; },
+      (state) => { state.planStates["plan-core"].today.tasks.newWords.count = 0.5; },
+      (state) => { state.planStates["plan-core"].today.tasks.dueReview.sources[0].count = -1; },
+      (state) => { state.planStates["plan-core"].today.recommendedStudy!.wordCount = -1; },
+      (state) => { state.planStates["plan-core"].today.stats.completionPercent = 101; }
+    ];
+
+    for (const mutate of mutations) {
+      const persisted = createDemoState();
+      mutate(persisted);
+      persisted.planStates["plan-core"].today.stats.masteredCount = 999;
+      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
+
+      const restored = createStore();
+
+      expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
+      expect(currentPlanState(restored).today.stats.completionPercent).toBe(72);
     }
   });
 
@@ -184,25 +288,25 @@ describe("DemoStateStore", () => {
     const persisted = createDemoState();
     const plan = persisted.planStates["plan-core"];
     plan.study.afterStudySession = {} as typeof plan.study.afterStudySession;
-    plan.today.masteredCount = 999;
+    plan.today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("同版本但测验幂等状态截断时恢复固定种子", () => {
     const persisted = createDemoState();
     const plan = persisted.planStates["plan-core"];
     plan.quiz.idempotency = [{}] as typeof plan.quiz.idempotency;
-    plan.today.masteredCount = 999;
+    plan.today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
     expect(currentPlanState(store).quiz.idempotency).toEqual([]);
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("测验结果与幂等记录持久化后可恢复并安全重试", async () => {
@@ -411,7 +515,7 @@ describe("DemoStateStore", () => {
 
       expect(currentPlanState(restored).quiz.idempotency).toEqual([]);
       expect(currentPlanState(restored).quiz.results).toEqual({});
-      expect(currentPlanState(restored).today.masteredCount).toBe(126);
+      expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
     }
   });
 
@@ -419,25 +523,25 @@ describe("DemoStateStore", () => {
     const persisted = createDemoState();
     const plan = persisted.planStates["plan-core"];
     plan.cards.byCardId["card-index-mismatch"] = structuredClone(plan.cards.byCardId["card-sustainable"]);
-    plan.today.masteredCount = 999;
+    plan.today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
     expect(currentPlanState(store).cards.byCardId).not.toHaveProperty("card-index-mismatch");
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("同版本但缺失 wordKey 索引的持久化状态会恢复固定种子", () => {
     const persisted = createDemoState();
     const plan = persisted.planStates["plan-core"];
     delete plan.cards.byWordKey.sustainable;
-    plan.today.masteredCount = 999;
+    plan.today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("拒绝 skill 与服务端结果轨道不一致的预计算结果", () => {

@@ -1,5 +1,6 @@
 import type { PrecomputedQuizResult, QuizScope } from "@/domain/quiz";
 import { createStatsSnapshot } from "@/data/mock/statsFixtures";
+import type { TodaySummary } from "@/domain/today";
 
 export interface MockQuizFixture {
   planId: string;
@@ -9,6 +10,43 @@ export interface MockQuizFixture {
   scope: QuizScope;
   answerKeys: string[];
   precomputed: PrecomputedQuizResult;
+}
+
+/** 为预计算测验结果补齐固定 Today v5 快照，不根据答题现场计算业务结果。 */
+export function fixedTodaySummary(input: {
+  dueReviewCount: number;
+  masteredCount: number;
+  completionPercent: number;
+  groupId: string;
+  groupName: string;
+}): TodaySummary {
+  return {
+    date: "2026-07-23",
+    streakDays: 14,
+    stats: {
+      masteredCount: input.masteredCount,
+      dueReviewCount: input.dueReviewCount,
+      completionPercent: input.completionPercent
+    },
+    tasks: {
+      newWords: { count: 0, label: "新词", sources: [] },
+      dueReview: {
+        count: input.dueReviewCount,
+        label: "到期复习",
+        sources: [{ groupId: input.groupId, groupName: input.groupName, count: input.dueReviewCount }]
+      },
+      quiz: { count: 1, label: "测验", sources: [] }
+    },
+    recommendedStudy: {
+      groupId: input.groupId,
+      groupName: input.groupName,
+      wordCount: input.dueReviewCount,
+      reason: "due_review"
+    },
+    recentGroups: [
+      { groupId: input.groupId, name: input.groupName, lastStudiedAt: "2026-07-23T08:30:00Z" }
+    ]
+  };
 }
 
 /**
@@ -33,11 +71,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 1, progressLabel: "稳定性 30 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 23, masteredCount: 127, reviewedCount: 19, completionRate: 76, currentBookTitle: "核心词汇",
-        recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-review", title: "到期复习", description: "23 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 23, masteredCount: 127, completionPercent: 76, groupId: "group-12", groupName: "第 12 组 · 城市与环境" }),
       statsSnapshot: createStatsSnapshot(843, 0.901, 14, 127)
     }
   },
@@ -58,11 +92,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 1, progressLabel: "稳定性 30 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 23, masteredCount: 127, reviewedCount: 19, completionRate: 76, currentBookTitle: "核心词汇",
-        recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-review", title: "到期复习", description: "23 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 23, masteredCount: 127, completionPercent: 76, groupId: "group-12", groupName: "第 12 组 · 城市与环境" }),
       statsSnapshot: createStatsSnapshot(843, 0.901, 14, 127)
     }
   },
@@ -83,11 +113,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 0, progressLabel: "稳定性 4 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 24, masteredCount: 126, reviewedCount: 19, completionRate: 72, currentBookTitle: "核心词汇",
-        recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 24, masteredCount: 126, completionPercent: 72, groupId: "group-12", groupName: "第 12 组 · 城市与环境" }),
       statsSnapshot: createStatsSnapshot(843, 0.889, 14, 126)
     }
   },
@@ -108,11 +134,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 0, progressLabel: "稳定性 4 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 24, masteredCount: 126, reviewedCount: 19, completionRate: 72, currentBookTitle: "核心词汇",
-        recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 24, masteredCount: 126, completionPercent: 72, groupId: "group-12", groupName: "第 12 组 · 城市与环境" }),
       statsSnapshot: createStatsSnapshot(843, 0.889, 14, 126)
     }
   },
@@ -136,11 +158,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 1, progressLabel: "稳定性 24 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 23, masteredCount: 127, reviewedCount: 19, completionRate: 76, currentBookTitle: "核心词汇",
-        recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-review", title: "到期复习", description: "23 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 23, masteredCount: 127, completionPercent: 76, groupId: "group-12", groupName: "第 12 组 · 城市与环境" }),
       statsSnapshot: createStatsSnapshot(843, 0.901, 14, 127)
     }
   },
@@ -164,11 +182,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 1, progressLabel: "稳定性 24 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 23, masteredCount: 127, reviewedCount: 19, completionRate: 76, currentBookTitle: "核心词汇",
-        recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-review", title: "到期复习", description: "23 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 23, masteredCount: 127, completionPercent: 76, groupId: "group-12", groupName: "第 12 组 · 城市与环境" }),
       statsSnapshot: createStatsSnapshot(843, 0.901, 14, 127)
     }
   },
@@ -192,11 +206,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 0, progressLabel: "稳定性 4 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 24, masteredCount: 126, reviewedCount: 19, completionRate: 72, currentBookTitle: "核心词汇",
-        recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 24, masteredCount: 126, completionPercent: 72, groupId: "group-12", groupName: "第 12 组 · 城市与环境" }),
       statsSnapshot: createStatsSnapshot(843, 0.889, 14, 126)
     }
   },
@@ -220,11 +230,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 0, progressLabel: "稳定性 4 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 24, masteredCount: 126, reviewedCount: 19, completionRate: 72, currentBookTitle: "核心词汇",
-        recentStudy: [{ cardId: "card-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 24, masteredCount: 126, completionPercent: 72, groupId: "group-12", groupName: "第 12 组 · 城市与环境" }),
       statsSnapshot: createStatsSnapshot(843, 0.889, 14, 126)
     }
   },
@@ -246,11 +252,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 1, progressLabel: "稳定性 4 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 8, masteredCount: 43, reviewedCount: 7, completionRate: 44, currentBookTitle: "进阶词汇",
-        recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "8 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 8, masteredCount: 43, completionPercent: 44, groupId: "group-advanced", groupName: "进阶复习" }),
       statsSnapshot: createStatsSnapshot(843, 0.903, 14, 43, "advanced")
     }
   },
@@ -271,11 +273,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 1, progressLabel: "稳定性 4 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 8, masteredCount: 43, reviewedCount: 7, completionRate: 44, currentBookTitle: "进阶词汇",
-        recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "8 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 8, masteredCount: 43, completionPercent: 44, groupId: "group-advanced", groupName: "进阶复习" }),
       statsSnapshot: createStatsSnapshot(843, 0.903, 14, 43, "advanced")
     }
   },
@@ -296,11 +294,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 0, progressLabel: "稳定性 2 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 9, masteredCount: 42, reviewedCount: 7, completionRate: 38, currentBookTitle: "进阶词汇",
-        recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 9, masteredCount: 42, completionPercent: 38, groupId: "group-advanced", groupName: "进阶复习" }),
       statsSnapshot: createStatsSnapshot(843, 0.887, 14, 42, "advanced")
     }
   },
@@ -321,11 +315,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 0, progressLabel: "稳定性 2 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 9, masteredCount: 42, reviewedCount: 7, completionRate: 38, currentBookTitle: "进阶词汇",
-        recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 9, masteredCount: 42, completionPercent: 38, groupId: "group-advanced", groupName: "进阶复习" }),
       statsSnapshot: createStatsSnapshot(843, 0.887, 14, 42, "advanced")
     }
   },
@@ -349,11 +339,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 1, progressLabel: "稳定性 18 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 8, masteredCount: 43, reviewedCount: 7, completionRate: 44, currentBookTitle: "进阶词汇",
-        recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "8 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 8, masteredCount: 43, completionPercent: 44, groupId: "group-advanced", groupName: "进阶复习" }),
       statsSnapshot: createStatsSnapshot(843, 0.903, 14, 43, "advanced")
     }
   },
@@ -377,11 +363,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 1, progressLabel: "稳定性 18 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 8, masteredCount: 43, reviewedCount: 7, completionRate: 44, currentBookTitle: "进阶词汇",
-        recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "8 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 8, masteredCount: 43, completionPercent: 44, groupId: "group-advanced", groupName: "进阶复习" }),
       statsSnapshot: createStatsSnapshot(843, 0.903, 14, 43, "advanced")
     }
   },
@@ -405,11 +387,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 0, progressLabel: "稳定性 2 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 9, masteredCount: 42, reviewedCount: 7, completionRate: 38, currentBookTitle: "进阶词汇",
-        recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 9, masteredCount: 42, completionPercent: 38, groupId: "group-advanced", groupName: "进阶复习" }),
       statsSnapshot: createStatsSnapshot(843, 0.887, 14, 42, "advanced")
     }
   },
@@ -433,11 +411,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 0, progressLabel: "稳定性 2 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 9, masteredCount: 42, reviewedCount: 7, completionRate: 38, currentBookTitle: "进阶词汇",
-        recentStudy: [{ cardId: "card-resilient", headword: "resilient", definition: "有韧性的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 9, masteredCount: 42, completionPercent: 38, groupId: "group-advanced", groupName: "进阶复习" }),
       statsSnapshot: createStatsSnapshot(843, 0.887, 14, 42, "advanced")
     }
   },
@@ -459,11 +433,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 1, progressLabel: "稳定性 30 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 19, masteredCount: 1, reviewedCount: 1, completionRate: 5, currentBookTitle: "雅思核心词汇",
-        recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "19 张新卡等待学习" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 19, masteredCount: 1, completionPercent: 5, groupId: "group-ielts-01", groupName: "第 1 组" }),
       statsSnapshot: createStatsSnapshot(1, 0.901, 1, 1, "new-dictation")
     }
   },
@@ -484,11 +454,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 1, progressLabel: "稳定性 30 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 19, masteredCount: 1, reviewedCount: 1, completionRate: 5, currentBookTitle: "雅思核心词汇",
-        recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "19 张新卡等待学习" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 19, masteredCount: 1, completionPercent: 5, groupId: "group-ielts-01", groupName: "第 1 组" }),
       statsSnapshot: createStatsSnapshot(1, 0.901, 1, 1, "new-dictation")
     }
   },
@@ -509,11 +475,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 0, progressLabel: "稳定性 2 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 20, masteredCount: 0, reviewedCount: 1, completionRate: 5, currentBookTitle: "雅思核心词汇",
-        recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 20, masteredCount: 0, completionPercent: 5, groupId: "group-ielts-01", groupName: "第 1 组" }),
       statsSnapshot: createStatsSnapshot(1, 0.5, 1, 0, "new-dictation")
     }
   },
@@ -534,11 +496,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 1, correct: 0, progressLabel: "稳定性 2 天" },
         choice: { label: "选择摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" }
       },
-      dashboardSnapshot: {
-        dueCount: 20, masteredCount: 0, reviewedCount: 1, completionRate: 5, currentBookTitle: "雅思核心词汇",
-        recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 20, masteredCount: 0, completionPercent: 5, groupId: "group-ielts-01", groupName: "第 1 组" }),
       statsSnapshot: createStatsSnapshot(1, 0.5, 1, 0, "new-dictation")
     }
   },
@@ -562,11 +520,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 1, progressLabel: "稳定性 24 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 19, masteredCount: 1, reviewedCount: 1, completionRate: 5, currentBookTitle: "雅思核心词汇",
-        recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "19 张新卡等待学习" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 19, masteredCount: 1, completionPercent: 5, groupId: "group-ielts-01", groupName: "第 1 组" }),
       statsSnapshot: createStatsSnapshot(1, 0.901, 1, 1, "new-choice")
     }
   },
@@ -590,11 +544,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 1, progressLabel: "稳定性 24 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 19, masteredCount: 1, reviewedCount: 1, completionRate: 5, currentBookTitle: "雅思核心词汇",
-        recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "19 张新卡等待学习" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 19, masteredCount: 1, completionPercent: 5, groupId: "group-ielts-01", groupName: "第 1 组" }),
       statsSnapshot: createStatsSnapshot(1, 0.901, 1, 1, "new-choice")
     }
   },
@@ -618,11 +568,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 0, progressLabel: "稳定性 2 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 20, masteredCount: 0, reviewedCount: 1, completionRate: 5, currentBookTitle: "雅思核心词汇",
-        recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 20, masteredCount: 0, completionPercent: 5, groupId: "group-ielts-01", groupName: "第 1 组" }),
       statsSnapshot: createStatsSnapshot(1, 0.5, 1, 0, "new-choice")
     }
   },
@@ -646,11 +592,7 @@ export const QUIZ_FIXTURES: readonly MockQuizFixture[] = [
         dictation: { label: "听写摘要", attempted: 0, correct: 0, progressLabel: "本次未作答" },
         choice: { label: "选择摘要", attempted: 1, correct: 0, progressLabel: "稳定性 2 天" }
       },
-      dashboardSnapshot: {
-        dueCount: 20, masteredCount: 0, reviewedCount: 1, completionRate: 5, currentBookTitle: "雅思核心词汇",
-        recentStudy: [{ cardId: "card-ielts-sustainable", headword: "sustainable", definition: "可持续的", reviewedAtLabel: "刚刚" }],
-        tasks: [{ taskId: "task-first-group", title: "开始第 1 组", description: "20 张新卡等待学习" }]
-      },
+      dashboardSnapshot: fixedTodaySummary({ dueReviewCount: 20, masteredCount: 0, completionPercent: 5, groupId: "group-ielts-01", groupName: "第 1 组" }),
       statsSnapshot: createStatsSnapshot(1, 0.5, 1, 0, "new-choice")
     }
   }

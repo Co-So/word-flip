@@ -178,12 +178,12 @@ describe("卡片媒体", () => {
   test("媒体变换持久化损坏时恢复完整固定种子", () => {
     const state = createDemoState();
     state.planStates["plan-core"].media.byCardId["card-sustainable"].transform.rotation = 45 as 90;
-    state.planStates["plan-core"].today.masteredCount = 999;
+    state.planStates["plan-core"].today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(state));
 
     const restored = createDemoStateStore({ storage: window.localStorage });
 
-    expect(restored.read().planStates["plan-core"].today.masteredCount).toBe(126);
+    expect(restored.read().planStates["plan-core"].today.stats.masteredCount).toBe(126);
     expect(
       restored.read().planStates["plan-core"].media.byCardId["card-sustainable"].transform.rotation
     ).toBe(0);

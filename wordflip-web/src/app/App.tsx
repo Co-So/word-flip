@@ -8,6 +8,7 @@ import { BooksPage } from "@/features/books/BooksPage";
 import { BookDetailPage } from "@/features/books/BookDetailPage";
 import { GroupsPage } from "@/features/groups/GroupsPage";
 import { GroupDetailPage } from "@/features/groups/GroupDetailPage";
+import { CustomGroupPage } from "@/features/groups/CustomGroupPage";
 import { StudyCompletePage } from "@/features/study/StudyCompletePage";
 import { StudyPage } from "@/features/study/StudyPage";
 import { QuizPage } from "@/features/quiz/QuizPage";
@@ -30,6 +31,7 @@ export function App() {
         { path: "/books", element: <BooksPage /> },
         { path: "/books/:bookId", element: <BookDetailPage /> },
         { path: "/groups", element: <GroupsPage /> },
+        { path: "/groups/new", element: <CustomGroupPage /> },
         { path: "/groups/:groupId", element: <GroupDetailPage /> },
         { path: "/quiz", element: <QuizSetupPage /> },
         { path: "/media", element: <MediaPage /> },

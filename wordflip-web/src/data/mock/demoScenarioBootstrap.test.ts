@@ -32,7 +32,12 @@ describe("开发演示场景启动", () => {
     const state = JSON.parse(
       window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}"
     ) as ReturnType<typeof createDemoState>;
-    expect(state.planStates["plan-core"].today.tasks).toEqual([]);
+    expect(state.planStates["plan-core"].today.tasks).toMatchObject({
+      newWords: { count: 0 },
+      dueReview: { count: 0 },
+      quiz: { count: 0 }
+    });
+    expect(state.planStates["plan-core"].today.recommendedStudy).toBeNull();
     expect(
       state.planStates["plan-core"].media.byCardId["card-sustainable"]
         .stainLevel

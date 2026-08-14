@@ -39,8 +39,10 @@ public class GroupService {
 
     @Transactional(readOnly = true)
     public GroupListResponse listGroups(Long userId, String source, String sort) {
+        validateListOptions(source, sort);
         Long planId = currentPlanId(userId);
-        String order = "name".equals(sort) ? "g.name, g.id" : "g.sort_order, g.id";
+        String order = "name".equals(sort)
+                ? "g.name, g.id" : "g.created_at DESC, g.id DESC";
         String sql = "SELECT g.id FROM study_groups g WHERE g.plan_id=?"
                 + (source == null ? "" : " AND g.source=?") + " ORDER BY " + order;
         List<Long> ids = source == null
@@ -56,21 +58,20 @@ public class GroupService {
 
     @Transactional(readOnly = true)
     public GroupCardsResponse listGroupCards(Long userId, Long groupId, int page, int size) {
+        validatePage(page, size);
         requireOwnedGroup(userId, groupId);
-        int safePage = Math.max(page, 1);
-        int safeSize = Math.min(Math.max(size, 1), 100);
         Long total = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM study_group_cards WHERE group_id=?", Long.class, groupId
         );
         List<Long> ids = jdbc.queryForList(
                 "SELECT card_id FROM study_group_cards WHERE group_id=? ORDER BY sort_order LIMIT ? OFFSET ?",
-                Long.class, groupId, safeSize, (safePage - 1) * safeSize
+                Long.class, groupId, size, (page - 1) * size
         );
         List<LearningCardDetailResponse> values = ids.stream()
                 .map(cardId -> cards.getCurrentCard(userId, cardId)).toList();
         long count = total == null ? 0 : total;
         return new GroupCardsResponse(
-                safePage, safeSize, count, (int) Math.ceil((double) count / safeSize), values
+                page, size, count, (int) Math.ceil((double) count / size), values
         );
     }
 
@@ -78,9 +79,9 @@ public class GroupService {
     public UnassignedCardsResponse listUnassignedCards(
             Long userId, boolean all, String query, int page, int size
     ) {
+        validatePage(page, size);
         Long planId = currentPlanId(userId);
-        int safePage = Math.max(page, 1);
-        int safeSize = all ? 5000 : Math.min(Math.max(size, 1), 100);
+        int fetchSize = all ? 5000 : size;
         String pattern = query == null || query.isBlank() ? "%" : query.trim() + "%";
         String base = """
                 FROM user_learning_plans p
@@ -96,23 +97,29 @@ public class GroupService {
         Long total = jdbc.queryForObject("SELECT COUNT(*) " + base, Long.class, planId, pattern, pattern);
         List<Long> ids = jdbc.queryForList(
                 "SELECT c.id " + base + " ORDER BY bi.sort_order LIMIT ? OFFSET ?",
-                Long.class, planId, pattern, pattern, safeSize, all ? 0 : (safePage - 1) * safeSize
+                Long.class, planId, pattern, pattern, fetchSize, all ? 0 : (page - 1) * size
         );
         List<LearningCardDetailResponse> values = ids.stream()
                 .map(cardId -> cards.getCurrentCard(userId, cardId)).toList();
         long count = total == null ? 0 : total;
+        // all=true 对外表示不分页的单页结果，真实总数仍用于告知候选池规模。
+        int responsePage = all ? 1 : page;
+        int totalPages = all
+                ? (count == 0 ? 0 : 1) : (int) Math.ceil((double) count / fetchSize);
         return new UnassignedCardsResponse(
-                safePage, safeSize, count, (int) Math.ceil((double) count / safeSize), values
+                responsePage, fetchSize, count, totalPages, values
         );
     }
 
     @Transactional
     public GroupDetail createCustomGroup(Long userId, CreateCustomGroupRequest request) {
-        Long planId = currentPlanId(userId);
-        Set<Long> cardIds = new LinkedHashSet<>(request.cardIds());
-        if (cardIds.isEmpty()) {
+        // 服务层直接调用同样先处理空请求，避免无效选择触发当前计划查询。
+        Set<Long> cardIds = request == null || request.cardIds() == null
+                ? Set.of() : new LinkedHashSet<>(request.cardIds());
+        if (cardIds.isEmpty() || cardIds.contains(null)) {
             throw new WordflipException("VALIDATION_ERROR", "至少选择一张学习卡");
         }
+        Long planId = currentPlanId(userId);
         for (Long cardId : cardIds) {
             Integer valid = jdbc.queryForObject(
                     """
@@ -143,13 +150,12 @@ public class GroupService {
         Long groupId = jdbc.queryForObject(
                 "SELECT id FROM study_groups WHERE plan_id=? AND sort_order=?", Long.class, planId, sortOrder
         );
+        List<Object[]> memberAssignments = new ArrayList<>(cardIds.size());
         int cardOrder = 0;
         for (Long cardId : cardIds) {
-            jdbc.update(
-                    "INSERT INTO study_group_cards(group_id, plan_id, card_id, sort_order) VALUES (?, ?, ?, ?)",
-                    groupId, planId, cardId, cardOrder++
-            );
+            memberAssignments.add(new Object[]{groupId, planId, cardId, cardOrder++});
         }
+        insertGroupCards(memberAssignments);
         return loadGroup(userId, groupId);
     }
 
@@ -274,12 +280,15 @@ public class GroupService {
 
     private GroupDetail loadGroup(Long userId, Long groupId) {
         requireOwnedGroup(userId, groupId);
+        // 最近一次听写事件决定掌握结果；热力仍只由稳定性阈值分档，二者不可混用。
         return jdbc.queryForObject(
                 """
                 SELECT g.id, g.name, g.source, g.created_at,
                        COUNT(sgc.id) AS total,
                        SUM(CASE WHEN m.reps>0 THEN 1 ELSE 0 END) AS reviewed,
-                       SUM(CASE WHEN m.stability>=30 THEN 1 ELSE 0 END) AS mastered,
+                       SUM(CASE WHEN m.state='review' AND m.stability>=80
+                                      AND m.scheduled_days>=30 AND r.correct=TRUE
+                                THEN 1 ELSE 0 END) AS mastered,
                        SUM(CASE WHEN COALESCE(m.stability,0)=0 THEN 1 ELSE 0 END) AS heat0,
                        SUM(CASE WHEN m.stability>0 AND m.stability<3 THEN 1 ELSE 0 END) AS heat1,
                        SUM(CASE WHEN m.stability>=3 AND m.stability<15 THEN 1 ELSE 0 END) AS heat2,
@@ -289,6 +298,15 @@ public class GroupService {
                   LEFT JOIN study_group_cards sgc ON sgc.group_id=g.id
                   LEFT JOIN card_skill_memory m ON m.card_id=sgc.card_id
                    AND m.user_id=? AND m.skill='dictation'
+                  LEFT JOIN review_events r
+                    ON r.user_id=m.user_id AND r.plan_id=g.plan_id
+                   AND r.card_id=m.card_id AND r.skill=m.skill
+                   AND r.id=(
+                       SELECT r2.id FROM review_events r2
+                        WHERE r2.user_id=? AND r2.plan_id=g.plan_id
+                          AND r2.card_id=m.card_id AND r2.skill=m.skill
+                        ORDER BY r2.answered_at DESC, r2.id DESC LIMIT 1
+                   )
                  WHERE g.id=? GROUP BY g.id, g.name, g.source, g.created_at
                 """,
                 (rs, row) -> {
@@ -308,8 +326,25 @@ public class GroupService {
                             progress
                     );
                 },
-                userId, groupId
+                userId, userId, groupId
         );
+    }
+
+    private void validateListOptions(String source, String sort) {
+        // 白名单在读取当前计划前校验，避免非法排序值触发任何数据库访问。
+        if (source != null && !Set.of("auto", "custom").contains(source)) {
+            throw new WordflipException("VALIDATION_ERROR", "source 只允许 auto 或 custom");
+        }
+        if (!Set.of("createdAt", "name").contains(sort)) {
+            throw new WordflipException("VALIDATION_ERROR", "sort 只允许 createdAt 或 name");
+        }
+    }
+
+    private void validatePage(int page, int size) {
+        // all=true 只改变内部抓取上限，不能绕过调用方分页参数契约。
+        if (page < 1 || size < 1 || size > 100) {
+            throw new WordflipException("VALIDATION_ERROR", "page 须从 1 开始且 size 须在 1–100");
+        }
     }
 
     private void requireOwnedGroup(Long userId, Long groupId) {

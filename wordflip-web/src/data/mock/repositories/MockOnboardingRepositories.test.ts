@@ -35,13 +35,13 @@ test("重复保存已有首次设置计划不会覆盖其历史分区", async ()
   expect((await repositories.quiz.getSession("quiz-choice-1")).skill).toBe("choice");
   store.update((draft) => {
     draft.planStates[plan.planId].groups.items[0].cardIds.push("card-history-sentinel");
-    draft.planStates[plan.planId].today.reviewedCount = 99;
+    draft.planStates[plan.planId].today.tasks.quiz.count = 99;
   });
   await repositories.settings.saveOnboarding(input);
 
   const restored = store.read().planStates[plan.planId];
   expect(restored.groups.items[0].cardIds).toContain("card-history-sentinel");
-  expect(restored.today.reviewedCount).toBe(99);
+  expect(restored.today.tasks.quiz.count).toBe(99);
 });
 
 test.each([

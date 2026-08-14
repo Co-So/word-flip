@@ -136,6 +136,11 @@ test("无历史计划的词书回放固定快照并原子激活", async () => {
   initialState.planStates["plan-core"].groups.items.push({
     groupId: "group-history-sentinel",
     name: "历史 sentinel",
+    source: "custom",
+    status: "not_started",
+    createdAt: "2026-07-23T00:00:00Z",
+    stats: { heat0: 0, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: 0 },
+    progress: 0,
     cardIds: []
   });
   const app = renderStateApp(initialState, "/books");
@@ -146,10 +151,15 @@ test("无历史计划的词书回放固定快照并原子激活", async () => {
   const state = app.store.read();
   expect(state.books.activePlanId).toBe("plan-ielts");
   expect(state.books.plans.filter((plan) => plan.planId === "plan-ielts")).toHaveLength(1);
-  expect(state.planStates["plan-ielts"].today.dueCount).toBe(20);
+  expect(state.planStates["plan-ielts"].today.tasks.newWords.count).toBe(20);
   expect(state.planStates["plan-core"].groups.items).toContainEqual({
     groupId: "group-history-sentinel",
     name: "历史 sentinel",
+    source: "custom",
+    status: "not_started",
+    createdAt: "2026-07-23T00:00:00Z",
+    stats: { heat0: 0, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: 0 },
+    progress: 0,
     cardIds: []
   });
 });
@@ -160,9 +170,14 @@ test("切换计划只改变当前资源视图且切回后历史分组与进度�
   initialState.planStates["plan-core"].groups.items.push({
     groupId: "group-history-sentinel",
     name: "历史 sentinel",
+    source: "custom",
+    status: "learning",
+    createdAt: "2026-07-23T00:00:00Z",
+    stats: { heat0: 0, heat1: 0, heat2: 0, heat3: 1, heat4: 0, total: 1 },
+    progress: 0,
     cardIds: ["card-sustainable"]
   });
-  initialState.planStates["plan-core"].cards.byCardId["card-sustainable"].progress.choice.heatLevel = 3;
+  initialState.planStates["plan-core"].cards.byCardId["card-sustainable"].progress.choice.stability = 33;
   const app = renderStateApp(initialState, "/books");
 
   const advancedBook = await screen.findByRole("article", { name: "进阶词汇" });
@@ -178,7 +193,8 @@ test("切换计划只改变当前资源视图且切回后历史分组与进度�
 
   expect(await screen.findByRole("heading", { name: "历史 sentinel" })).toBeVisible();
   const sustainable = screen.getByRole("row", { name: /sustainable/ });
-  expect(within(sustainable).getByText("热力 3")).toBeVisible();
+  expect(within(sustainable).getByText("new · S 33 · 热力 2")).toBeVisible();
+  expect(within(sustainable).getByText("S 33", { exact: false })).toBeVisible();
 });
 
 test("词书详情只为当前计划展示预计算进度", async () => {

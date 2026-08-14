@@ -48,11 +48,23 @@ public class TodayService {
                 JOIN card_skill_memory m ON m.card_id=sgc.card_id AND m.user_id=?
                 WHERE sgc.plan_id=? AND m.due_at<=?
                 """, userId, planId, Timestamp.from(now));
+        // answered_at 精度相同时以递增 id 打破平局，确保唯一选中最近有效测验。
         int mastered = count("""
                 SELECT COUNT(DISTINCT sgc.card_id) FROM study_group_cards sgc
-                JOIN card_skill_memory m ON m.card_id=sgc.card_id AND m.user_id=?
-                WHERE sgc.plan_id=? AND m.skill='dictation' AND m.stability>=30
-                """, userId, planId);
+                JOIN card_skill_memory m
+                  ON m.card_id=sgc.card_id AND m.user_id=? AND m.skill='dictation'
+                JOIN review_events r
+                  ON r.user_id=m.user_id AND r.plan_id=sgc.plan_id
+                 AND r.card_id=m.card_id AND r.skill=m.skill
+                 AND r.id=(
+                     SELECT r2.id FROM review_events r2
+                      WHERE r2.user_id=? AND r2.plan_id=sgc.plan_id
+                        AND r2.card_id=m.card_id AND r2.skill=m.skill
+                      ORDER BY r2.answered_at DESC, r2.id DESC LIMIT 1
+                 )
+                WHERE sgc.plan_id=? AND m.state='review'
+                  AND m.stability>=80 AND m.scheduled_days>=30 AND r.correct=TRUE
+                """, userId, userId, planId);
         int quizPool = count("""
                 SELECT COUNT(DISTINCT sgc.card_id) FROM study_group_cards sgc
                 LEFT JOIN card_skill_memory m ON m.card_id=sgc.card_id AND m.user_id=?
@@ -71,7 +83,7 @@ public class TodayService {
         );
         RecommendedStudy recommended = recommend(newSources, dueSources);
         return new TodayDashboard(
-                today, streakDays(userId, today), stats, tasks, recommended, recentGroups(userId, planId)
+                today, streakDays(userId, planId, today), stats, tasks, recommended, recentGroups(userId, planId)
         );
     }
 
@@ -107,24 +119,41 @@ public class TodayService {
     }
 
     private List<RecentGroupDto> recentGroups(Long userId, Long planId) {
+        // 测验会话不直接保存分组，必须通过题目卡片回溯当前计划分组。
         return jdbc.query(
                 """
-                SELECT g.id, g.name, MAX(sl.created_at) AS last_studied
-                  FROM study_logs sl JOIN study_groups g ON g.id=sl.group_id
-                 WHERE sl.user_id=? AND sl.plan_id=? AND sl.group_id IS NOT NULL
+                SELECT g.id, g.name, MAX(activity.activity_at) AS last_studied
+                  FROM (
+                        SELECT sl.group_id, sl.created_at AS activity_at
+                          FROM study_logs sl
+                         WHERE sl.user_id=? AND sl.plan_id=? AND sl.group_id IS NOT NULL
+                        UNION ALL
+                        SELECT sgc.group_id, qs.completed_at AS activity_at
+                          FROM quiz_sessions qs
+                          JOIN quiz_questions qq ON qq.session_id=qs.id
+                          JOIN study_group_cards sgc
+                            ON sgc.plan_id=qs.plan_id AND sgc.card_id=qq.card_id
+                         WHERE qs.user_id=? AND qs.plan_id=?
+                           AND qs.status='completed' AND qs.completed_at IS NOT NULL
+                       ) activity
+                  JOIN study_groups g ON g.id=activity.group_id
+                 WHERE g.plan_id=?
                  GROUP BY g.id, g.name ORDER BY last_studied DESC LIMIT 3
                 """,
                 (rs, row) -> new RecentGroupDto(
                         rs.getLong("id"), rs.getString("name"), rs.getTimestamp("last_studied").toInstant()
                 ),
-                userId, planId
+                userId, planId, userId, planId, planId
         );
     }
 
-    private int streakDays(Long userId, LocalDate today) {
+    private int streakDays(Long userId, Long planId, LocalDate today) {
         List<LocalDate> dates = jdbc.query(
-                "SELECT DISTINCT log_date FROM study_logs WHERE user_id=? AND log_date<=? ORDER BY log_date DESC",
-                (rs, row) -> rs.getDate(1).toLocalDate(), userId, Date.valueOf(today)
+                """
+                SELECT DISTINCT log_date FROM study_logs
+                WHERE user_id=? AND plan_id=? AND log_date<=? ORDER BY log_date DESC
+                """,
+                (rs, row) -> rs.getDate(1).toLocalDate(), userId, planId, Date.valueOf(today)
         );
         int streak = 0;
         LocalDate expected = today;
