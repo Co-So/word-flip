@@ -82,6 +82,27 @@ test("测验任务保持非链接提示，且不再出现模拟学习会话入�
   expect(document.querySelector('[href*="study-demo"]')).not.toBeInTheDocument();
 });
 
+test("今日任务全为零时仍保留最近学习的真实分组入口", async () => {
+  const state = createDemoState();
+  const today = state.planStates["plan-core"].today;
+  today.tasks.newWords.count = 0;
+  today.tasks.dueReview.count = 0;
+  today.tasks.quiz.count = 0;
+  today.recentGroups = [{
+    groupId: "group-12",
+    name: "第 12 组 · 城市与环境",
+    lastStudiedAt: "2026-07-23T08:00:00Z"
+  }];
+
+  renderStateApp(state, "/today");
+
+  expect(await screen.findByRole("heading", { name: "最近学习" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "最近学习 第 12 组 · 城市与环境" })).toHaveAttribute(
+    "href",
+    "/groups/group-12"
+  );
+});
+
 test("无今日任务时显示完成反馈并可浏览词书", async () => {
   renderScenarioApp("empty-today", "/today");
 

@@ -141,11 +141,8 @@ export function TodayPage() {
         </li>)}
       </ul>
 
-      {!hasTasks ? <EmptyState
-        action={<Link className={styles.secondaryLink} to="/books">浏览词书</Link>}
-        description="今天没有待完成的复习或学习任务。"
-        title="今天的任务已完成"
-      /> : <div className={styles.workspace}>
+      <div className={styles.workspace}>
+        {/* 最近学习是独立主入口，任务完成后仍应允许返回真实分组。 */}
         <Panel title="最近学习">
           {summary.recentGroups.length === 0 ? <p className={styles.emptyRecent}>暂时没有最近学习的分组。</p> : <ul className={styles.recentList}>
             {summary.recentGroups.slice(0, 3).map((group) => <li key={group.groupId}>
@@ -158,7 +155,11 @@ export function TodayPage() {
           </ul>}
         </Panel>
 
-        <Panel className={styles.tasks} title="今日任务">
+        {!hasTasks ? <EmptyState
+          action={<Link className={styles.secondaryLink} to="/books">浏览词书</Link>}
+          description="今天没有待完成的复习或学习任务。"
+          title="今天的任务已完成"
+        /> : <Panel className={styles.tasks} title="今日任务">
           <ul className={styles.taskList}>
             {tasks.filter(([, task]) => task.count > 0).map(([kind, task]) => <TaskRow
               key={kind}
@@ -167,8 +168,8 @@ export function TodayPage() {
               task={task}
             />)}
           </ul>
-        </Panel>
-      </div>}
+        </Panel>}
+      </div>
     </div> : null}
   </AsyncState>;
 }
