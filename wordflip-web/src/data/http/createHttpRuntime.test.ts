@@ -96,17 +96,19 @@ test("并发 401 请求只刷新一次且都以新令牌重放", async () => {
 
   const requests = Promise.all([
     runtime.authenticatedClient.get("/books"),
-    runtime.authenticatedClient.get("/settings")
+    runtime.authenticatedClient.get("/settings"),
+    runtime.authenticatedClient.get("/today")
   ]);
   await refreshStarted;
-  expect(oldTokenRequests).toBe(2);
+  expect(oldTokenRequests).toBe(3);
   expect(refreshCalls).toBe(1);
 
   resolveRefresh!(okResponse({} as InternalAxiosRequestConfig, refreshedResponse));
 
   await expect(requests).resolves.toMatchObject([
     { data: { authorization: "Bearer access-new", path: "/books" } },
-    { data: { authorization: "Bearer access-new", path: "/settings" } }
+    { data: { authorization: "Bearer access-new", path: "/settings" } },
+    { data: { authorization: "Bearer access-new", path: "/today" } }
   ]);
   expect(refreshCalls).toBe(1);
 });

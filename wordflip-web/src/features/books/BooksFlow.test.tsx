@@ -146,7 +146,7 @@ test("无历史计划的词书回放固定快照并原子激活", async () => {
   const state = app.store.read();
   expect(state.books.activePlanId).toBe("plan-ielts");
   expect(state.books.plans.filter((plan) => plan.planId === "plan-ielts")).toHaveLength(1);
-  expect(state.planStates["plan-ielts"].today.dueCount).toBe(20);
+  expect(state.planStates["plan-ielts"].today.tasks.newWords.count).toBe(20);
   expect(state.planStates["plan-core"].groups.items).toContainEqual({
     groupId: "group-history-sentinel",
     name: "历史 sentinel",

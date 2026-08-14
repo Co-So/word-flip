@@ -2,6 +2,7 @@ import { HttpAuthRepository } from "@/data/http/auth/HttpAuthRepository";
 import { HttpBookRepository } from "@/data/http/books/HttpBookRepository";
 import { createHttpRuntime } from "@/data/http/createHttpRuntime";
 import { HttpSettingsRepository } from "@/data/http/settings/HttpSettingsRepository";
+import { HttpTodayRepository } from "@/data/http/today/HttpTodayRepository";
 import { DemoStateStore } from "@/data/mock/DemoStateStore";
 import { createDemoState } from "@/data/mock/createDemoState";
 import { MockAuthRepository } from "@/data/mock/repositories/MockAuthRepository";
@@ -12,7 +13,6 @@ import { MockQuizRepository } from "@/data/mock/repositories/MockQuizRepository"
 import { MockSettingsRepository } from "@/data/mock/repositories/MockSettingsRepository";
 import { MockStatsRepository } from "@/data/mock/repositories/MockStatsRepository";
 import { MockStudyRepository } from "@/data/mock/repositories/MockStudyRepository";
-import { MockTodayRepository } from "@/data/mock/repositories/MockTodayRepository";
 import { createRepositoryBundle } from "@/data/runtime/createRepositoryBundle";
 import { vi } from "vitest";
 
@@ -30,7 +30,7 @@ beforeEach(() => {
   vi.mocked(createHttpRuntime).mockClear();
 });
 
-test("http 数据源以单一运行时替换认证、词书和设置 Repository", () => {
+test("http 数据源以单一运行时替换认证、词书、今日和设置 Repository", () => {
   const repositories = createRepositoryBundle({
     dataSource: "http",
     apiBaseUrl: "  http://127.0.0.1:8080/api/v1  ",
@@ -48,7 +48,7 @@ test("http 数据源以单一运行时替换认证、词书和设置 Repository"
   expect(repositories.books).toBeInstanceOf(HttpBookRepository);
   expect(repositories.settings).toBeInstanceOf(HttpSettingsRepository);
   expect(repositories.groups).toBeInstanceOf(MockGroupRepository);
-  expect(repositories.today).toBeInstanceOf(MockTodayRepository);
+  expect(repositories.today).toBeInstanceOf(HttpTodayRepository);
   expect(repositories.study).toBeInstanceOf(MockStudyRepository);
   expect(repositories.quiz).toBeInstanceOf(MockQuizRepository);
   expect(repositories.media).toBeInstanceOf(MockMediaRepository);
@@ -61,6 +61,8 @@ test("http 数据源以单一运行时替换认证、词书和设置 Repository"
   expect((repositories.books as unknown as { client: unknown }).client)
     .toBe(runtime?.authenticatedClient);
   expect((repositories.settings as unknown as { client: unknown }).client)
+    .toBe(runtime?.authenticatedClient);
+  expect((repositories.today as unknown as { client: unknown }).client)
     .toBe(runtime?.authenticatedClient);
 });
 

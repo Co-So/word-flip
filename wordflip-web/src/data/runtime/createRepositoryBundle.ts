@@ -4,6 +4,7 @@ import { HttpBookRepository } from "@/data/http/books/HttpBookRepository";
 import { createHttpRuntime } from "@/data/http/createHttpRuntime";
 import { HttpSettingsRepository } from "@/data/http/settings/HttpSettingsRepository";
 import { LocalSettingsStore } from "@/data/http/settings/LocalSettingsStore";
+import { HttpTodayRepository } from "@/data/http/today/HttpTodayRepository";
 import type { DemoStateStore } from "@/data/mock/DemoStateStore";
 import { createMockRepositoryBundle } from "@/data/mock/fixtures";
 
@@ -14,7 +15,7 @@ export interface RepositoryRuntimeOptions {
   demoStore: DemoStateStore;
 }
 
-/** 按模块组装数据源；WEB-API02 让认证、词书与设置共享同一 HTTP 会话。 */
+/** 按模块组装数据源；认证、词书、今日与设置共享同一 HTTP 会话。 */
 export function createRepositoryBundle({
   dataSource,
   apiBaseUrl,
@@ -37,6 +38,7 @@ export function createRepositoryBundle({
       runtime.sessions
     ),
     books: new HttpBookRepository(runtime.authenticatedClient),
+    today: new HttpTodayRepository(runtime.authenticatedClient),
     settings: new HttpSettingsRepository(
       runtime.authenticatedClient,
       new LocalSettingsStore(storage)

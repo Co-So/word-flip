@@ -117,6 +117,9 @@ test("完成学习只回放固定会话和今日快照，不改变 cardId 下的
     )
   );
   const beforeToday = structuredClone(beforeState.planStates["plan-core"].today);
+  const completedToday = structuredClone(
+    beforeState.planStates["plan-core"].study.afterStudySession
+  );
 
   await user.click(await screen.findByRole("button", { name: "完成学习" }));
 
@@ -124,20 +127,8 @@ test("完成学习只回放固定会话和今日快照，不改变 cardId 下的
   await waitFor(() => {
     const afterPlan = app.store.read().planStates["plan-core"];
     expect(afterPlan.study.sessions["study-demo"].status).toBe("completed");
-    expect(afterPlan.today).toEqual({
-      ...beforeToday,
-      reviewedCount: 25,
-      completionRate: 100,
-      recentStudy: [
-        {
-          cardId: "card-infrastructure",
-          headword: "infrastructure",
-          definition: "基础设施",
-          reviewedAtLabel: "刚刚"
-        },
-        ...beforeToday.recentStudy
-      ]
-    });
+    expect(afterPlan.today).toEqual(completedToday);
+    expect(afterPlan.today).not.toEqual(beforeToday);
     expect(
       Object.fromEntries(
         Object.entries(afterPlan.cards.byCardId).map(

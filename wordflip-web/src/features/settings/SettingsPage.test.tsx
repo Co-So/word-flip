@@ -285,7 +285,7 @@ describe("设置", () => {
     const user = userEvent.setup();
     const app = renderScenarioApp("mutated", "/settings");
     app.store.update((draft) => {
-      draft.planStates["plan-core"].today.masteredCount = 999;
+      draft.planStates["plan-core"].today.stats.masteredCount = 999;
       draft.settings.groupSize = 50;
     });
 
@@ -293,7 +293,7 @@ describe("设置", () => {
     await user.click(screen.getByRole("button", { name: "确认重置" }));
 
     expect(await screen.findByRole("heading", { name: "今天继续前进" })).toBeVisible();
-    await waitFor(() => expect(app.store.read().planStates["plan-core"].today.masteredCount).toBe(126));
+    await waitFor(() => expect(app.store.read().planStates["plan-core"].today.stats.masteredCount).toBe(126));
     expect(app.store.read().settings.groupSize).toBe(20);
     expect(app.store.read().planStates["plan-core"].media.byCardId["card-sustainable"].stainLevel).toBe(0);
   });

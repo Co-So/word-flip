@@ -10,8 +10,8 @@ import type {
   QuizSkill
 } from "@/domain/quiz";
 
-export const DEMO_STORAGE_KEY = "wordflip.web.demo.v4";
-const LEGACY_DEMO_STORAGE_KEY = "wordflip.web.demo.v3";
+export const DEMO_STORAGE_KEY = "wordflip.web.demo.v5";
+const LEGACY_DEMO_STORAGE_KEY = "wordflip.web.demo.v4";
 
 export interface DemoStateStoreOptions {
   initialState?: DemoState;
@@ -79,30 +79,53 @@ function isBook(value: unknown): value is Book {
   return isRecord(value) && typeof value.bookId === "string" && typeof value.title === "string" && isNumber(value.cardCount);
 }
 
+function isTodayTaskSource(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.groupId === "string" &&
+    typeof value.groupName === "string" &&
+    isNumber(value.count)
+  );
+}
+
+function isTodayTask(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNumber(value.count) &&
+    typeof value.label === "string" &&
+    Array.isArray(value.sources) &&
+    value.sources.every(isTodayTaskSource)
+  );
+}
+
 function isTodaySnapshot(value: unknown): boolean {
   return (
     isRecord(value) &&
-    isNumber(value.dueCount) &&
-    isNumber(value.masteredCount) &&
-    isNumber(value.reviewedCount) &&
-    isNumber(value.completionRate) &&
-    typeof value.currentBookTitle === "string" &&
-    Array.isArray(value.recentStudy) &&
-    value.recentStudy.every(
-      (item) =>
-        isRecord(item) &&
-        typeof item.cardId === "string" &&
-        typeof item.headword === "string" &&
-        typeof item.definition === "string" &&
-        typeof item.reviewedAtLabel === "string"
-    ) &&
-    Array.isArray(value.tasks) &&
-    value.tasks.every(
-      (task) =>
-        isRecord(task) &&
-        typeof task.taskId === "string" &&
-        typeof task.title === "string" &&
-        typeof task.description === "string"
+    typeof value.date === "string" &&
+    isNumber(value.streakDays) &&
+    isRecord(value.stats) &&
+    isNumber(value.stats.masteredCount) &&
+    isNumber(value.stats.dueReviewCount) &&
+    isNumber(value.stats.completionPercent) &&
+    isRecord(value.tasks) &&
+    isTodayTask(value.tasks.newWords) &&
+    isTodayTask(value.tasks.dueReview) &&
+    isTodayTask(value.tasks.quiz) &&
+    (value.recommendedStudy === null ||
+      (isRecord(value.recommendedStudy) &&
+        typeof value.recommendedStudy.groupId === "string" &&
+        typeof value.recommendedStudy.groupName === "string" &&
+        isNumber(value.recommendedStudy.wordCount) &&
+        (value.recommendedStudy.reason === "new_words" ||
+          value.recommendedStudy.reason === "due_review" ||
+          value.recommendedStudy.reason === "mixed"))) &&
+    Array.isArray(value.recentGroups) &&
+    value.recentGroups.every(
+      (group) =>
+        isRecord(group) &&
+        typeof group.groupId === "string" &&
+        typeof group.name === "string" &&
+        typeof group.lastStudiedAt === "string"
     )
   );
 }
@@ -379,7 +402,7 @@ function isPlanState(value: unknown): boolean {
 
 /** 校验同版本数据的完整形状，避免截断 payload 通过版本检查后污染运行态。 */
 function isCompatibleState(value: unknown): value is DemoState {
-  if (!isRecord(value) || value.schemaVersion !== 4 || !isRecord(value.clock) || typeof value.clock.today !== "string") {
+  if (!isRecord(value) || value.schemaVersion !== 5 || !isRecord(value.clock) || typeof value.clock.today !== "string") {
     return false;
   }
   if (!isRecord(value.auth) || (value.auth.session !== null && (!isRecord(value.auth.session) || typeof value.auth.session.userId !== "string" || typeof value.auth.session.displayName !== "string" || typeof value.auth.session.authenticated !== "boolean"))) {
@@ -614,7 +637,7 @@ export class DemoStateStore {
     const serialized = this.storage?.getItem(DEMO_STORAGE_KEY);
     if (!serialized) {
       if (this.storage?.getItem(LEGACY_DEMO_STORAGE_KEY)) {
-        // v3 的 BookProgress 字段已破坏性改名，旧数据不能无损迁移，统一回放 v4 固定种子。
+        // Today 快照改为命名任务结构，v4 不能部分解释，统一回放 v5 固定种子。
         this.storage.removeItem(LEGACY_DEMO_STORAGE_KEY);
         this.reset();
       }

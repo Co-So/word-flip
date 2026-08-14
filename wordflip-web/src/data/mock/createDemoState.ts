@@ -43,7 +43,7 @@ export interface PlanDemoState {
 }
 
 export interface DemoState {
-  schemaVersion: 4;
+  schemaVersion: 5;
   clock: { today: "2026-07-23" };
   auth: { session: AuthSession | null };
   settings: AppSettings;
@@ -204,7 +204,49 @@ function createPlanState(
         ])
       )
     },
-    stats: createStatsSnapshot(842, 0.9, 14, today.masteredCount, statsProfile)
+    stats: createStatsSnapshot(842, 0.9, 14, today.stats.masteredCount, statsProfile)
+  };
+}
+
+function fixedTodaySnapshot(input: {
+  masteredCount: number;
+  dueReviewCount: number;
+  completionPercent: number;
+  newWordsCount: number;
+  quizCount: number;
+  groupId: string;
+  groupName: string;
+  recommendedStudy: NonNullable<TodaySummary["recommendedStudy"]>;
+  recentGroups: TodaySummary["recentGroups"];
+}): TodaySummary {
+  const source = {
+    groupId: input.groupId,
+    groupName: input.groupName,
+    count: input.dueReviewCount
+  };
+  return {
+    date: "2026-07-23",
+    streakDays: 14,
+    stats: {
+      masteredCount: input.masteredCount,
+      dueReviewCount: input.dueReviewCount,
+      completionPercent: input.completionPercent
+    },
+    tasks: {
+      newWords: {
+        count: input.newWordsCount,
+        label: "新词",
+        sources: input.newWordsCount > 0 ? [{ ...source, count: input.newWordsCount }] : []
+      },
+      dueReview: {
+        count: input.dueReviewCount,
+        label: "到期复习",
+        sources: input.dueReviewCount > 0 ? [source] : []
+      },
+      quiz: { count: input.quizCount, label: "测验", sources: [] }
+    },
+    recommendedStudy: { ...input.recommendedStudy },
+    recentGroups: input.recentGroups.map((group) => ({ ...group }))
   };
 }
 
@@ -213,7 +255,7 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
   const corePlan: LearningPlan = { planId: "plan-core", bookId: "book-core", title: "核心词汇" };
   const advancedPlan: LearningPlan = { planId: "plan-advanced", bookId: "book-advanced", title: "进阶词汇" };
   const state: DemoState = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     clock: { today: "2026-07-23" },
     auth: {
       session:
@@ -235,44 +277,46 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
       [corePlan.planId]: createPlanState(
         [sustainableCard, infrastructureCard, urbanCard, ecologyCard],
         { groupId: "group-12", name: "第 12 组 · 城市与环境", cardIds: [sustainableCard.cardId] },
-        {
-          dueCount: 24,
+        fixedTodaySnapshot({
           masteredCount: 126,
-          reviewedCount: 18,
-          completionRate: 72,
-          currentBookTitle: corePlan.title,
-          recentStudy: [
-            { cardId: sustainableCard.cardId, headword: sustainableCard.headword, definition: sustainableCard.definition, reviewedAtLabel: "8 分钟前" },
-            { cardId: urbanCard.cardId, headword: urbanCard.headword, definition: urbanCard.definition, reviewedAtLabel: "26 分钟前" },
-            { cardId: ecologyCard.cardId, headword: ecologyCard.headword, definition: ecologyCard.definition, reviewedAtLabel: "昨天" }
-          ],
-          tasks: [
-            { taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" },
-            { taskId: "task-group", title: "继续第 12 组", description: "城市与环境主题" }
+          dueReviewCount: 24,
+          completionPercent: 72,
+          newWordsCount: 18,
+          quizCount: 18,
+          groupId: "group-12",
+          groupName: "第 12 组 · 城市与环境",
+          recommendedStudy: {
+            groupId: "group-12",
+            groupName: "第 12 组 · 城市与环境",
+            wordCount: 42,
+            reason: "mixed"
+          },
+          recentGroups: [
+            { groupId: "group-12", name: "第 12 组 · 城市与环境", lastStudiedAt: "2026-07-23T08:00:00Z" },
+            { groupId: "group-11", name: "第 11 组", lastStudiedAt: "2026-07-23T07:30:00Z" },
+            { groupId: "group-10", name: "第 10 组", lastStudiedAt: "2026-07-22T08:00:00Z" }
           ]
-        },
-        {
-          dueCount: 24,
+        }),
+        fixedTodaySnapshot({
           masteredCount: 126,
-          reviewedCount: 25,
-          completionRate: 100,
-          currentBookTitle: corePlan.title,
-          recentStudy: [
-            {
-              cardId: infrastructureCard.cardId,
-              headword: infrastructureCard.headword,
-              definition: infrastructureCard.definition,
-              reviewedAtLabel: "刚刚"
-            },
-            { cardId: sustainableCard.cardId, headword: sustainableCard.headword, definition: sustainableCard.definition, reviewedAtLabel: "8 分钟前" },
-            { cardId: urbanCard.cardId, headword: urbanCard.headword, definition: urbanCard.definition, reviewedAtLabel: "26 分钟前" },
-            { cardId: ecologyCard.cardId, headword: ecologyCard.headword, definition: ecologyCard.definition, reviewedAtLabel: "昨天" }
-          ],
-          tasks: [
-            { taskId: "task-review", title: "到期复习", description: "24 张卡片等待巩固" },
-            { taskId: "task-group", title: "继续第 12 组", description: "城市与环境主题" }
+          dueReviewCount: 24,
+          completionPercent: 100,
+          newWordsCount: 25,
+          quizCount: 25,
+          groupId: "group-12",
+          groupName: "第 12 组 · 城市与环境",
+          recommendedStudy: {
+            groupId: "group-12",
+            groupName: "第 12 组 · 城市与环境",
+            wordCount: 49,
+            reason: "mixed"
+          },
+          recentGroups: [
+            { groupId: "group-12", name: "第 12 组 · 城市与环境", lastStudiedAt: "2026-07-23T08:30:00Z" },
+            { groupId: "group-11", name: "第 11 组", lastStudiedAt: "2026-07-23T07:30:00Z" },
+            { groupId: "group-10", name: "第 10 组", lastStudiedAt: "2026-07-22T08:00:00Z" }
           ]
-        },
+        }),
         {
           sessionId: "study-demo",
           status: "active",
@@ -290,28 +334,42 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
       [advancedPlan.planId]: createPlanState(
         [resilientCard],
         { groupId: "group-advanced", name: "进阶复习", cardIds: [resilientCard.cardId] },
-        {
-          dueCount: 9,
+        fixedTodaySnapshot({
           masteredCount: 42,
-          reviewedCount: 6,
-          completionRate: 38,
-          currentBookTitle: advancedPlan.title,
-          recentStudy: [
-            { cardId: resilientCard.cardId, headword: resilientCard.headword, definition: resilientCard.definition, reviewedAtLabel: "昨天" }
-          ],
-          tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
-        },
-        {
-          dueCount: 9,
+          dueReviewCount: 9,
+          completionPercent: 38,
+          newWordsCount: 6,
+          quizCount: 7,
+          groupId: "group-advanced",
+          groupName: "进阶复习",
+          recommendedStudy: {
+            groupId: "group-advanced",
+            groupName: "进阶复习",
+            wordCount: 15,
+            reason: "mixed"
+          },
+          recentGroups: [
+            { groupId: "group-advanced", name: "进阶复习", lastStudiedAt: "2026-07-22T08:00:00Z" }
+          ]
+        }),
+        fixedTodaySnapshot({
           masteredCount: 42,
-          reviewedCount: 7,
-          completionRate: 44,
-          currentBookTitle: advancedPlan.title,
-          recentStudy: [
-            { cardId: resilientCard.cardId, headword: resilientCard.headword, definition: resilientCard.definition, reviewedAtLabel: "刚刚" }
-          ],
-          tasks: [{ taskId: "task-advanced", title: "进阶复习", description: "9 张卡片等待巩固" }]
-        },
+          dueReviewCount: 9,
+          completionPercent: 44,
+          newWordsCount: 7,
+          quizCount: 7,
+          groupId: "group-advanced",
+          groupName: "进阶复习",
+          recommendedStudy: {
+            groupId: "group-advanced",
+            groupName: "进阶复习",
+            wordCount: 16,
+            reason: "mixed"
+          },
+          recentGroups: [
+            { groupId: "group-advanced", name: "进阶复习", lastStudiedAt: "2026-07-23T08:30:00Z" }
+          ]
+        }),
         {
           sessionId: "study-demo",
           status: "active",
@@ -337,10 +395,13 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
   if (scenario === "empty-today") {
     activePlan.today = {
       ...activePlan.today,
-      dueCount: 0,
-      reviewedCount: 0,
-      completionRate: 100,
-      tasks: []
+      stats: { ...activePlan.today.stats, dueReviewCount: 0, completionPercent: 100 },
+      tasks: {
+        newWords: { ...activePlan.today.tasks.newWords, count: 0, sources: [] },
+        dueReview: { ...activePlan.today.tasks.dueReview, count: 0, sources: [] },
+        quiz: { ...activePlan.today.tasks.quiz, count: 0, sources: [] }
+      },
+      recommendedStudy: null
     };
   }
   if (scenario === "logged-out") {
@@ -359,10 +420,11 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
   if (scenario === "after-quiz") {
     activePlan.today = {
       ...activePlan.today,
-      dueCount: 23,
-      masteredCount: 127,
-      reviewedCount: 19,
-      completionRate: 76
+      stats: { masteredCount: 127, dueReviewCount: 23, completionPercent: 76 },
+      tasks: {
+        ...activePlan.today.tasks,
+        dueReview: { ...activePlan.today.tasks.dueReview, count: 23 }
+      }
     };
     activePlan.quiz.sessions["quiz-dictation-1"] = structuredClone(FIXED_DICTATION_RESULT.sessionSnapshot);
     activePlan.quiz.results["quiz-dictation-1"] = structuredClone(FIXED_DICTATION_RESULT.resultSnapshot);

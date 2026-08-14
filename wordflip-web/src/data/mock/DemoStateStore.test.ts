@@ -72,12 +72,12 @@ describe("DemoStateStore", () => {
     const store = createStore();
 
     store.update((draft) => {
-      draft.planStates[draft.books.activePlanId!].today.masteredCount = 999;
+      draft.planStates[draft.books.activePlanId!].today.stats.masteredCount = 999;
     });
     store.reset();
 
     expect(store.read().clock.today).toBe("2026-07-23");
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("只回放服务端预计算的快照，不在模拟层计算统计", () => {
@@ -93,23 +93,23 @@ describe("DemoStateStore", () => {
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify({ schemaVersion: 1 }));
     const store = createStore();
 
-    expect(store.read().schemaVersion).toBe(4);
+    expect(store.read().schemaVersion).toBe(5);
     expect(store.read().clock.today).toBe("2026-07-23");
   });
 
-  test("旧 v3 存储明确重置为 v4 固定种子", () => {
+  test("旧 v4 存储明确重置为 v5 固定种子", () => {
     window.localStorage.clear();
-    const legacyV3 = { ...createDemoState(), schemaVersion: 3 };
-    legacyV3.planStates["plan-core"].today.masteredCount = 999;
-    window.localStorage.setItem("wordflip.web.demo.v3", JSON.stringify(legacyV3));
+    const legacyV4 = { ...createDemoState(), schemaVersion: 4 };
+    legacyV4.planStates["plan-core"].today.stats.masteredCount = 999;
+    window.localStorage.setItem("wordflip.web.demo.v4", JSON.stringify(legacyV4));
 
     const store = createStore();
-    const persistedV4 = JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}");
+    const persistedV5 = JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}");
 
-    expect(store.read().schemaVersion).toBe(4);
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
-    expect(persistedV4.schemaVersion).toBe(4);
-    expect(window.localStorage.getItem("wordflip.web.demo.v3")).toBeNull();
+    expect(store.read().schemaVersion).toBe(5);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
+    expect(persistedV5.schemaVersion).toBe(5);
+    expect(window.localStorage.getItem("wordflip.web.demo.v4")).toBeNull();
   });
 
   test("切换计划只读取当前计划数据，切回后保留历史分组变更", async () => {
@@ -143,13 +143,13 @@ describe("DemoStateStore", () => {
   test("同版本但截断的持久化状态会恢复固定种子", () => {
     window.localStorage.setItem(
       DEMO_STORAGE_KEY,
-      JSON.stringify({ schemaVersion: 4, cards: { byCardId: {} } })
+      JSON.stringify({ schemaVersion: 5, cards: { byCardId: {} } })
     );
 
     const store = createStore();
 
     expect(store.read().clock.today).toBe("2026-07-23");
-    expect(JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}").schemaVersion).toBe(4);
+    expect(JSON.parse(window.localStorage.getItem(DEMO_STORAGE_KEY) ?? "{}").schemaVersion).toBe(5);
   });
 
   test("同版本 bookProgress 数值越界时恢复固定种子", () => {
@@ -166,7 +166,7 @@ describe("DemoStateStore", () => {
     for (const mutate of mutations) {
       const persisted = createDemoState();
       mutate(persisted);
-      persisted.planStates["plan-core"].today.masteredCount = 999;
+      persisted.planStates["plan-core"].today.stats.masteredCount = 999;
       window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
       const restored = createStore();
@@ -176,7 +176,7 @@ describe("DemoStateStore", () => {
         assignedCardCount: 300,
         completionPercent: 42
       });
-      expect(currentPlanState(restored).today.masteredCount).toBe(126);
+      expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
     }
   });
 
@@ -184,25 +184,25 @@ describe("DemoStateStore", () => {
     const persisted = createDemoState();
     const plan = persisted.planStates["plan-core"];
     plan.study.afterStudySession = {} as typeof plan.study.afterStudySession;
-    plan.today.masteredCount = 999;
+    plan.today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("同版本但测验幂等状态截断时恢复固定种子", () => {
     const persisted = createDemoState();
     const plan = persisted.planStates["plan-core"];
     plan.quiz.idempotency = [{}] as typeof plan.quiz.idempotency;
-    plan.today.masteredCount = 999;
+    plan.today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
     expect(currentPlanState(store).quiz.idempotency).toEqual([]);
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("测验结果与幂等记录持久化后可恢复并安全重试", async () => {
@@ -411,7 +411,7 @@ describe("DemoStateStore", () => {
 
       expect(currentPlanState(restored).quiz.idempotency).toEqual([]);
       expect(currentPlanState(restored).quiz.results).toEqual({});
-      expect(currentPlanState(restored).today.masteredCount).toBe(126);
+      expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
     }
   });
 
@@ -419,25 +419,25 @@ describe("DemoStateStore", () => {
     const persisted = createDemoState();
     const plan = persisted.planStates["plan-core"];
     plan.cards.byCardId["card-index-mismatch"] = structuredClone(plan.cards.byCardId["card-sustainable"]);
-    plan.today.masteredCount = 999;
+    plan.today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
     expect(currentPlanState(store).cards.byCardId).not.toHaveProperty("card-index-mismatch");
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("同版本但缺失 wordKey 索引的持久化状态会恢复固定种子", () => {
     const persisted = createDemoState();
     const plan = persisted.planStates["plan-core"];
     delete plan.cards.byWordKey.sustainable;
-    plan.today.masteredCount = 999;
+    plan.today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
 
     const store = createStore();
 
-    expect(currentPlanState(store).today.masteredCount).toBe(126);
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(126);
   });
 
   test("拒绝 skill 与服务端结果轨道不一致的预计算结果", () => {

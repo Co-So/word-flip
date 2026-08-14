@@ -49,12 +49,12 @@ describe("统计", () => {
   test("统计数组被截断时恢复固定种子", () => {
     const state = createDemoState();
     state.planStates["plan-core"].stats.heatmapDays = [];
-    state.planStates["plan-core"].today.masteredCount = 999;
+    state.planStates["plan-core"].today.stats.masteredCount = 999;
     window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(state));
 
     const restored = createDemoStateStore({ storage: window.localStorage });
 
-    expect(restored.read().planStates["plan-core"].today.masteredCount).toBe(126);
+    expect(restored.read().planStates["plan-core"].today.stats.masteredCount).toBe(126);
     expect(restored.read().planStates["plan-core"].stats.heatmapDays).toHaveLength(12);
   });
 

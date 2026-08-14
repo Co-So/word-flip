@@ -9,9 +9,9 @@ test("今日页只展示当前计划的四项固定摘要和最多三条最近�
   expect(within(summary).getByText("126")).toBeVisible();
   expect(within(summary).getByText("18")).toBeVisible();
   expect(within(summary).getByText("72%")).toBeVisible();
-  expect(screen.getByText("当前计划 · 核心词汇")).toBeVisible();
+  expect(screen.getByText("推荐学习 · 第 12 组 · 城市与环境")).toBeVisible();
   expect(screen.getAllByRole("listitem", { name: /最近学习/ })).toHaveLength(3);
-  expect(screen.getByText("MOCK DATA · READY")).toBeVisible();
+  expect(screen.getByText("TODAY · READY")).toBeVisible();
   expect(screen.getByRole("link", { name: "开始今日学习" })).toHaveAttribute(
     "href",
     "/study/study-demo"
