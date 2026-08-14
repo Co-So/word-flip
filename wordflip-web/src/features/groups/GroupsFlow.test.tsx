@@ -151,6 +151,33 @@ test("详情分页只在边界内展示上一页与下一页", async () => {
   expect(listCards).toHaveBeenLastCalledWith("group-12", 2, 20);
 });
 
+test("服务端总页数收缩时自动回到最后有效页", async () => {
+  const user = userEvent.setup();
+  const first = card("card-first", "first", "恢复后的第一页");
+  let firstPageRequests = 0;
+  const listCards = vi.fn<GroupRepository["listCards"]>((_groupId, requestedPage = 1) => {
+    if (requestedPage === 2) return Promise.resolve(page([], 2, 1));
+    firstPageRequests += 1;
+    return Promise.resolve(page([first], 1, firstPageRequests === 1 ? 2 : 1));
+  });
+  renderWithGroups("/groups/group-12", {
+    listGroups: vi.fn().mockResolvedValue([group]),
+    getDetail: vi.fn().mockResolvedValue(group),
+    listCards,
+    listUnassigned: vi.fn().mockResolvedValue(page([])),
+    createCustomGroup: vi.fn().mockResolvedValue(group)
+  });
+
+  await screen.findByRole("row", { name: /first/ });
+  await user.click(screen.getByRole("button", { name: "下一页" }));
+
+  await waitFor(() => expect(listCards).toHaveBeenCalledWith("group-12", 2, 20));
+  await waitFor(() => expect(listCards).toHaveBeenLastCalledWith("group-12", 1, 20));
+  expect(await screen.findByRole("row", { name: /first/ })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "上一页" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "下一页" })).not.toBeInTheDocument();
+});
+
 test("groupId 变更时从第一页加载新分组，不沿用旧分页", async () => {
   const user = userEvent.setup();
   const listCards = vi.fn<GroupRepository["listCards"]>((groupId, requestedPage = 1) =>
@@ -252,7 +279,7 @@ test("409 后保留名称、刷新候选交集并公告冲突", async () => {
   await user.click(screen.getByRole("checkbox", { name: /valid/ }));
   await user.click(screen.getByRole("button", { name: "保存分组" }));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("部分选择已失效，已刷新未入组候选");
+  expect(await screen.findByRole("alert")).toHaveTextContent("部分选择已失效，请刷新候选后重新确认");
   expect(screen.getByRole("textbox", { name: "分组名称" })).toHaveValue("我的分组");
   expect(screen.queryByRole("checkbox", { name: /stale/ })).not.toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: /valid/ })).toBeChecked();
@@ -261,6 +288,50 @@ test("409 后保留名称、刷新候选交集并公告冲突", async () => {
 
   await user.click(screen.getByRole("button", { name: "保存分组" }));
   expect(await screen.findByText("已创建包含 1 张卡片的自定义分组")).toBeVisible();
+});
+
+test("409 刷新失败仍立即公告冲突，重试成功后清理失效选择", async () => {
+  const user = userEvent.setup();
+  const stale = card("card-stale", "stale", "已被分组");
+  const valid = card("card-valid", "valid", "仍可选");
+  const conflict: AppError = { kind: "conflict", message: "server conflict detail" };
+  const refreshError: AppError = { kind: "unavailable", message: "暂时无法刷新候选", retryable: true };
+  const listUnassigned = vi.fn<GroupRepository["listUnassigned"]>()
+    .mockResolvedValueOnce(page([stale, valid]))
+    .mockRejectedValueOnce(refreshError)
+    .mockResolvedValueOnce(page([valid]));
+  const createCustomGroup = vi.fn<GroupRepository["createCustomGroup"]>()
+    .mockRejectedValueOnce(conflict)
+    .mockResolvedValueOnce({ ...group, groupId: "custom-2", source: "custom" });
+  renderWithGroups("/groups/new", {
+    listGroups: vi.fn().mockResolvedValue([group]),
+    getDetail: vi.fn().mockResolvedValue(group),
+    listCards: vi.fn().mockResolvedValue(page([])),
+    listUnassigned,
+    createCustomGroup
+  });
+
+  await user.type(await screen.findByRole("textbox", { name: "分组名称" }), "保留的名称");
+  await user.click(screen.getByRole("checkbox", { name: /stale/ }));
+  await user.click(screen.getByRole("checkbox", { name: /valid/ }));
+  await user.click(screen.getByRole("button", { name: "保存分组" }));
+
+  expect(await screen.findByText("部分选择已失效，请刷新候选后重新确认")).toBeVisible();
+  expect(await screen.findByText("暂时无法刷新候选")).toBeVisible();
+  expect(screen.getByRole("textbox", { name: "分组名称" })).toHaveValue("保留的名称");
+  expect(screen.getByRole("checkbox", { name: /stale/ })).toBeChecked();
+
+  await user.click(screen.getByRole("button", { name: "重新尝试" }));
+  await waitFor(() => expect(screen.queryByRole("checkbox", { name: /stale/ })).not.toBeInTheDocument());
+  expect(screen.getByRole("checkbox", { name: /valid/ })).toBeChecked();
+  expect(screen.getByText("已选 1 个")).toBeVisible();
+  expect(screen.getByRole("textbox", { name: "分组名称" })).toHaveValue("保留的名称");
+
+  await user.click(screen.getByRole("button", { name: "保存分组" }));
+  await waitFor(() => expect(createCustomGroup).toHaveBeenLastCalledWith({
+    name: "保留的名称",
+    cardIds: ["card-valid"]
+  }));
 });
 
 test("任意异常不得把内部信息显示到分组页", async () => {

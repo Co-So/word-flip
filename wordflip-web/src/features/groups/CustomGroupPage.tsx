@@ -45,6 +45,9 @@ export function CustomGroupPage() {
       const result = await groups.listUnassigned(candidateQuery);
       if (!mountedRef.current || requestVersion !== requestVersionRef.current) return null;
       setCandidates(result);
+      const availableIds = new Set(result.cards.map((candidate) => candidate.cardId));
+      // 所有候选恢复路径都统一剔除已失效的 cardId，避免重试再次提交冲突成员。
+      setSelectedIds((current) => new Set([...current].filter((cardId) => availableIds.has(cardId))));
       setLoadError(null);
       return result;
     } catch (reason: unknown) {
@@ -104,11 +107,9 @@ export function CustomGroupPage() {
     } catch (reason: unknown) {
       if (!mountedRef.current) return;
       if (isAppError(reason) && reason.kind === "conflict") {
-        const refreshed = await loadCandidates(false);
-        if (!mountedRef.current || refreshed === null) return;
-        const availableIds = new Set(refreshed.cards.map((candidate) => candidate.cardId));
-        setSelectedIds((current) => new Set([...current].filter((cardId) => availableIds.has(cardId))));
-        setFeedback({ kind: "error", message: "部分选择已失效，已刷新未入组候选" });
+        // 冲突公告必须先于候选刷新，即使刷新失败也不能吞掉。
+        setFeedback({ kind: "error", message: "部分选择已失效，请刷新候选后重新确认" });
+        await loadCandidates(false);
       } else {
         setFeedback({ kind: "error", message: safeErrorMessage(reason, "暂时无法创建自定义分组") });
       }
@@ -117,7 +118,7 @@ export function CustomGroupPage() {
     }
   }
 
-  const status = loadError ? "error" : candidates === null ? "loading" : "ready";
+  const status = candidates === null ? (loadError ? "error" : "loading") : "ready";
   return <AsyncState error={loadError ?? undefined} status={status} onRetry={() => { void loadCandidates(true); }}>
     {candidates ? <div className={styles.page}>
       <Link className={styles.backLink} to="/groups">返回分组</Link>
@@ -158,6 +159,10 @@ export function CustomGroupPage() {
       {feedback && <p aria-live="assertive" className={feedback.kind === "success" ? styles.successFeedback : styles.errorFeedback} role={feedback.kind === "error" ? "alert" : "status"}>
         {feedback.message}
       </p>}
+      {loadError && <div className={styles.retryFeedback}>
+        <p aria-live="polite" className={styles.errorFeedback} role="status">{loadError}</p>
+        <Button onClick={() => { void loadCandidates(false); }} variant="ghost">重新尝试</Button>
+      </div>}
       <div className={styles.formActions}>
         <Button disabled={submitting} onClick={() => { void submit(); }}>
           {submitting ? "正在保存…" : "保存分组"}

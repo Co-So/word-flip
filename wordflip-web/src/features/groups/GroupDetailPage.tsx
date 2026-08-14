@@ -65,6 +65,14 @@ export function GroupDetailPage() {
     groups.listCards(groupId, page, 20)
       .then((result) => {
         if (active) {
+          const lastPage = Math.max(result.totalPages, 1);
+          if (result.page > lastPage && page !== lastPage) {
+            // 分组成员并发减少时，收缩到服务端最后有效页并重取，不展示越界快照。
+            setCards(null);
+            setCardsError(null);
+            setPageState({ groupId, page: lastPage });
+            return;
+          }
           setCards(result);
           setCardsError(null);
         }
