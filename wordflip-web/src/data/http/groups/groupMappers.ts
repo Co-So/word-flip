@@ -88,6 +88,17 @@ function isSense(value: unknown): boolean {
   );
 }
 
+function isSourceMaterial(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.sourceId === "string" &&
+    typeof value.sourceName === "string" &&
+    typeof value.revision === "string" &&
+    Array.isArray(value.senses) &&
+    value.senses.every(isSense)
+  );
+}
+
 function isCard(value: unknown): value is GroupCardDto {
   return (
     isRecord(value) &&
@@ -100,6 +111,8 @@ function isCard(value: unknown): value is GroupCardDto {
     isSafePositiveInteger(value.version) &&
     Array.isArray(value.senses) &&
     value.senses.every(isSense) &&
+    Array.isArray(value.sourceMaterials) &&
+    value.sourceMaterials.every(isSourceMaterial) &&
     isRecord(value.progress) &&
     isFsrsSkill(value.progress.dictation) &&
     isFsrsSkill(value.progress.choice) &&

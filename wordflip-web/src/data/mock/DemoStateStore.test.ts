@@ -151,6 +151,37 @@ describe("DemoStateStore", () => {
       .toEqual(["card-infrastructure"]);
   });
 
+  test("创建非 heat0 自定义分组时统计与成员卡展示热力保持一致", async () => {
+    const store = createStore();
+    const repositories = createMockRepositoryBundle(store);
+    const beforeUrban = structuredClone(
+      currentPlanState(store).cards.byCardId["card-urban"].progress
+    );
+    const beforeEcology = structuredClone(
+      currentPlanState(store).cards.byCardId["card-ecology"].progress
+    );
+
+    const created = await repositories.groups.createCustomGroup({
+      name: "城市生态",
+      cardIds: ["card-urban", "card-ecology"]
+    });
+    const cards = await repositories.groups.listCards(created.groupId);
+
+    expect(cards.cards.map((card) => card.displayHeatLevel)).toEqual([1, 1]);
+    expect(created.stats).toEqual({
+      heat0: 0,
+      heat1: 2,
+      heat2: 0,
+      heat3: 0,
+      heat4: 0,
+      total: 2
+    });
+    expect(created.status).toBe("learning");
+    expect(created.progress).toBe(0);
+    expect(currentPlanState(store).cards.byCardId["card-urban"].progress).toEqual(beforeUrban);
+    expect(currentPlanState(store).cards.byCardId["card-ecology"].progress).toEqual(beforeEcology);
+  });
+
   test("使用真实 activePlanId 能在两个计划之间往返切换", async () => {
     const store = createStore();
     const repositories = createMockRepositoryBundle(store);

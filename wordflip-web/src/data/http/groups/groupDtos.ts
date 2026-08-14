@@ -36,6 +36,13 @@ export interface GroupCardSenseDto {
   primary?: boolean;
 }
 
+export interface GroupCardSourceMaterialDto {
+  sourceId: string;
+  sourceName: string;
+  revision: string;
+  senses: GroupCardSenseDto[];
+}
+
 export interface GroupCardDto {
   cardId: number;
   lexemeId: number;
@@ -45,6 +52,7 @@ export interface GroupCardDto {
   phonetic?: string | null;
   version: number;
   senses: GroupCardSenseDto[];
+  sourceMaterials: GroupCardSourceMaterialDto[];
   progress: {
     dictation: FsrsSkillSnapshotDto;
     choice: FsrsSkillSnapshotDto;

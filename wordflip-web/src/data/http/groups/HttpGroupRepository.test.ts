@@ -32,6 +32,15 @@ const skillSnapshot = {
   lapses: 1
 };
 
+const sourceMaterials = {
+  sourceMaterials: [{
+    sourceId: "ecdict",
+    sourceName: "ECDICT",
+    revision: "2026-08",
+    senses: [{ pos: "adjective", cn: "可持续的", primary: true }]
+  }]
+};
+
 const cardsDto: GroupCardPageDto = {
   page: 2,
   size: 20,
@@ -39,6 +48,7 @@ const cardsDto: GroupCardPageDto = {
   totalPages: 2,
   cards: [
     {
+      ...sourceMaterials,
       cardId: 31,
       lexemeId: 301,
       bookId: 11,
@@ -57,6 +67,7 @@ const cardsDto: GroupCardPageDto = {
       }
     },
     {
+      ...sourceMaterials,
       cardId: 32,
       lexemeId: 302,
       bookId: 11,
@@ -261,6 +272,17 @@ test.each([
 test.each([
   ["缺少 cards", { ...cardsDto, cards: undefined }, "分组学习卡接口返回数据不完整"],
   ["卡片缺少 senses", { ...cardsDto, cards: [{ ...cardsDto.cards[0], senses: undefined }] }, "分组学习卡接口返回数据不完整"],
+  ["卡片缺少 sourceMaterials", {
+    ...cardsDto,
+    cards: [{ ...cardsDto.cards[0], sourceMaterials: undefined }]
+  }, "分组学习卡接口返回数据不完整"],
+  ["sourceMaterials 条目缺少 revision", {
+    ...cardsDto,
+    cards: [{
+      ...cardsDto.cards[0],
+      sourceMaterials: [{ sourceId: "ecdict", sourceName: "ECDICT", senses: [] }]
+    }]
+  }, "分组学习卡接口返回数据不完整"],
   ["卡片没有考义", { ...cardsDto, cards: [{ ...cardsDto.cards[0], senses: [] }] }, "学习卡缺少考义"],
   ["主考义缺少中文", {
     ...cardsDto,

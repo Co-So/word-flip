@@ -6,6 +6,7 @@ import type {
   GroupCard,
   GroupCardPage,
   GroupRepository,
+  GroupStats,
   WordGroup
 } from "@/domain/groups";
 import type { LearningCard, SkillProgress } from "@/domain/learning";
@@ -49,6 +50,10 @@ function fsrsSnapshot(progress: SkillProgress): FsrsSkillSnapshot {
   };
 }
 
+function displayHeatLevel(card: LearningCard): 0 | 1 | 2 | 3 | 4 {
+  return card.progress.dictation.heatLevel;
+}
+
 function groupCard(card: LearningCard): GroupCard {
   return {
     cardId: card.cardId,
@@ -57,12 +62,37 @@ function groupCard(card: LearningCard): GroupCard {
     phonetic: card.phonetic,
     primaryPos: null,
     primaryDefinition: card.definition,
-    displayHeatLevel: card.progress.dictation.heatLevel,
+    displayHeatLevel: displayHeatLevel(card),
     progress: {
       dictation: fsrsSnapshot(card.progress.dictation),
       choice: fsrsSnapshot(card.progress.choice)
     }
   };
+}
+
+function groupStats(cards: LearningCard[]): GroupStats {
+  const stats: GroupStats = {
+    heat0: 0,
+    heat1: 0,
+    heat2: 0,
+    heat3: 0,
+    heat4: 0,
+    total: cards.length
+  };
+  for (const card of cards) {
+    const heatLevel = displayHeatLevel(card);
+    stats[`heat${heatLevel}`] += 1;
+  }
+  return stats;
+}
+
+function groupStatus(cards: LearningCard[]): "not_started" | "learning" {
+  const hasLearningHistory = cards.some((card) =>
+    Object.values(card.progress).some(
+      (skill) => skill.state !== "unlearned" || skill.lastQuizSucceeded
+    )
+  );
+  return hasLearningHistory ? "learning" : "not_started";
 }
 
 function pageOf(cards: GroupCard[], page = 1, size = 20): GroupCardPage {
@@ -172,13 +202,15 @@ export class MockGroupRepository implements GroupRepository {
     while (before.groups.items.some((group) => group.groupId === `custom-group-${nextIndex}`)) {
       nextIndex += 1;
     }
+    const memberCards = cardIds.map((cardId) => before.cards.byCardId[cardId]!);
     const group: DemoWordGroup = {
       groupId: `custom-group-${nextIndex}`,
       name: trimmedName || `自定义分组 ${nextIndex}`,
       source: "custom",
-      status: "not_started",
+      status: groupStatus(memberCards),
       createdAt: `${this.store.read().clock.today}T00:00:00Z`,
-      stats: { heat0: cardIds.length, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: cardIds.length },
+      stats: groupStats(memberCards),
+      // 现有 Mock 卡片没有完整 mastery predicate，不能在 Web 端重算掌握进度。
       progress: 0,
       cardIds
     };
