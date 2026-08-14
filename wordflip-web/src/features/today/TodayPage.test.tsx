@@ -1,5 +1,6 @@
 import { screen, within } from "@testing-library/react";
-import { renderAuthenticatedApp, renderScenarioApp } from "@/test/renderApp";
+import { createDemoState } from "@/data/mock/createDemoState";
+import { renderAuthenticatedApp, renderScenarioApp, renderStateApp } from "@/test/renderApp";
 
 test("今日页只展示当前计划的四项固定摘要和最多三条最近学习", async () => {
   renderAuthenticatedApp("/today");
@@ -23,4 +24,15 @@ test("无今日任务时显示完成反馈并可浏览词书", async () => {
 
   expect(await screen.findByRole("heading", { name: "今天的任务已完成" })).toBeVisible();
   expect(screen.getByRole("link", { name: "浏览词书" })).toHaveAttribute("href", "/books");
+});
+
+test("无推荐分组但仍有任务时不宣称今日已完成", async () => {
+  const state = createDemoState();
+  state.planStates["plan-core"].today.recommendedStudy = null;
+
+  renderStateApp(state, "/today");
+
+  expect(await screen.findByText("今日任务已准备好")).toBeVisible();
+  expect(screen.queryByText("今日任务已完成")).not.toBeInTheDocument();
+  expect(screen.getByText("到期复习")).toBeVisible();
 });

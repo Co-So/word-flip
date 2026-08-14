@@ -44,6 +44,10 @@ function isNonNegativeInteger(value: unknown): value is number {
   return isNumber(value) && Number.isInteger(value) && value >= 0;
 }
 
+function isCompletionPercent(value: unknown): value is number {
+  return isNonNegativeInteger(value) && value <= 100;
+}
+
 function isSkillProgress(value: unknown, skill: QuizSkill): boolean {
   return (
     isRecord(value) &&
@@ -84,14 +88,14 @@ function isTodayTaskSource(value: unknown): boolean {
     isRecord(value) &&
     typeof value.groupId === "string" &&
     typeof value.groupName === "string" &&
-    isNumber(value.count)
+    isNonNegativeInteger(value.count)
   );
 }
 
 function isTodayTask(value: unknown): boolean {
   return (
     isRecord(value) &&
-    isNumber(value.count) &&
+    isNonNegativeInteger(value.count) &&
     typeof value.label === "string" &&
     Array.isArray(value.sources) &&
     value.sources.every(isTodayTaskSource)
@@ -102,11 +106,11 @@ function isTodaySnapshot(value: unknown): boolean {
   return (
     isRecord(value) &&
     typeof value.date === "string" &&
-    isNumber(value.streakDays) &&
+    isNonNegativeInteger(value.streakDays) &&
     isRecord(value.stats) &&
-    isNumber(value.stats.masteredCount) &&
-    isNumber(value.stats.dueReviewCount) &&
-    isNumber(value.stats.completionPercent) &&
+    isNonNegativeInteger(value.stats.masteredCount) &&
+    isNonNegativeInteger(value.stats.dueReviewCount) &&
+    isCompletionPercent(value.stats.completionPercent) &&
     isRecord(value.tasks) &&
     isTodayTask(value.tasks.newWords) &&
     isTodayTask(value.tasks.dueReview) &&
@@ -115,7 +119,7 @@ function isTodaySnapshot(value: unknown): boolean {
       (isRecord(value.recommendedStudy) &&
         typeof value.recommendedStudy.groupId === "string" &&
         typeof value.recommendedStudy.groupName === "string" &&
-        isNumber(value.recommendedStudy.wordCount) &&
+        isNonNegativeInteger(value.recommendedStudy.wordCount) &&
         (value.recommendedStudy.reason === "new_words" ||
           value.recommendedStudy.reason === "due_review" ||
           value.recommendedStudy.reason === "mixed"))) &&
@@ -634,11 +638,12 @@ export class DemoStateStore {
   }
 
   private restore(): void {
+    const hadLegacyState = typeof this.storage?.getItem(LEGACY_DEMO_STORAGE_KEY) === "string";
+    this.storage?.removeItem(LEGACY_DEMO_STORAGE_KEY);
     const serialized = this.storage?.getItem(DEMO_STORAGE_KEY);
     if (!serialized) {
-      if (this.storage?.getItem(LEGACY_DEMO_STORAGE_KEY)) {
+      if (hadLegacyState) {
         // Today 快照改为命名任务结构，v4 不能部分解释，统一回放 v5 固定种子。
-        this.storage.removeItem(LEGACY_DEMO_STORAGE_KEY);
         this.reset();
       }
       return;

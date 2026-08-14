@@ -112,6 +112,19 @@ describe("DemoStateStore", () => {
     expect(window.localStorage.getItem("wordflip.web.demo.v4")).toBeNull();
   });
 
+  test("有效 v5 与 v4 并存时保留 v5 快照并清理 legacy key", () => {
+    window.localStorage.clear();
+    const persistedV5 = createDemoState();
+    persistedV5.planStates["plan-core"].today.stats.masteredCount = 777;
+    window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persistedV5));
+    window.localStorage.setItem("wordflip.web.demo.v4", JSON.stringify({ schemaVersion: 4 }));
+
+    const store = createStore();
+
+    expect(currentPlanState(store).today.stats.masteredCount).toBe(777);
+    expect(window.localStorage.getItem("wordflip.web.demo.v4")).toBeNull();
+  });
+
   test("切换计划只读取当前计划数据，切回后保留历史分组变更", async () => {
     const store = createStore();
     const repositories = createMockRepositoryBundle(store);
@@ -177,6 +190,28 @@ describe("DemoStateStore", () => {
         completionPercent: 42
       });
       expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
+    }
+  });
+
+  test("完整 v5 Today 快照含非法整数或百分比时恢复固定种子", () => {
+    const mutations: Array<(state: ReturnType<typeof createDemoState>) => void> = [
+      (state) => { state.planStates["plan-core"].today.streakDays = 1.5; },
+      (state) => { state.planStates["plan-core"].today.tasks.newWords.count = 0.5; },
+      (state) => { state.planStates["plan-core"].today.tasks.dueReview.sources[0].count = -1; },
+      (state) => { state.planStates["plan-core"].today.recommendedStudy!.wordCount = -1; },
+      (state) => { state.planStates["plan-core"].today.stats.completionPercent = 101; }
+    ];
+
+    for (const mutate of mutations) {
+      const persisted = createDemoState();
+      mutate(persisted);
+      persisted.planStates["plan-core"].today.stats.masteredCount = 999;
+      window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
+
+      const restored = createStore();
+
+      expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
+      expect(currentPlanState(restored).today.stats.completionPercent).toBe(72);
     }
   });
 

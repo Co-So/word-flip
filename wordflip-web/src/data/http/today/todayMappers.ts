@@ -18,23 +18,31 @@ function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+function isInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return isInteger(value) && value >= 0;
+}
+
+function isCompletionPercent(value: unknown): value is number {
+  return isNonNegativeInteger(value) && value <= 100;
 }
 
 function isTaskSource(value: unknown): value is TodayTaskSourceDto {
   return (
     isRecord(value) &&
-    isNumber(value.groupId) &&
+    isInteger(value.groupId) &&
     typeof value.groupName === "string" &&
-    isNumber(value.count)
+    isNonNegativeInteger(value.count)
   );
 }
 
 function isTask(value: unknown): value is TodayTaskDto {
   return (
     isRecord(value) &&
-    isNumber(value.count) &&
+    isNonNegativeInteger(value.count) &&
     typeof value.label === "string" &&
     (value.sources === undefined ||
       (Array.isArray(value.sources) && value.sources.every(isTaskSource)))
@@ -44,9 +52,9 @@ function isTask(value: unknown): value is TodayTaskDto {
 function isRecommendedStudy(value: unknown): value is TodayRecommendedStudyDto {
   return (
     isRecord(value) &&
-    isNumber(value.groupId) &&
+    isInteger(value.groupId) &&
     typeof value.groupName === "string" &&
-    isNumber(value.wordCount) &&
+    isNonNegativeInteger(value.wordCount) &&
     (value.reason === "new_words" || value.reason === "due_review" || value.reason === "mixed")
   );
 }
@@ -54,7 +62,7 @@ function isRecommendedStudy(value: unknown): value is TodayRecommendedStudyDto {
 function isRecentGroup(value: unknown): value is TodayRecentGroupDto {
   return (
     isRecord(value) &&
-    isNumber(value.groupId) &&
+    isInteger(value.groupId) &&
     typeof value.name === "string" &&
     typeof value.lastStudiedAt === "string"
   );
@@ -64,11 +72,11 @@ function assertDashboard(value: unknown): asserts value is TodayDashboardDto {
   if (
     !isRecord(value) ||
     typeof value.date !== "string" ||
-    !isNumber(value.streakDays) ||
+    !isNonNegativeInteger(value.streakDays) ||
     !isRecord(value.stats) ||
-    !isNumber(value.stats.masteredCount) ||
-    !isNumber(value.stats.dueReviewCount) ||
-    !isNumber(value.stats.completionPercent) ||
+    !isNonNegativeInteger(value.stats.masteredCount) ||
+    !isNonNegativeInteger(value.stats.dueReviewCount) ||
+    !isCompletionPercent(value.stats.completionPercent) ||
     !isRecord(value.tasks) ||
     !isTask(value.tasks.newWords) ||
     !isTask(value.tasks.dueReview) ||

@@ -125,6 +125,42 @@ test.each([
   });
 });
 
+test.each([
+  ["streakDays 为小数", { ...dashboardDto, streakDays: 1.5 }],
+  ["任务 count 为小数", {
+    ...dashboardDto,
+    tasks: {
+      ...dashboardDto.tasks,
+      newWords: { ...dashboardDto.tasks.newWords, count: 0.5 }
+    }
+  }],
+  ["任务来源 groupId 为小数", {
+    ...dashboardDto,
+    tasks: {
+      ...dashboardDto.tasks,
+      newWords: {
+        ...dashboardDto.tasks.newWords,
+        sources: [{ groupId: 1.5, groupName: "第 1 组", count: 10 }]
+      }
+    }
+  }],
+  ["推荐 wordCount 为负数", {
+    ...dashboardDto,
+    recommendedStudy: { ...dashboardDto.recommendedStudy!, wordCount: -1 }
+  }],
+  ["completionPercent 超过 100", {
+    ...dashboardDto,
+    stats: { ...dashboardDto.stats, completionPercent: 101 }
+  }]
+])("%s 时拒绝违反 OpenAPI 的数值", async (_label, payload) => {
+  const repository = createHarness(async (config) => okResponse(config, payload));
+
+  await expect(repository.getSummary()).rejects.toEqual({
+    kind: "unknown",
+    message: "今日接口返回数据不完整"
+  });
+});
+
 test("共享客户端已映射的 Axios 错误不被仓储二次包装", async () => {
   const repository = createHarness(async (config) => {
     throw responseError(config);

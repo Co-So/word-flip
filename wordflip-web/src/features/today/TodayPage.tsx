@@ -39,7 +39,9 @@ export function TodayPage() {
         <div>
           <p className={styles.eyebrow}>TODAY · {summary.date}</p>
           <h1>今天继续前进</h1>
-          <p>{summary.recommendedStudy ? `推荐学习 · ${summary.recommendedStudy.groupName}` : "今日任务已完成"}</p>
+          <p>{summary.recommendedStudy
+            ? `推荐学习 · ${summary.recommendedStudy.groupName}`
+            : hasTasks ? "今日任务已准备好" : "今日任务已完成"}</p>
         </div>
         <StatusTag tone="sage">TODAY · READY</StatusTag>
       </header>
