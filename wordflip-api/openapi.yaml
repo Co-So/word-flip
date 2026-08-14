@@ -1741,6 +1741,7 @@ components:
         recommendedStudy:
           type: object
           nullable: true
+          required: [groupId, groupName, wordCount, reason]
           properties:
             groupId:
               type: integer

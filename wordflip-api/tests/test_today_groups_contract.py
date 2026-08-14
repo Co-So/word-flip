@@ -49,6 +49,16 @@ class TodayGroupsContractTest(unittest.TestCase):
             "cards", self.schemas["UnassignedCardsResponse"]["allOf"][1]["required"]
         )
 
+    def test_recommended_study_object_requires_complete_payload(self) -> None:
+        """推荐存在时必须完整返回 Web 展示与跳转依赖的四个字段。"""
+        recommended = self.schemas["TodayDashboard"]["properties"][
+            "recommendedStudy"
+        ]
+        self.assertEqual(
+            ["groupId", "groupName", "wordCount", "reason"],
+            recommended["required"],
+        )
+
     def test_mastery_descriptions_lock_authoritative_rule(self) -> None:
         """今日和分组都必须分别说明完整且权威的掌握条件。"""
         descriptions = (
