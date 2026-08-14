@@ -9,12 +9,12 @@ test("分组列表只展示当前计划分组并进入详情", async () => {
   expect(within(group).getByRole("link", { name: "查看分组" })).toHaveAttribute("href", "/groups/group-12");
 });
 
-test("组详情按 cardId 展示每张卡的双 skill heatLevel", async () => {
+test("组详情按 cardId 展示只读 FSRS 双轨快照与服务端展示热力", async () => {
   renderAuthenticatedApp("/groups/group-12");
 
   const row = await screen.findByRole("row", { name: /sustainable/ });
-  expect(within(row).getByText("热力 2")).toBeVisible();
-  expect(within(row).getByText("热力 0")).toBeVisible();
+  expect(within(row).getByText("learning · S 12")).toBeVisible();
+  expect(within(row).getByText("new · S 1 · 热力 2")).toBeVisible();
   expect(within(row).queryByRole("button", { name: /记得|模糊/ })).not.toBeInTheDocument();
 });
 

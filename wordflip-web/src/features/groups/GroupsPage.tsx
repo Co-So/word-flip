@@ -32,7 +32,7 @@ export function GroupsPage() {
           <Panel>
             <span className={styles.groupIndex}>{String(index + 1).padStart(2, "0")}</span>
             <h2>{group.name}</h2>
-            <p>{group.cardIds.length} 张学习卡</p>
+            <p>{group.stats.total} 张学习卡</p>
             <Link className={styles.detailLink} to={`/groups/${group.groupId}`}>查看分组</Link>
           </Panel>
         </article>)}

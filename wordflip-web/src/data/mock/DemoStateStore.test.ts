@@ -125,20 +125,30 @@ describe("DemoStateStore", () => {
     expect(window.localStorage.getItem("wordflip.web.demo.v4")).toBeNull();
   });
 
-  test("切换计划只读取当前计划数据，切回后保留历史分组变更", async () => {
+  test("创建分组只新增当前计划成员关系，切换计划后历史分组仍保留", async () => {
     const store = createStore();
     const repositories = createMockRepositoryBundle(store);
 
-    await repositories.groups.appendMembers("group-12", ["card-core-added"]);
-    await repositories.books.switchActivePlan("plan-advanced");
+    const beforeCards = Object.keys(currentPlanState(store).cards.byCardId);
+    expect((await repositories.groups.listUnassigned({ all: true })).cards.map((card) => card.cardId))
+      .toContain("card-infrastructure");
+    const created = await repositories.groups.createCustomGroup({
+      name: "  基础设施  ",
+      cardIds: ["card-infrastructure"]
+    });
+    expect(created).not.toHaveProperty("cardIds");
+    expect((await repositories.groups.listCards(created.groupId)).cards.map((card) => card.cardId))
+      .toEqual(["card-infrastructure"]);
+    expect((await repositories.groups.listUnassigned({ all: true })).cards.map((card) => card.cardId))
+      .not.toContain("card-infrastructure");
+    expect(Object.keys(currentPlanState(store).cards.byCardId)).toEqual(beforeCards);
 
-    expect((await repositories.groups.listGroups())[0].cardIds).not.toContain("card-core-added");
-    await repositories.groups.appendMembers("group-advanced", ["card-advanced-added"]);
+    await repositories.books.switchActivePlan("plan-advanced");
+    expect((await repositories.groups.listGroups()).some((group) => group.groupId === created.groupId))
+      .toBe(false);
     await repositories.books.switchActivePlan("plan-core");
-
-    expect((await repositories.groups.listGroups())[0].cardIds).toContain("card-core-added");
-    await repositories.books.switchActivePlan("plan-advanced");
-    expect((await repositories.groups.listGroups())[0].cardIds).toContain("card-advanced-added");
+    expect((await repositories.groups.listCards(created.groupId)).cards.map((card) => card.cardId))
+      .toEqual(["card-infrastructure"]);
   });
 
   test("使用真实 activePlanId 能在两个计划之间往返切换", async () => {
@@ -191,6 +201,34 @@ describe("DemoStateStore", () => {
       });
       expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
     }
+  });
+
+  test.each([
+    ["缺少 name", (group: Record<string, unknown>) => { delete group.name; }],
+    ["source 枚举非法", (group: Record<string, unknown>) => { group.source = "manual"; }],
+    ["status 枚举非法", (group: Record<string, unknown>) => { group.status = "done"; }],
+    ["createdAt 类型非法", (group: Record<string, unknown>) => { group.createdAt = 42; }],
+    ["stats 计数非法", (group: Record<string, unknown>) => {
+      (group.stats as Record<string, unknown>).heat0 = -1;
+    }],
+    ["progress 超出比例范围", (group: Record<string, unknown>) => { group.progress = 1.1; }],
+    ["cardIds 成员类型非法", (group: Record<string, unknown>) => { group.cardIds = [12]; }]
+  ])("同版本分组%s时恢复固定种子", (_label, mutate) => {
+    const persisted = createDemoState();
+    mutate(persisted.planStates["plan-core"].groups.items[0] as unknown as Record<string, unknown>);
+    persisted.planStates["plan-core"].today.stats.masteredCount = 999;
+    window.localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(persisted));
+
+    const restored = createStore();
+
+    expect(currentPlanState(restored).groups.items[0]).toMatchObject({
+      groupId: "group-12",
+      source: "auto",
+      status: "learning",
+      progress: 0.25,
+      cardIds: ["card-sustainable"]
+    });
+    expect(currentPlanState(restored).today.stats.masteredCount).toBe(126);
   });
 
   test("完整 v5 Today 快照含非法整数或百分比时恢复固定种子", () => {

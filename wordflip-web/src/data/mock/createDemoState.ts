@@ -27,8 +27,12 @@ export type DemoScenario =
   | "mutated";
 
 /** 与单个学习计划绑定的资源，切换计划时不丢弃历史分区。 */
+export interface DemoWordGroup extends WordGroup {
+  cardIds: string[];
+}
+
 export interface PlanDemoState {
-  groups: { items: WordGroup[] };
+  groups: { items: DemoWordGroup[] };
   cards: { byCardId: Record<string, LearningCard>; byWordKey: Record<string, LearningCard> };
   today: TodaySummary;
   bookProgress: BookProgress;
@@ -166,7 +170,7 @@ export function createQuizDemoState(card: LearningCard): PlanDemoState["quiz"] {
 
 function createPlanState(
   cardSources: LearningCard[],
-  group: WordGroup,
+  group: DemoWordGroup,
   today: TodaySummary,
   afterStudySession: TodaySummary,
   studySession: StudySession,
@@ -276,7 +280,16 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
     planStates: {
       [corePlan.planId]: createPlanState(
         [sustainableCard, infrastructureCard, urbanCard, ecologyCard],
-        { groupId: "group-12", name: "第 12 组 · 城市与环境", cardIds: [sustainableCard.cardId] },
+        {
+          groupId: "group-12",
+          name: "第 12 组 · 城市与环境",
+          source: "auto",
+          status: "learning",
+          createdAt: "2026-07-23T00:00:00Z",
+          stats: { heat0: 0, heat1: 0, heat2: 1, heat3: 0, heat4: 0, total: 1 },
+          progress: 0.25,
+          cardIds: [sustainableCard.cardId]
+        },
         fixedTodaySnapshot({
           masteredCount: 126,
           dueReviewCount: 24,
@@ -333,7 +346,16 @@ export function createDemoState(scenario: DemoScenario = "configured"): DemoStat
       ),
       [advancedPlan.planId]: createPlanState(
         [resilientCard],
-        { groupId: "group-advanced", name: "进阶复习", cardIds: [resilientCard.cardId] },
+        {
+          groupId: "group-advanced",
+          name: "进阶复习",
+          source: "auto",
+          status: "not_started",
+          createdAt: "2026-07-23T00:00:00Z",
+          stats: { heat0: 1, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: 1 },
+          progress: 0,
+          cardIds: [resilientCard.cardId]
+        },
         fixedTodaySnapshot({
           masteredCount: 42,
           dueReviewCount: 9,

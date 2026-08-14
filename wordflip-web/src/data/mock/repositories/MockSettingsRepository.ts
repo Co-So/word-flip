@@ -65,7 +65,16 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
   "book-ielts": {
     plan: { planId: "plan-ielts", bookId: "book-ielts", title: "雅思核心词汇" },
     planState: {
-      groups: { items: [{ groupId: "group-ielts-01", name: "第 1 组", cardIds: ["card-ielts-sustainable"] }] },
+      groups: { items: [{
+        groupId: "group-ielts-01",
+        name: "第 1 组",
+        source: "auto",
+        status: "not_started",
+        createdAt: "2026-07-23T00:00:00Z",
+        stats: { heat0: 1, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: 1 },
+        progress: 0,
+        cardIds: ["card-ielts-sustainable"]
+      }] },
       cards: {
         byCardId: {
           "card-ielts-sustainable": {
@@ -118,7 +127,16 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
   "book-core": {
     plan: { planId: "plan-core", bookId: "book-core", title: "核心词汇" },
     planState: {
-      groups: { items: [{ groupId: "group-core-01", name: "第 1 组", cardIds: ["card-sustainable"] }] },
+      groups: { items: [{
+        groupId: "group-core-01",
+        name: "第 1 组",
+        source: "auto",
+        status: "not_started",
+        createdAt: "2026-07-23T00:00:00Z",
+        stats: { heat0: 1, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: 1 },
+        progress: 0,
+        cardIds: ["card-sustainable"]
+      }] },
       cards: {
         byCardId: {
           "card-sustainable": {
@@ -171,7 +189,16 @@ const afterOnboardingSnapshots: Record<string, OnboardingSnapshot> = {
   "book-advanced": {
     plan: { planId: "plan-advanced", bookId: "book-advanced", title: "进阶词汇" },
     planState: {
-      groups: { items: [{ groupId: "group-advanced-01", name: "第 1 组", cardIds: ["card-resilient"] }] },
+      groups: { items: [{
+        groupId: "group-advanced-01",
+        name: "第 1 组",
+        source: "auto",
+        status: "not_started",
+        createdAt: "2026-07-23T00:00:00Z",
+        stats: { heat0: 1, heat1: 0, heat2: 0, heat3: 0, heat4: 0, total: 1 },
+        progress: 0,
+        cardIds: ["card-resilient"]
+      }] },
       cards: {
         byCardId: {
           "card-resilient": {

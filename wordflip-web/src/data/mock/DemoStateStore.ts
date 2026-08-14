@@ -134,6 +134,35 @@ function isTodaySnapshot(value: unknown): boolean {
   );
 }
 
+function isGroupStats(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isNonNegativeInteger(value.heat0) &&
+    isNonNegativeInteger(value.heat1) &&
+    isNonNegativeInteger(value.heat2) &&
+    isNonNegativeInteger(value.heat3) &&
+    isNonNegativeInteger(value.heat4) &&
+    isNonNegativeInteger(value.total)
+  );
+}
+
+function isDemoWordGroup(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.groupId === "string" &&
+    typeof value.name === "string" &&
+    (value.source === "auto" || value.source === "custom") &&
+    (value.status === "not_started" || value.status === "learning" || value.status === "completed") &&
+    (value.createdAt === null || typeof value.createdAt === "string") &&
+    isGroupStats(value.stats) &&
+    isNumber(value.progress) &&
+    value.progress >= 0 &&
+    value.progress <= 1 &&
+    Array.isArray(value.cardIds) &&
+    value.cardIds.every((id) => typeof id === "string")
+  );
+}
+
 function isStatsSnapshot(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -300,7 +329,7 @@ function isPlanState(value: unknown): boolean {
   if (!isRecord(value) || !isRecord(value.groups) || !Array.isArray(value.groups.items)) {
     return false;
   }
-  if (!value.groups.items.every((group) => isRecord(group) && typeof group.groupId === "string" && typeof group.name === "string" && Array.isArray(group.cardIds) && group.cardIds.every((id) => typeof id === "string"))) {
+  if (!value.groups.items.every(isDemoWordGroup)) {
     return false;
   }
   const cards = value.cards;

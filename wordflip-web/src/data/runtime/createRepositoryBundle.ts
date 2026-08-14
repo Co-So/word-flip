@@ -2,6 +2,7 @@ import type { RepositoryBundle } from "@/data/contracts/RepositoryBundle";
 import { HttpAuthRepository } from "@/data/http/auth/HttpAuthRepository";
 import { HttpBookRepository } from "@/data/http/books/HttpBookRepository";
 import { createHttpRuntime } from "@/data/http/createHttpRuntime";
+import { HttpGroupRepository } from "@/data/http/groups/HttpGroupRepository";
 import { HttpSettingsRepository } from "@/data/http/settings/HttpSettingsRepository";
 import { LocalSettingsStore } from "@/data/http/settings/LocalSettingsStore";
 import { HttpTodayRepository } from "@/data/http/today/HttpTodayRepository";
@@ -38,6 +39,7 @@ export function createRepositoryBundle({
       runtime.sessions
     ),
     books: new HttpBookRepository(runtime.authenticatedClient),
+    groups: new HttpGroupRepository(runtime.authenticatedClient),
     today: new HttpTodayRepository(runtime.authenticatedClient),
     settings: new HttpSettingsRepository(
       runtime.authenticatedClient,
