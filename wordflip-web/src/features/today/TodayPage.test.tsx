@@ -12,7 +12,12 @@ import { renderScenarioApp, renderStateApp } from "@/test/renderApp";
 test("今日页展示服务端三项统计、中文日期与连续打卡", async () => {
   renderStateApp(createDemoState(), "/today");
 
-  expect(await screen.findByText("2026年7月23日星期四")).toBeVisible();
+  const formattedDate = new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "long"
+  }).format(new Date(2026, 6, 23));
+  expect(await screen.findByText(formattedDate)).toBeVisible();
   expect(screen.getByText("连续打卡 14 天")).toBeVisible();
 
   const summary = screen.getByRole("list", { name: "今日摘要" });
@@ -23,6 +28,18 @@ test("今日页展示服务端三项统计、中文日期与连续打卡", async
   expect(within(summary).getByText("计划完成度")).toBeVisible();
   expect(within(summary).getByText("72%")).toBeVisible();
   expect(within(summary).queryByText("测验任务")).not.toBeInTheDocument();
+});
+
+test("服务端返回无效日期或最近学习时间时展示稳定的中性回退", async () => {
+  const state = createDemoState();
+  state.planStates["plan-core"].today.date = "2026-02-30";
+  state.planStates["plan-core"].today.recentGroups[0].lastStudiedAt = "not-a-timestamp";
+
+  renderStateApp(state, "/today");
+
+  expect(await screen.findByText("日期待确认")).toBeVisible();
+  expect(screen.getByText("时间待确认")).toBeVisible();
+  expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
 });
 
 test("最近分组位于任务前方且最多展示三条真实分组入口", async () => {
@@ -103,6 +120,11 @@ test("今日加载失败后重试成功会清除旧错误并展示最新快照",
 
   expect(await screen.findByRole("heading", { name: "暂时无法加载" })).toBeVisible();
   await user.click(screen.getByRole("button", { name: "重新尝试" }));
-  expect(await screen.findByText("2026年7月23日星期四")).toBeVisible();
+  const formattedDate = new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "long"
+  }).format(new Date(2026, 6, 23));
+  expect(await screen.findByText(formattedDate)).toBeVisible();
   expect(screen.queryByRole("heading", { name: "暂时无法加载" })).not.toBeInTheDocument();
 });

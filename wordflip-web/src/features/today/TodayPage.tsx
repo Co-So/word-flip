@@ -13,14 +13,44 @@ function errorMessage(error: unknown): string {
   return (error as AppError).message ?? "暂时无法获取今日安排";
 }
 
+const chineseDateFormatter = new Intl.DateTimeFormat("zh-CN", {
+  month: "2-digit",
+  day: "2-digit",
+  weekday: "long"
+});
+
+function parseCalendarDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const [, yearText, monthText, dayText] = match;
+  const date = new Date(Number(yearText), Number(monthText) - 1, Number(dayText));
+  // Date 会把 2 月 30 日自动进位，必须逐字段核对才能保证服务端日期没有被静默篡改。
+  return date.getFullYear() === Number(yearText)
+    && date.getMonth() === Number(monthText) - 1
+    && date.getDate() === Number(dayText)
+    ? date
+    : null;
+}
+
 function formatChineseDate(date: string): string {
-  const [year, month, day] = date.split("-").map(Number);
-  const weekday = ["日", "一", "二", "三", "四", "五", "六"][new Date(year, month - 1, day).getDay()];
-  return `${year}年${month}月${day}日星期${weekday}`;
+  const calendarDate = parseCalendarDate(date);
+  return calendarDate ? chineseDateFormatter.format(calendarDate) : "日期待确认";
+}
+
+function parseTimestamp(timestamp: string): Date | null {
+  const datePart = timestamp.slice(0, 10);
+  if (!parseCalendarDate(datePart)) return null;
+
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function formatRelativeTime(timestamp: string): string {
-  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 60_000));
+  const date = parseTimestamp(timestamp);
+  if (!date) return "时间待确认";
+
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60_000));
   if (elapsedMinutes < 1) return "刚刚";
   if (elapsedMinutes < 60) return `${elapsedMinutes} 分钟前`;
   const elapsedHours = Math.floor(elapsedMinutes / 60);
